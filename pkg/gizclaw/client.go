@@ -207,7 +207,7 @@ func (c *Client) Ping(ctx context.Context, id string) (*rpc.PingResponse, error)
 	return rpcClient.Ping(ctx, id)
 }
 
-func (c *Client) rpcClient() (*rpc.Client, error) {
+func (c *Client) rpcClient() (*rpcClient, error) {
 	conn := c.PeerConn()
 	if conn == nil {
 		return nil, fmt.Errorf("gizclaw: client is not connected")
@@ -216,7 +216,7 @@ func (c *Client) rpcClient() (*rpc.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gizclaw: dial rpc stream: %w", err)
 	}
-	return rpc.NewClient(stream), nil
+	return newRPCClient(stream), nil
 }
 
 // PeerConn returns the underlying peer connection.
@@ -299,11 +299,15 @@ func (c *Client) dispatchRPC(_ context.Context, req *rpc.RPCRequest) (*rpc.RPCRe
 	switch req.Method {
 	case rpc.MethodPing:
 		if req.Params == nil {
-			return rpc.ErrorResponse(req.Id, -32602, "missing params"), nil
+			return rpc.Error{RequestID: req.Id, Code: -32602, Message: "missing params"}.RPCResponse(), nil
 		}
-		return rpc.ResultResponse(req.Id, &rpc.PingResponse{ServerTime: time.Now().UnixMilli()}), nil
+		return &rpc.RPCResponse{
+			V:      1,
+			Id:     req.Id,
+			Result: &rpc.PingResponse{ServerTime: time.Now().UnixMilli()},
+		}, nil
 	default:
-		return rpc.ErrorResponse(req.Id, -1, fmt.Sprintf("unknown method: %s", req.Method)), nil
+		return rpc.Error{RequestID: req.Id, Code: -1, Message: fmt.Sprintf("unknown method: %s", req.Method)}.RPCResponse(), nil
 	}
 }
 

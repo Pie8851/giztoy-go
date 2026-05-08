@@ -146,15 +146,19 @@ func (h *GearConn) dispatchRPC(ctx context.Context, req *rpc.RPCRequest) (*rpc.R
 	switch req.Method {
 	case rpc.MethodPing:
 		if req.Params == nil {
-			return rpc.ErrorResponse(req.Id, -32602, "missing params"), nil
+			return rpc.Error{RequestID: req.Id, Code: -32602, Message: "missing params"}.RPCResponse(), nil
 		}
 		response, err := h.handlePing(ctx, *req.Params)
 		if err != nil {
 			return nil, err
 		}
-		return rpc.ResultResponse(req.Id, response), nil
+		return &rpc.RPCResponse{
+			V:      1,
+			Id:     req.Id,
+			Result: response,
+		}, nil
 	default:
-		return rpc.ErrorResponse(req.Id, -1, fmt.Sprintf("unknown method: %s", req.Method)), nil
+		return rpc.Error{RequestID: req.Id, Code: -1, Message: fmt.Sprintf("unknown method: %s", req.Method)}.RPCResponse(), nil
 	}
 }
 
@@ -173,13 +177,13 @@ func (h *GearConn) Ping(ctx context.Context, id string) (*rpc.PingResponse, erro
 	return rpcClient.Ping(ctx, id)
 }
 
-func (h *GearConn) rpcClient() (*rpc.Client, error) {
+func (h *GearConn) rpcClient() (*rpcClient, error) {
 	conn := h.Conn
 	stream, err := conn.Dial(ServiceRPC)
 	if err != nil {
 		return nil, fmt.Errorf("gizclaw: dial rpc stream: %w", err)
 	}
-	return rpc.NewClient(stream), nil
+	return newRPCClient(stream), nil
 }
 
 func (h *GearConn) handlePing(_ context.Context, _ rpc.PingRequest) (*rpc.PingResponse, error) {
