@@ -36,6 +36,9 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out, "ping") {
 		t.Fatalf("help missing 'ping': %s", out)
 	}
+	if !strings.Contains(out, "set-name") {
+		t.Fatalf("help missing 'set-name': %s", out)
+	}
 	if !strings.Contains(out, "admin") {
 		t.Fatalf("help missing 'admin': %s", out)
 	}
@@ -111,6 +114,30 @@ func TestContextHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "show") {
 		t.Fatalf("context help missing 'show': %s", out)
+	}
+}
+
+func TestSetNameHelp(t *testing.T) {
+	root := New()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"set-name", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"set-name <name>", "--context"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("set-name help missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestSetNameRejectsEmptyName(t *testing.T) {
+	root := New()
+	root.SetArgs([]string{"set-name", "   "})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "device name must not be empty") {
+		t.Fatalf("set-name empty err=%v", err)
 	}
 }
 

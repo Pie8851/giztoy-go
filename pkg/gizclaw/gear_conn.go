@@ -153,6 +153,7 @@ func (h *GearConn) initRPC() {
 	h.rpc = &rpcServer{}
 	if h.Service != nil {
 		h.rpc.gear = h.Service.gear
+		h.rpc.serverInfo = h.Service.public
 	}
 	if h.Conn != nil {
 		h.rpc.callerPublicKey = h.Conn.PublicKey()

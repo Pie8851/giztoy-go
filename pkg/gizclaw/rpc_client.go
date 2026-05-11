@@ -29,6 +29,18 @@ func (c *rpcClient) Ping(ctx context.Context, conn net.Conn, id string) (*rpcapi
 	return callRPCPing(ctx, conn, id)
 }
 
+func (c *rpcClient) GetServerInfo(ctx context.Context, conn net.Conn, id string) (*rpcapi.ServerGetInfoResponse, error) {
+	params, err := newRPCRequestParams(rpcapi.ServerGetInfoRequest{}, (*rpcapi.RPCRequest_Params).FromServerGetInfoRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerInfoGet, params), rpcapi.RPCResponse_Result.AsServerGetInfoResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("server info", err)
+	}
+	return result, nil
+}
+
 func (c *rpcClient) GetConfig(ctx context.Context, conn net.Conn, id string) (*rpcapi.GearGetConfigResponse, error) {
 	params, err := newRPCRequestParams(rpcapi.GearGetConfigRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetConfigRequest)
 	if err != nil {

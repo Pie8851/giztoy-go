@@ -140,6 +140,7 @@ func TestRPCMethodValid(t *testing.T) {
 		RPCMethodGearRegistrationGet,
 		RPCMethodGearRegistrationRegister,
 		RPCMethodGearRuntimeGet,
+		RPCMethodServerInfoGet,
 	} {
 		if !method.Valid() {
 			t.Fatalf("%s should be valid", method)

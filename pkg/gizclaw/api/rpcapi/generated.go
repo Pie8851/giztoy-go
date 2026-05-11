@@ -152,6 +152,7 @@ const (
 	RPCMethodGearRegistrationRegister RPCMethod = "gear.registration.register"
 	RPCMethodGearRuntimeGet           RPCMethod = "gear.runtime.get"
 	RPCMethodPeerPing                 RPCMethod = "peer.ping"
+	RPCMethodServerInfoGet            RPCMethod = "server.info.get"
 )
 
 // Valid indicates whether the value is a known member of the RPCMethod enum.
@@ -172,6 +173,8 @@ func (e RPCMethod) Valid() bool {
 	case RPCMethodGearRuntimeGet:
 		return true
 	case RPCMethodPeerPing:
+		return true
+	case RPCMethodServerInfoGet:
 		return true
 	default:
 		return false
@@ -404,6 +407,19 @@ type Runtime struct {
 	TxBytes    *uint64   `json:"tx_bytes,omitempty"`
 }
 
+// ServerGetInfoRequest defines model for ServerGetInfoRequest.
+type ServerGetInfoRequest = map[string]interface{}
+
+// ServerGetInfoResponse defines model for ServerGetInfoResponse.
+type ServerGetInfoResponse = ServerInfo
+
+// ServerInfo defines model for ServerInfo.
+type ServerInfo struct {
+	BuildCommit string `json:"build_commit"`
+	PublicKey   string `json:"public_key"`
+	ServerTime  int64  `json:"server_time"`
+}
+
 // AsPingRequest returns the union data inside the RPCRequest_Params as a PingRequest
 func (t RPCRequest_Params) AsPingRequest() (PingRequest, error) {
 	var body PingRequest
@@ -420,6 +436,32 @@ func (t *RPCRequest_Params) FromPingRequest(v PingRequest) error {
 
 // MergePingRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PingRequest
 func (t *RPCRequest_Params) MergePingRequest(v PingRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetInfoRequest returns the union data inside the RPCRequest_Params as a ServerGetInfoRequest
+func (t RPCRequest_Params) AsServerGetInfoRequest() (ServerGetInfoRequest, error) {
+	var body ServerGetInfoRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetInfoRequest
+func (t *RPCRequest_Params) FromServerGetInfoRequest(v ServerGetInfoRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetInfoRequest
+func (t *RPCRequest_Params) MergeServerGetInfoRequest(v ServerGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -638,6 +680,32 @@ func (t *RPCResponse_Result) FromPingResponse(v PingResponse) error {
 
 // MergePingResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PingResponse
 func (t *RPCResponse_Result) MergePingResponse(v PingResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetInfoResponse returns the union data inside the RPCResponse_Result as a ServerGetInfoResponse
+func (t RPCResponse_Result) AsServerGetInfoResponse() (ServerGetInfoResponse, error) {
+	var body ServerGetInfoResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetInfoResponse
+func (t *RPCResponse_Result) FromServerGetInfoResponse(v ServerGetInfoResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetInfoResponse
+func (t *RPCResponse_Result) MergeServerGetInfoResponse(v ServerGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

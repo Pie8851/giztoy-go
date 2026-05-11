@@ -12,7 +12,7 @@ import { Input } from "../../../../packages/components/input";
 import { Skeleton } from "../../../../packages/components/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../packages/components/table";
 
-import type { Runtime } from "../../../../packages/adminservice";
+import type { DeviceInfo, Runtime } from "../../../../packages/adminservice";
 import { EmptyState } from "../../../../packages/components/empty-state";
 import { PageBreadcrumb } from "../../../../packages/components/page-breadcrumb";
 import { StatusBadge } from "../../../../packages/components/status-badge";
@@ -166,7 +166,7 @@ export function PeersListPage(): JSX.Element {
                 </TableHeader>
                 <TableBody>
                   {filteredGears.map((gear) => {
-                    const name = peerDisplayName(gear);
+                    const name = peerDisplayName(gear, dashboard.infos[gear.public_key]);
                     const copied = copiedPublicKey === gear.public_key;
                     const runtime = dashboard.runtimes[gear.public_key];
 
@@ -235,8 +235,8 @@ export function PeersListPage(): JSX.Element {
   );
 }
 
-function peerDisplayName(gear: NamedRegistration): string {
-  return gear.name?.trim() || gear.device?.name?.trim() || "";
+function peerDisplayName(gear: NamedRegistration, info: DeviceInfo | null | undefined): string {
+  return gear.name?.trim() || gear.device?.name?.trim() || info?.name?.trim() || "";
 }
 
 function PeerRuntime({ runtime }: { runtime: Runtime | null | undefined }): JSX.Element {

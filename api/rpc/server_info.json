@@ -1,0 +1,21 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "RPC Server Info Types",
+    "description": "Schemas for the server.info.get RPC method.",
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "ServerGetInfoRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "ServerGetInfoResponse": {
+        "$ref": "../type/server_info.json#/components/schemas/ServerInfo"
+      }
+    }
+  }
+}

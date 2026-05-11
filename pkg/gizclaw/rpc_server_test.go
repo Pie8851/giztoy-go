@@ -13,6 +13,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/serverpublic"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
@@ -30,8 +31,24 @@ func TestRPCClientServerGearMethods(t *testing.T) {
 		registerResult:  testRPCRegistrationResult(publicKey.String(), now),
 		putInfoResponse: apitypes.DeviceInfo{Name: stringPtr("gear-2")},
 	}
-	server := &rpcServer{gear: fake, callerPublicKey: publicKey}
+	serverInfo := &fakeRPCServerInfoService{
+		t:             t,
+		wantPublicKey: publicKey,
+		info: apitypes.ServerInfo{
+			PublicKey:   "server-public",
+			ServerTime:  123,
+			BuildCommit: "test",
+		},
+	}
+	server := &rpcServer{gear: fake, serverInfo: serverInfo, callerPublicKey: publicKey}
 	client := &rpcClient{}
+
+	infoResp := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.ServerGetInfoResponse, error) {
+		return client.GetServerInfo(context.Background(), conn, "server-info")
+	})
+	if infoResp.PublicKey != "server-public" || infoResp.ServerTime != 123 || infoResp.BuildCommit != "test" {
+		t.Fatalf("GetServerInfo() = %+v", infoResp)
+	}
 
 	if got := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearGetConfigResponse, error) {
 		return client.GetConfig(context.Background(), conn, "config")
@@ -326,6 +343,25 @@ type fakeRPCGearService struct {
 	runtimeError       apitypes.ErrorResponse
 	unexpectedConfig   bool
 	waitRuntimeContext bool
+}
+
+type fakeRPCServerInfoService struct {
+	t             *testing.T
+	wantPublicKey giznet.PublicKey
+	info          apitypes.ServerInfo
+	err           apitypes.ErrorResponse
+}
+
+func (f *fakeRPCServerInfoService) GetServerInfo(ctx context.Context, _ serverpublic.GetServerInfoRequestObject) (serverpublic.GetServerInfoResponseObject, error) {
+	if f.t != nil && f.wantPublicKey != (giznet.PublicKey{}) {
+		if got := serverpublic.CallerPublicKey(ctx); got != f.wantPublicKey {
+			f.t.Fatalf("caller public key = %s, want %s", got, f.wantPublicKey)
+		}
+	}
+	if f.err.Error.Code != "" {
+		return serverpublic.GetServerInfo400JSONResponse(f.err), nil
+	}
+	return serverpublic.GetServerInfo200JSONResponse(f.info), nil
 }
 
 func (f *fakeRPCGearService) GetConfig(ctx context.Context, _ gearservice.GetConfigRequestObject) (gearservice.GetConfigResponseObject, error) {

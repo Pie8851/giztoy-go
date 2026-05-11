@@ -711,13 +711,14 @@ type RefreshVersion struct {
 
 // Registration defines model for Registration.
 type Registration struct {
-	ApprovedAt     *time.Time `json:"approved_at,omitempty"`
-	AutoRegistered *bool      `json:"auto_registered,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	PublicKey      string     `json:"public_key"`
-	Role           GearRole   `json:"role"`
-	Status         GearStatus `json:"status"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ApprovedAt     *time.Time  `json:"approved_at,omitempty"`
+	AutoRegistered *bool       `json:"auto_registered,omitempty"`
+	CreatedAt      time.Time   `json:"created_at"`
+	Device         *DeviceInfo `json:"device,omitempty"`
+	PublicKey      string      `json:"public_key"`
+	Role           GearRole    `json:"role"`
+	Status         GearStatus  `json:"status"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 // Resource defines model for Resource.

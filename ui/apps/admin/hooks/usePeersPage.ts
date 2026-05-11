@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { expectData, toMessage } from "../../../packages/components/api";
-import { getGearRuntime, listDepots, listGears } from "../../../packages/adminservice";
+import { getGearInfo, getGearRuntime, listDepots, listGears } from "../../../packages/adminservice";
 import { getServerInfo, type ServerInfo } from "../../../packages/serverpublic";
 
-import type { Depot, Registration, Runtime } from "../../../packages/adminservice";
+import type { Depot, DeviceInfo, Registration, Runtime } from "../../../packages/adminservice";
 
 export const PEER_PAGE_LIMIT = 50;
 
 export type PeerRuntimeMap = Record<string, Runtime | null>;
+export type PeerInfoMap = Record<string, DeviceInfo | null>;
 
 export interface PeerListState {
   cursor: string | null;
@@ -21,6 +22,7 @@ export interface PeersPageState {
   depots: Depot[];
   error: string;
   gears: Registration[];
+  infos: PeerInfoMap;
   loading: boolean;
   runtimes: PeerRuntimeMap;
   serverInfo: ServerInfo | null;
@@ -43,6 +45,7 @@ export function usePeersPage(): {
     depots: [],
     error: "",
     gears: [],
+    infos: {},
     loading: true,
     runtimes: {},
     serverInfo: null,
@@ -71,12 +74,16 @@ export function usePeersPage(): {
       ]);
 
       const gears = registrations.items ?? [];
-      const runtimes = await loadPeerRuntimes(gears);
+      const [infos, runtimes] = await Promise.all([
+        loadPeerInfos(gears),
+        loadPeerRuntimes(gears),
+      ]);
 
       setDashboard({
         depots: depots.items ?? [],
         error: "",
         gears,
+        infos,
         loading: false,
         runtimes,
         serverInfo,
@@ -112,6 +119,7 @@ export function usePeersPage(): {
     return dashboard.gears.filter((gear) =>
       [
         gear.public_key,
+        peerDeviceName(gear, dashboard.infos[gear.public_key]),
         gear.role,
         gear.status,
         gear.auto_registered ? "auto" : "manual",
@@ -121,7 +129,7 @@ export function usePeersPage(): {
         value.toLowerCase().includes(query),
       ),
     );
-  }, [dashboard.gears, dashboard.runtimes, filter]);
+  }, [dashboard.gears, dashboard.infos, dashboard.runtimes, filter]);
 
   const nextPage = useCallback(() => {
     if (peerList.nextCursor === null) {
@@ -154,6 +162,23 @@ export function usePeersPage(): {
   };
 }
 
+async function loadPeerInfos(gears: Registration[]): Promise<PeerInfoMap> {
+  const entries = await Promise.all(
+    gears.map(async (gear): Promise<[string, DeviceInfo | null]> => {
+      if (gear.device !== undefined) {
+        return [gear.public_key, gear.device];
+      }
+      try {
+        const info = await expectData(getGearInfo({ path: { publicKey: gear.public_key } }));
+        return [gear.public_key, info];
+      } catch {
+        return [gear.public_key, null];
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
 async function loadPeerRuntimes(gears: Registration[]): Promise<PeerRuntimeMap> {
   const entries = await Promise.all(
     gears.map(async (gear): Promise<[string, Runtime | null]> => {
@@ -166,4 +191,8 @@ async function loadPeerRuntimes(gears: Registration[]): Promise<PeerRuntimeMap> 
     }),
   );
   return Object.fromEntries(entries);
+}
+
+function peerDeviceName(gear: Registration, info: DeviceInfo | null | undefined): string {
+  return gear.device?.name?.trim() || info?.name?.trim() || "";
 }

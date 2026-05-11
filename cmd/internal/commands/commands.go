@@ -11,6 +11,7 @@ import (
 	servecmd "github.com/GizClaw/gizclaw-go/cmd/internal/commands/serve"
 	serverinfocmd "github.com/GizClaw/gizclaw-go/cmd/internal/commands/serverinfo"
 	servicecmd "github.com/GizClaw/gizclaw-go/cmd/internal/commands/service"
+	setnamecmd "github.com/GizClaw/gizclaw-go/cmd/internal/commands/setname"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +27,7 @@ func New() *cobra.Command {
 		servicecmd.NewCmd(),
 		contextcmd.NewCmd(),
 		pingcmd.NewCmd(),
+		setnamecmd.NewCmd(),
 		admincmd.NewCmd(),
 		playcmd.NewCmd(),
 		serverinfocmd.NewCmd(),

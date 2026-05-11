@@ -445,6 +445,7 @@ export type Registration = {
     role: GearRole;
     status: GearStatus;
     auto_registered?: boolean;
+    device?: DeviceInfo;
     created_at: string;
     updated_at: string;
     approved_at?: string;

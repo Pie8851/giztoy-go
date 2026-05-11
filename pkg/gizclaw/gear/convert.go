@@ -37,6 +37,7 @@ func toAdminRegistration(gear apitypes.Gear) apitypes.Registration {
 		ApprovedAt:     gear.ApprovedAt,
 		AutoRegistered: gear.AutoRegistered,
 		CreatedAt:      gear.CreatedAt,
+		Device:         &gear.Device,
 		PublicKey:      gear.PublicKey,
 		Role:           apitypes.GearRole(gear.Role),
 		Status:         apitypes.GearStatus(gear.Status),

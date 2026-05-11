@@ -390,6 +390,7 @@
       "RPCMethod": {
         "enum": [
           "peer.ping",
+          "server.info.get",
           "gear.config.get",
           "gear.info.get",
           "gear.info.put",
@@ -412,6 +413,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/PingRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetInfoRequest"
               },
               {
                 "$ref": "#/components/schemas/GearGetConfigRequest"
@@ -459,6 +463,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/PingResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetInfoResponse"
               },
               {
                 "$ref": "#/components/schemas/GearGetConfigResponse"
@@ -562,6 +569,34 @@
         "required": [
           "online",
           "last_seen_at"
+        ],
+        "type": "object"
+      },
+      "ServerGetInfoRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetInfoResponse": {
+        "$ref": "#/components/schemas/ServerInfo"
+      },
+      "ServerInfo": {
+        "properties": {
+          "build_commit": {
+            "type": "string"
+          },
+          "public_key": {
+            "type": "string"
+          },
+          "server_time": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_key",
+          "server_time",
+          "build_commit"
         ],
         "type": "object"
       }

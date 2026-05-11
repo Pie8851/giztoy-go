@@ -57,6 +57,9 @@ func TestConvertHelpers(t *testing.T) {
 	if len(adminRegistrations.Items) != 1 || adminRegistrations.Items[0].PublicKey != gear.PublicKey {
 		t.Fatalf("toAdminRegistrationList = %+v", adminRegistrations)
 	}
+	if adminRegistrations.Items[0].Device == nil || adminRegistrations.Items[0].Device.Name == nil || *adminRegistrations.Items[0].Device.Name != deviceName {
+		t.Fatalf("toAdminRegistrationList device = %+v", adminRegistrations.Items[0].Device)
+	}
 
 	adminOTA, err := toAdminOTASummary(apitypes.OTASummary{
 		Depot:          "demo",

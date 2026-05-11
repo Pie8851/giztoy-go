@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -124,6 +125,23 @@ func PutInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (
 		return apitypes.DeviceInfo{}, err
 	}
 	return convertClientAPIType[apitypes.DeviceInfo](*resp)
+}
+
+func SetName(ctx context.Context, c *gizclaw.Client, name string) (apitypes.DeviceInfo, error) {
+	info, err := GetInfo(ctx, c)
+	if err == nil {
+		info.Name = &name
+		return PutInfo(ctx, c, info)
+	}
+	var rpcErr rpcapi.Error
+	if !errors.As(err, &rpcErr) || rpcErr.Code != rpcapi.RPCErrorCodeNotFound {
+		return apitypes.DeviceInfo{}, err
+	}
+	result, err := Register(ctx, c, gearservice.RegistrationRequest{Device: apitypes.DeviceInfo{Name: &name}})
+	if err != nil {
+		return apitypes.DeviceInfo{}, err
+	}
+	return result.Gear.Device, nil
 }
 
 func GetRuntime(ctx context.Context, c *gizclaw.Client) (apitypes.Runtime, error) {
