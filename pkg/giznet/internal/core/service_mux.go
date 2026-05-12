@@ -8,6 +8,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/giznet/internal/kcp"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet/internal/noise"
+	gokcp "github.com/xtaci/kcp-go/v5"
 )
 
 var (
@@ -391,8 +392,8 @@ func (m *ServiceMux) rejectUnknownService(service uint64, data []byte) error {
 }
 
 func (m *ServiceMux) sendServiceControlFrame(service uint64, streamID uint64, frameType byte, payload []byte) {
-	frame := binary.AppendUvarint(nil, streamID)
-	frame = append(frame, frameType)
+	frame := []byte{frameType}
+	frame = binary.LittleEndian.AppendUint32(frame, uint32(streamID))
 	frame = append(frame, payload...)
 	if m.config.Output == nil {
 		return
@@ -403,14 +404,22 @@ func (m *ServiceMux) sendServiceControlFrame(service uint64, streamID uint64, fr
 }
 
 func decodeServiceMuxFrame(data []byte) (uint64, byte, error) {
-	streamID, n := binary.Uvarint(data)
-	if n <= 0 {
+	if len(data) == 0 {
 		return 0, 0, ErrInvalidServiceFrame
 	}
-	if len(data[n:]) == 0 {
+	frameType := data[0]
+	if frameType == serviceMuxFrameData {
+		if len(data[1:]) < gokcp.IKCP_OVERHEAD {
+			return 0, 0, ErrInvalidServiceFrame
+		}
+		return uint64(binary.LittleEndian.Uint32(data[1:])), frameType, nil
+	}
+
+	if len(data) < 5 {
 		return 0, 0, ErrInvalidServiceFrame
 	}
-	return streamID, data[n], nil
+	streamID := uint64(binary.LittleEndian.Uint32(data[1:]))
+	return streamID, frameType, nil
 }
 
 func shouldRejectStoppedService(data []byte) bool {

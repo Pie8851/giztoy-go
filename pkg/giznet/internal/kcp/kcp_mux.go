@@ -8,6 +8,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	gokcp "github.com/xtaci/kcp-go/v5"
 )
 
 const (
@@ -16,6 +18,10 @@ const (
 	kcpMuxFrameClose
 	kcpMuxFrameCloseAck
 )
+
+// Mux wire format:
+// DATA: frame_type(1B) | raw KCP segment(s), routed by segment conv.
+// Control: frame_type(1B) | conv(4B little-endian) | payload.
 
 const (
 	streamCloseReasonClose byte = iota
@@ -563,8 +569,10 @@ func (m *KcpMux) touchStream(streamID uint64) {
 }
 
 func (m *KcpMux) sendFrame(streamID uint64, frameType byte, payload []byte) error {
-	frame := binary.AppendUvarint(nil, streamID)
-	frame = append(frame, frameType)
+	frame := []byte{frameType}
+	if frameType != kcpMuxFrameData {
+		frame = binary.LittleEndian.AppendUint32(frame, uint32(streamID))
+	}
 	frame = append(frame, payload...)
 	if m.output == nil {
 		return nil
@@ -604,17 +612,30 @@ func (m *KcpMux) isRemoteStreamID(streamID uint64) bool {
 }
 
 func decodeMuxFrame(data []byte) (uint64, byte, []byte, error) {
-	streamID, n := binary.Uvarint(data)
-	if n <= 0 {
+	if len(data) == 0 {
 		return 0, 0, nil, ErrInvalidServiceFrame
 	}
-	if streamID > math.MaxUint32 {
+	frameType := data[0]
+	if frameType == kcpMuxFrameData {
+		streamID, err := decodeKCPConv(data[1:])
+		if err != nil {
+			return 0, 0, nil, err
+		}
+		return streamID, frameType, data[1:], nil
+	}
+
+	if len(data) < 5 {
 		return 0, 0, nil, ErrInvalidServiceFrame
 	}
-	if len(data[n:]) == 0 {
-		return 0, 0, nil, ErrInvalidServiceFrame
+	streamID := uint64(binary.LittleEndian.Uint32(data[1:]))
+	return streamID, frameType, data[5:], nil
+}
+
+func decodeKCPConv(data []byte) (uint64, error) {
+	if len(data) < gokcp.IKCP_OVERHEAD {
+		return 0, ErrInvalidServiceFrame
 	}
-	return streamID, data[n], data[n+1:], nil
+	return uint64(binary.LittleEndian.Uint32(data)), nil
 }
 
 func (s *kcpStream) Read(b []byte) (int, error) {

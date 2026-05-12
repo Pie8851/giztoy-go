@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	gokcp "github.com/xtaci/kcp-go/v5"
 )
 
 func kcpMuxPair(t *testing.T, cfg KcpMuxConfig) (*KcpMux, *KcpMux) {
@@ -49,6 +51,19 @@ func acceptWithTimeout(t *testing.T, mux *KcpMux, timeout time.Duration) net.Con
 		t.Fatalf("Accept timed out after %s", timeout)
 		return nil
 	}
+}
+
+func muxControlFrame(frameType byte, streamID uint64, payload ...byte) []byte {
+	frame := []byte{frameType}
+	frame = binary.LittleEndian.AppendUint32(frame, uint32(streamID))
+	frame = append(frame, payload...)
+	return frame
+}
+
+func muxDataFrame(conv uint32) []byte {
+	segment := make([]byte, gokcp.IKCP_OVERHEAD)
+	binary.LittleEndian.PutUint32(segment, conv)
+	return append([]byte{kcpMuxFrameData}, segment...)
 }
 
 func TestKcpMux_OpenCreatesDistinctStreams(t *testing.T) {
@@ -154,8 +169,7 @@ func TestKcpMux_OpenFramesAreIdempotent(t *testing.T) {
 	server := NewKcpMux(0, false, KcpMuxConfig{}, nil, nil)
 	defer server.Close()
 
-	frame := binary.AppendUvarint(nil, 1)
-	frame = append(frame, kcpMuxFrameOpen)
+	frame := muxControlFrame(kcpMuxFrameOpen, 1)
 
 	if err := server.Input(frame); err != nil {
 		t.Fatalf("first Input failed: %v", err)
@@ -299,8 +313,7 @@ func TestKcpMux_InvalidFrameClosesStreamWithInvalidReason(t *testing.T) {
 	serverStream := acceptWithTimeout(t, server, 2*time.Second)
 	defer serverStream.Close()
 
-	frame := binary.AppendUvarint(nil, 1)
-	frame = append(frame, byte(99))
+	frame := muxControlFrame(byte(99), 1)
 	if err := server.Input(frame); err != nil {
 		t.Fatalf("Input failed: %v", err)
 	}
@@ -326,8 +339,7 @@ func TestKcpMux_ClosedStateOperations(t *testing.T) {
 		t.Fatalf("Accept(after Close) err=%v, want %v", err, ErrServiceMuxClosed)
 	}
 
-	frame := binary.AppendUvarint(nil, 0)
-	frame = append(frame, kcpMuxFrameOpen)
+	frame := muxControlFrame(kcpMuxFrameOpen, 0)
 	if err := mux.Input(frame); !errors.Is(err, ErrServiceMuxClosed) {
 		t.Fatalf("Input(after Close) err=%v, want %v", err, ErrServiceMuxClosed)
 	}
@@ -397,8 +409,9 @@ func TestDecodeMuxFrameRejectsMalformedInput(t *testing.T) {
 		data []byte
 	}{
 		{name: "empty", data: nil},
-		{name: "varint only", data: []byte{0x01}},
-		{name: "overflowing stream id", data: append(binary.AppendUvarint(nil, math.MaxUint32+1), 0x00)},
+		{name: "data without segment", data: []byte{kcpMuxFrameData}},
+		{name: "control without conv", data: []byte{kcpMuxFrameOpen}},
+		{name: "short control conv", data: []byte{kcpMuxFrameOpen, 0x01, 0x02, 0x03}},
 	}
 
 	for _, tc := range tests {
@@ -574,8 +587,7 @@ func TestKcpMux_InputInvalidFramesForExistingAndUnknownStreams(t *testing.T) {
 	serverStream := acceptWithTimeout(t, server, 2*time.Second)
 	defer serverStream.Close()
 
-	frame := binary.AppendUvarint(nil, 1)
-	frame = append(frame, kcpMuxFrameOpen, 0x01)
+	frame := muxControlFrame(kcpMuxFrameOpen, 1, 0x01)
 	if err := server.Input(frame); err != nil {
 		t.Fatalf("Input(existing invalid open payload) failed: %v", err)
 	}
@@ -586,8 +598,7 @@ func TestKcpMux_InputInvalidFramesForExistingAndUnknownStreams(t *testing.T) {
 		t.Fatalf("expected invalid-close error after malformed open, got %v", err)
 	}
 
-	unknownData := binary.AppendUvarint(nil, 99)
-	unknownData = append(unknownData, kcpMuxFrameData, 0x01)
+	unknownData := muxDataFrame(99)
 	if err := server.Input(unknownData); err != nil {
 		t.Fatalf("Input(unknown data stream) failed: %v", err)
 	}

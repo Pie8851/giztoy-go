@@ -562,8 +562,8 @@ func TestServiceMux_InputPacketAndKCPRejectedService(t *testing.T) {
 	if err := mux.InputPacket(0xFF, []byte("x")); err != nil {
 		t.Fatalf("InputPacket(0xFF) err=%v, want nil", err)
 	}
-	openFrame := binary.AppendUvarint(nil, 0)
-	openFrame = append(openFrame, serviceMuxFrameOpen)
+	openFrame := []byte{serviceMuxFrameOpen}
+	openFrame = binary.LittleEndian.AppendUint32(openFrame, 0)
 	if err := mux.InputKCP(1, openFrame); err != nil {
 		t.Fatalf("InputKCP(rejected service) err=%v, want nil", err)
 	}

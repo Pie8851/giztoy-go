@@ -198,8 +198,8 @@ func (m *ServiceMux) getOrCreateService(service uint64) (*serviceState, error) {
 
 func (m *ServiceMux) sendControlFrame(service uint64, streamID uint64, frameType byte, payload []byte) {
 	frame := make([]byte, 0, len(payload)+16)
-	frame = binary.AppendUvarint(frame, streamID)
 	frame = append(frame, frameType)
+	frame = binary.LittleEndian.AppendUint32(frame, uint32(streamID))
 	frame = append(frame, payload...)
 	if m.config.Output == nil {
 		return

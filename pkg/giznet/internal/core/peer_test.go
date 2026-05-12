@@ -610,8 +610,8 @@ func TestCreateServiceMux_UsesInjectedPeerAwareOnNewService(t *testing.T) {
 	if !u.isKCPClient(remoteKey.Public) {
 		streamID = 1
 	}
-	frame := binary.AppendUvarint(nil, streamID)
-	frame = append(frame, 0)
+	frame := []byte{serviceMuxFrameOpen}
+	frame = binary.LittleEndian.AppendUint32(frame, uint32(streamID))
 
 	if err := smux.InputKCP(3, frame); err != nil {
 		t.Fatalf("InputKCP(service=3) failed: %v", err)
