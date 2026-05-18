@@ -2,90 +2,72 @@ package gizrun
 
 import (
 	"context"
+	"errors"
 	"flag"
-	"log/slog"
 	"net/http"
 	"os"
-	"sort"
+	"strings"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/log/sink"
-	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/metrics"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/cmdhandler"
+	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/configfile"
 )
 
-var flags = struct {
-	enablePprof bool
-	logLevel    slog.LevelVar
-	registered  bool
-}{}
+const (
+	initSeqFlags       = 0
+	postInitSeqRuntime = 0
+	exitSeqRuntime     = 0
+)
 
-type initHook struct {
-	seq   int
-	order int
-	fn    func() error
+var runCtx = RunContext{
+	cmdHandler:   cmdhandler.New(),
+	configParser: configfile.NewYamlParser(),
+	serveMux:     http.NewServeMux(),
 }
 
-var initHooks = struct {
-	next  int
-	hooks []initHook
-}{}
+type (
+	CmdHandler    = cmdhandler.Handler
+	CmdHandleFunc = cmdhandler.HandleFunc
+	ConfigParser  = configfile.Parser
+)
 
 func init() {
-	InitAt(0, func() error {
-		if flags.registered {
-			return nil
-		}
-		flag.BoolVar(&flags.enablePprof, "pprof", false, "enable pprof handlers")
-		flags.logLevel.Set(slog.LevelInfo)
-		flag.Var(logLevelFlag{target: &flags.logLevel}, "log-level", "set slog level: debug, info, warn, or error")
-		flags.registered = true
+	InitAt(initSeqFlags, func() error {
+		flag.StringVar(&runCtx.configPath, "config", runCtx.configPath, "config file path")
+		return nil
+	})
+	PostInitAt(postInitSeqRuntime, func(ctx *RunContext) error {
+		ctx.httpHandler = wrapHandler(ctx.serveMux)
 		return nil
 	})
 }
 
-func InitAt(seq int, fn func() error) {
-	if fn == nil {
-		return
-	}
-	initHooks.hooks = append(initHooks.hooks, initHook{seq: seq, order: initHooks.next, fn: fn})
-	initHooks.next++
+func HandleCmd(path string, handler CmdHandler) error {
+	return runCtx.cmdHandler.Handle(path, handler)
 }
 
-func Start() {
-	metrics.Reset(prometheus.DefaultRegisterer)
-	hooks := append([]initHook(nil), initHooks.hooks...)
-
-	sort.SliceStable(hooks, func(i, j int) bool {
-		if hooks[i].seq != hooks[j].seq {
-			return hooks[i].seq < hooks[j].seq
-		}
-		return hooks[i].order < hooks[j].order
-	})
-	for _, hook := range hooks {
-		if err := hook.fn(); err != nil {
-			panic(err)
-		}
-	}
-
-	flag.Parse()
-	serveMux = http.NewServeMux()
-	if flags.enablePprof {
-		serveMux.Handle("/debug/pprof/", pprofHandler())
-	}
-	serveMux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		metrics.Handler().ServeHTTP(w, r)
-	})
-	httpHandler = newHandler()
-
-	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: &flags.logLevel})
-	if err := sink.Start(sink.NewHandlerSink(handler), nil); err != nil {
-		panic(err)
-	}
-	registerGizrunMetrics()
+func RegisterConfigParser(name string, parser ConfigParser) {
+	runCtx.configParser.Register(name, parser)
 }
 
-func Stop() {
-	_ = sink.Stop(context.Background())
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	metrics.Reset(prometheus.DefaultRegisterer)
+func Context() *RunContext {
+	return &runCtx
+}
+
+func Run() error {
+	runInitHooks(initHooks.hooks)
+	args, flags, err := cmdhandler.Parse(flag.CommandLine, os.Args[1:])
+	if err != nil {
+		return err
+	}
+	if err := runCtx.loadConfig(flag.CommandLine); err != nil {
+		return err
+	}
+	handler, ok := runCtx.cmdHandler.Lookup(strings.Join(args, "/"))
+	if !ok {
+		return errors.New("gizrun: command handler not found")
+	}
+
+	runPostInitHooks(&runCtx, postInitHooks.hooks)
+	defer runExitHooks(&runCtx, exitHooks.hooks)
+	return handler.Handle(context.Background(), nil, flags)
 }

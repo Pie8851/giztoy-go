@@ -1,72 +1,71 @@
 package gizrun
 
 import (
-	"log/slog"
+	"context"
+	"os"
+	"strings"
 	"testing"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/log/sink"
+	"github.com/GizClaw/gizclaw-go/pkg/gizrun/internal/cmdhandler"
 )
 
-func TestStart(t *testing.T) {
-	resetInitHooksForTest(t)
+func TestHandleCmd(t *testing.T) {
+	resetDefaultCmdHandlerForTest(t)
 
-	Start()
-	t.Cleanup(Stop)
-
-	if stats := sink.CurrentStats(); !stats.Running {
-		t.Fatalf("log sink is not running: %+v", stats)
+	handler := CmdHandleFunc(func(context.Context, []string, []string) error { return nil })
+	if err := HandleCmd("admin/play", handler); err != nil {
+		t.Fatalf("HandleCmd failed: %v", err)
 	}
-	slog.Info("init starts async sink")
-}
 
-func TestStartCanRunAfterStop(t *testing.T) {
-	resetInitHooksForTest(t)
-	InitAt(0, func() error { return nil })
-
-	Start()
-	Stop()
-	Start()
-	t.Cleanup(Stop)
-
-	if stats := sink.CurrentStats(); !stats.Running {
-		t.Fatalf("log sink is not running after restart: %+v", stats)
+	got, ok := runCtx.cmdHandler.Lookup("admin/play")
+	if !ok {
+		t.Fatal("Lookup ok = false, want true")
+	}
+	if got == nil {
+		t.Fatal("handler = nil")
 	}
 }
 
-func TestInitAt(t *testing.T) {
+func TestRunMissingCommandDoesNotRunPostInit(t *testing.T) {
+	resetRuntimeForTest(t)
 	resetInitHooksForTest(t)
+	resetDefaultCmdHandlerForTest(t)
+	resetFlagSetForTest(t)
 
-	var got []int
-	InitAt(0x20, func() error { got = append(got, 2); return nil })
-	InitAt(0x10, func() error { got = append(got, 1); return nil })
-	InitAt(0x20, func() error { got = append(got, 3); return nil })
-	InitAt(0x30, nil)
+	previousArgs := os.Args
+	os.Args = []string{"gizrun", "missing"}
+	t.Cleanup(func() {
+		os.Args = previousArgs
+	})
 
-	Start()
-	t.Cleanup(Stop)
+	postInitRan := false
+	exitRan := false
+	PostInitAt(0, func(*RunContext) error {
+		postInitRan = true
+		return nil
+	})
+	ExitAt(0, func(*RunContext) error {
+		exitRan = true
+		return nil
+	})
 
-	want := []int{1, 2, 3}
-	if len(got) != len(want) {
-		t.Fatalf("init hook count = %d, want %d: %#v", len(got), len(want), got)
+	err := Run()
+	if err == nil || !strings.Contains(err.Error(), "command handler not found") {
+		t.Fatalf("Run error = %v, want command handler not found", err)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("init hook order = %#v, want %#v", got, want)
-		}
+	if postInitRan {
+		t.Fatal("post-init hook ran for missing command")
+	}
+	if exitRan {
+		t.Fatal("exit hook ran without post-init startup")
 	}
 }
 
-func resetInitHooksForTest(t *testing.T) {
+func resetDefaultCmdHandlerForTest(t *testing.T) {
 	t.Helper()
-	initHooks.next = 1
-	initHooks.hooks = []initHook{{
-		seq: 0,
-		fn: func() error {
-			if flags.registered {
-				return nil
-			}
-			flags.registered = true
-			return nil
-		},
-	}}
+	previous := runCtx.cmdHandler
+	runCtx.cmdHandler = cmdhandler.New()
+	t.Cleanup(func() {
+		runCtx.cmdHandler = previous
+	})
 }
