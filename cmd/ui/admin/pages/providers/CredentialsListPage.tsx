@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Eye, EyeOff, RefreshCw, X } from "lucide-react";
+import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Badge } from "../../components/badge";
@@ -12,6 +12,7 @@ import { expectData } from "../../components/api";
 import { listCredentials, type Credential } from "@gizclaw/adminservice";
 
 import { ErrorBanner } from "../../components/banners";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/dialog";
 import { EmptyState } from "../../components/empty-state";
 import { PageHeader, PageSummaryCard } from "../../components/page-layout";
 import { useCursorListPage } from "../../hooks/useCursorListPage";
@@ -175,30 +176,24 @@ function CredentialBodyDialog({ credential, onClose }: { credential: Credential;
   const entries = useMemo(() => Object.entries(credential.body), [credential.body]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
-      <div
-        aria-modal="true"
-        className="w-full max-w-3xl rounded-xl border bg-background shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Credential body</div>
-            <h2 className="text-lg font-semibold">{credential.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              {credential.provider} · {credential.method}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button className="h-8 gap-2 px-3 text-xs" onClick={() => setRevealed((value) => !value)} type="button" variant="outline">
-              {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-              {revealed ? "Hide values" : "Show values"}
-            </Button>
-            <Button aria-label="Close credential body dialog" className="h-8 w-8 p-0" onClick={onClose} type="button" variant="ghost">
-              <X className="size-4" />
-            </Button>
-          </div>
+    <Dialog open onOpenChange={(open) => {
+      if (!open) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader className="pr-10">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Credential body</div>
+          <DialogTitle>{credential.name}</DialogTitle>
+          <DialogDescription>
+            {credential.provider} · {credential.method}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end">
+          <Button className="h-8 gap-2 px-3 text-xs" onClick={() => setRevealed((value) => !value)} type="button" variant="outline">
+            {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {revealed ? "Hide values" : "Show values"}
+          </Button>
         </div>
         <div className="max-h-[60vh] overflow-auto p-5">
           {entries.length === 0 ? (
@@ -227,8 +222,8 @@ function CredentialBodyDialog({ credential, onClose }: { credential: Credential;
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

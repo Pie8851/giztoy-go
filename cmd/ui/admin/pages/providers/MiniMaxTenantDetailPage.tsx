@@ -25,6 +25,7 @@ import { PageHeader, PageSummaryCard } from "../../components/page-layout";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/select";
 import { Skeleton } from "../../components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/tabs";
+import { Textarea } from "../../components/textarea";
 import { ResourceCliPanel } from "../../components/ResourceCliPanel";
 
 type MiniMaxTenantForm = {
@@ -246,8 +247,8 @@ export function MiniMaxTenantDetailPage(): JSX.Element {
                     <Input onChange={(event) => setForm((current) => ({ ...current, baseURL: event.target.value }))} placeholder="https://api.minimax.io" value={form.baseURL} />
                   </FormField>
                   <FormField description="Human-readable note for operators." label="Description">
-                    <textarea
-                      className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
+                    <Textarea
+                      className="min-h-24"
                       onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                       value={form.description}
                     />

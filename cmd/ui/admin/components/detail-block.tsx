@@ -16,7 +16,7 @@ const DetailBlock = React.forwardRef<HTMLDivElement, DetailBlockProps>(
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col gap-3">
         {items.map(([label, value]) => (
           <div className="flex min-w-0 items-start justify-between gap-4 text-sm" key={label}>
             <span className="shrink-0 text-muted-foreground">{label}</span>

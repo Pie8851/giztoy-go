@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, X } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
   listAclRoles,
   listAclViews,
   type AclPolicyBinding,
+  type AclPermission,
   type AclResourceKind,
   type AclRole,
   type AclSubjectKind,
@@ -19,8 +20,9 @@ import {
 import { expectData, toMessage } from "../../components/api";
 import { Badge } from "../../components/badge";
 import { Button } from "../../components/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
 import { DateTimeInput } from "../../components/date-time-input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/dialog";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorBanner } from "../../components/banners";
 import { FormField } from "../../components/form-field";
@@ -30,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Skeleton } from "../../components/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/tabs";
+import { Textarea } from "../../components/textarea";
 import { appendPermissionText, bindingPayloadFromForm, commonPermissions, emptyBindingForm, permissionsFromText, resourceKinds, type PolicyBindingFormState } from "./acl-utils";
 
 const pageLimit = 50;
@@ -119,7 +122,7 @@ export function ACLPage(): JSX.Element {
               cursor: cursor ?? undefined,
               limit: pageLimit,
               order_by: nextFilters.orderBy,
-              permission: valueOrUndefined(nextFilters.permission),
+              permission: permissionOrUndefined(nextFilters.permission),
               resource_id: valueOrUndefined(nextFilters.resourceId),
               resource_kind: nextFilters.resourceKind || undefined,
               role: valueOrUndefined(nextFilters.role),
@@ -236,18 +239,18 @@ export function ACLPage(): JSX.Element {
 
         <TabsContent value="bindings">
           <Card>
-            <CardHeader className="flex flex-col gap-4 space-y-0">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-1">
-                  <CardTitle>Policy bindings</CardTitle>
-                  <CardDescription>Subject-resource-role bindings sorted by ID or display order.</CardDescription>
-                </div>
+            <CardHeader>
+              <CardTitle>Policy bindings</CardTitle>
+              <CardDescription>Subject-resource-role bindings sorted by ID or display order.</CardDescription>
+              <CardAction>
                 <Button className="h-8 min-w-fit shrink-0 px-3 text-sm" onClick={() => setBindingDialogOpen(true)} type="button">
                   <Plus className="size-4" />
                   New Binding
                 </Button>
+              </CardAction>
+              <div className="col-span-full mt-2">
+                <BindingFiltersBar filters={filters} onChange={setFilters} />
               </div>
-              <BindingFiltersBar filters={filters} onChange={setFilters} />
             </CardHeader>
             <CardContent className="space-y-4">
               {bindings.error !== "" ? <ErrorBanner message={bindings.error} /> : null}
@@ -276,15 +279,15 @@ export function ACLPage(): JSX.Element {
 
         <TabsContent value="views">
           <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-              <div className="space-y-1">
-                <CardTitle>Views</CardTitle>
-                <CardDescription>Named content views used as ACL subjects and resources.</CardDescription>
-              </div>
-              <Button className="h-8 min-w-fit shrink-0 px-3 text-sm" onClick={() => setViewDialogOpen(true)} type="button">
-                <Plus className="size-4" />
-                New View
-              </Button>
+            <CardHeader>
+              <CardTitle>Views</CardTitle>
+              <CardDescription>Named content views used as ACL subjects and resources.</CardDescription>
+              <CardAction>
+                <Button className="h-8 min-w-fit shrink-0 px-3 text-sm" onClick={() => setViewDialogOpen(true)} type="button">
+                  <Plus className="size-4" />
+                  New View
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
               {views.error !== "" ? <ErrorBanner message={views.error} /> : null}
@@ -309,15 +312,15 @@ export function ACLPage(): JSX.Element {
 
         <TabsContent value="roles">
           <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-              <div className="space-y-1">
-                <CardTitle>Roles</CardTitle>
-                <CardDescription>Named permission sets referenced by policy bindings.</CardDescription>
-              </div>
-              <Button className="h-8 min-w-fit shrink-0 px-3 text-sm" onClick={() => setRoleDialogOpen(true)} type="button">
-                <Plus className="size-4" />
-                New Role
-              </Button>
+            <CardHeader>
+              <CardTitle>Roles</CardTitle>
+              <CardDescription>Named permission sets referenced by policy bindings.</CardDescription>
+              <CardAction>
+                <Button className="h-8 min-w-fit shrink-0 px-3 text-sm" onClick={() => setRoleDialogOpen(true)} type="button">
+                  <Plus className="size-4" />
+                  New Role
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
               {roles.error !== "" ? <ErrorBanner message={roles.error} /> : null}
@@ -570,8 +573,8 @@ function ViewCreateDialog({
         <Input onChange={(event) => setName(event.target.value)} value={name} />
       </FormField>
       <FormField label="Description">
-        <textarea
-          className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+        <Textarea
+          className="min-h-24"
           onChange={(event) => setDescription(event.target.value)}
           value={description}
         />
@@ -604,8 +607,8 @@ function RoleCreateDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit
         <Input onChange={(event) => setName(event.target.value)} value={name} />
       </FormField>
       <FormField description="Use one permission per line or comma-separated values." label="Permissions">
-        <textarea
-          className="min-h-32 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm"
+        <Textarea
+          className="min-h-32 font-mono"
           onChange={(event) => setPermissions(event.target.value)}
           value={permissions}
         />
@@ -738,17 +741,18 @@ function LoadingRows(): JSX.Element {
 
 function ModalFrame({ children, onClose, title }: { children: ReactNode; onClose: () => void; title: string }): JSX.Element {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
-      <div aria-modal="true" className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl border bg-background shadow-xl" role="dialog">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <Button className="h-8 w-8 p-0" onClick={onClose} type="button" variant="ghost">
-            <X className="size-4" />
-          </Button>
-        </div>
-        <div className="space-y-4 p-5">{children}</div>
-      </div>
-    </div>
+    <Dialog open onOpenChange={(open) => {
+      if (!open) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-auto">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -782,6 +786,10 @@ function initialPage<T>(): CursorPage<T> {
 function valueOrUndefined(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+function permissionOrUndefined(value: string): AclPermission | undefined {
+  return valueOrUndefined(value) as AclPermission | undefined;
 }
 
 function rowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, action: () => void): void {

@@ -7,6 +7,9 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
+    "paths": {
+      "@/*": ["./*"]
+    },
     "types": ["react", "react-dom"]
   },
   "include": [

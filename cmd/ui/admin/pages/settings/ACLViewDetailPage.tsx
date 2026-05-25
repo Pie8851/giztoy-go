@@ -6,6 +6,7 @@ import { deleteAclView, getAclView, getResource, putAclView, type AclView, type 
 import { expectData, toMessage } from "../../components/api";
 import { Button } from "../../components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
+import { DeleteConfirmButton } from "../../components/delete-confirm-button";
 import { DetailBlock } from "../../components/detail-block";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorBanner, NoticeBanner } from "../../components/banners";
@@ -15,6 +16,7 @@ import { PageHeader, PageSummaryCard } from "../../components/page-layout";
 import { ResourceCliPanel } from "../../components/ResourceCliPanel";
 import { Skeleton } from "../../components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/tabs";
+import { Textarea } from "../../components/textarea";
 import { decodeRouteParam, shellQuote } from "./acl-utils";
 
 type ViewForm = {
@@ -177,17 +179,17 @@ export function ACLViewDetailPage(): JSX.Element {
                   <Input disabled value={view.name} />
                 </FormField>
                 <FormField label="Description">
-                  <textarea
-                    className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  <Textarea
+                    className="min-h-24"
                     onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                     value={form.description}
                   />
                 </FormField>
                 <div className="flex justify-between border-t pt-4">
-                  <Button className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={deleting} onClick={() => void remove()} type="button" variant="outline">
+                  <DeleteConfirmButton disabled={deleting} onConfirm={() => void remove()} title="Delete ACL view?">
                     <Trash2 className="size-4" />
                     {deleting ? "Deleting..." : "Delete"}
-                  </Button>
+                  </DeleteConfirmButton>
                   <Button disabled={saving} onClick={() => void save()} type="button">
                     <Save className="size-4" />
                     {saving ? "Saving..." : "Save"}

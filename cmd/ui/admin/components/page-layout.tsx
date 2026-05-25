@@ -39,9 +39,9 @@ export function PageSummaryCard({
 }: PageSummaryCardProps): JSX.Element {
   return (
     <Card className={cn("border-border/60 bg-background/95 shadow-sm", className)}>
-      <CardContent className="space-y-4 p-5">
+      <CardContent className="flex flex-col gap-4 p-5">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-2">
+          <div className="flex min-w-0 flex-col gap-2">
             {eyebrow ? <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{eyebrow}</div> : null}
             <h1 className="text-2xl font-semibold tracking-tight text-foreground lg:text-3xl">{title}</h1>
             {description ? <div className="max-w-3xl text-sm leading-6 text-muted-foreground lg:text-base">{description}</div> : null}

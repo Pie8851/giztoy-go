@@ -1,14 +1,16 @@
-import { Edit, Plus, Save, Trash2, X } from "lucide-react";
+import { Edit, Plus, Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import type { Firmware, FirmwareArtifact, FirmwareSlot, FirmwareUpsert } from "@gizclaw/adminservice";
 import { Badge } from "../../components/badge";
 import { Button } from "../../components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/dialog";
 import { FormField } from "../../components/form-field";
 import { Input } from "../../components/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/table";
+import { Textarea } from "../../components/textarea";
 
 const slotKeys = ["rollback", "stable", "beta", "develop", "pending"] as const;
 
@@ -79,8 +81,8 @@ export function FirmwareEditor({
               </FormField>
             ) : null}
             <FormField label="Description">
-              <textarea
-                className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              <Textarea
+                className="min-h-28"
                 onChange={(event) => onChange({ ...form, description: event.target.value })}
                 value={form.description}
               />
@@ -201,19 +203,18 @@ function SlotEditDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
-      <div aria-modal="true" className="w-full max-w-5xl rounded-xl border bg-background shadow-xl" role="dialog">
-        <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Firmware slot</div>
-            <h2 className="text-lg font-semibold capitalize">{title}</h2>
-          </div>
-          <Button aria-label="Close slot editor" className="h-8 w-8 p-0" onClick={onClose} type="button" variant="ghost">
-            <X className="size-4" />
-          </Button>
-        </div>
+    <Dialog open onOpenChange={(open) => {
+      if (!open) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto xl:max-w-6xl">
+        <DialogHeader>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Firmware slot</div>
+          <DialogTitle className="capitalize">{title}</DialogTitle>
+        </DialogHeader>
 
-        <div className="max-h-[72vh] space-y-4 overflow-auto p-5">
+        <div className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="Version">
               <Input onChange={(event) => setVersion(event.target.value)} value={version} />
@@ -240,11 +241,11 @@ function SlotEditDialog({
                 Add
               </Button>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="flex flex-col gap-3">
               {artifacts.length === 0 ? <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No artifacts.</div> : null}
               {artifacts.map((artifact, index) => (
-                <div className="grid gap-3 rounded-md border p-3 lg:grid-cols-[1fr_8rem_2fr_8rem_1.5fr_auto]" key={index}>
-                  <Input aria-label={`Artifact ${index + 1} name`} onChange={(event) => updateArtifact(index, { name: event.target.value })} placeholder="name" value={artifact.name} />
+                <div className="grid min-w-0 gap-3 rounded-md border p-3 xl:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1.35fr)_7rem_minmax(0,1fr)_auto]" key={index}>
+                  <Input aria-label={`Artifact ${index + 1} name`} className="min-w-0" onChange={(event) => updateArtifact(index, { name: event.target.value })} placeholder="name" value={artifact.name} />
                   <Select onValueChange={(value) => updateArtifact(index, { kind: value as ArtifactForm["kind"] })} value={artifact.kind}>
                     <SelectTrigger aria-label={`Artifact ${index + 1} kind`}>
                       <SelectValue />
@@ -254,9 +255,9 @@ function SlotEditDialog({
                       <SelectItem value="data">data</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input aria-label={`Artifact ${index + 1} url`} onChange={(event) => updateArtifact(index, { url: event.target.value })} placeholder="https://..." value={artifact.url} />
-                  <Input aria-label={`Artifact ${index + 1} size`} onChange={(event) => updateArtifact(index, { size: event.target.value })} placeholder="size" type="number" value={artifact.size} />
-                  <Input aria-label={`Artifact ${index + 1} sha256`} onChange={(event) => updateArtifact(index, { sha256: event.target.value })} placeholder="sha256" value={artifact.sha256} />
+                  <Input aria-label={`Artifact ${index + 1} url`} className="min-w-0" onChange={(event) => updateArtifact(index, { url: event.target.value })} placeholder="https://..." value={artifact.url} />
+                  <Input aria-label={`Artifact ${index + 1} size`} className="min-w-0" onChange={(event) => updateArtifact(index, { size: event.target.value })} placeholder="size" type="number" value={artifact.size} />
+                  <Input aria-label={`Artifact ${index + 1} sha256`} className="min-w-0" onChange={(event) => updateArtifact(index, { sha256: event.target.value })} placeholder="sha256" value={artifact.sha256} />
                   <Button
                     aria-label={`Remove artifact ${index + 1}`}
                     className="h-9 w-9 p-0"
@@ -272,16 +273,16 @@ function SlotEditDialog({
           </Card>
         </div>
 
-        <div className="flex justify-end gap-2 border-t px-5 py-4">
+        <DialogFooter>
           <Button onClick={onClose} type="button" variant="outline">
             Cancel
           </Button>
           <Button onClick={submit} type="button">
             {submitLabel}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

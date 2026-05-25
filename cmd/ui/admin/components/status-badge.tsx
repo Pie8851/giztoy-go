@@ -6,7 +6,7 @@ interface StatusBadgeProps extends Omit<BadgeProps, "children" | "variant"> {
   status: string;
 }
 
-const StatusBadge = React.forwardRef<HTMLDivElement, StatusBadgeProps>(
+const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
   ({ status, ...props }, ref) => {
     if (status === "active") {
       return (

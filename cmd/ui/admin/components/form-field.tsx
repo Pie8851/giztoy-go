@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Label } from "./label";
+import { Field, FieldDescription, FieldLabel } from "./field";
 import { cn } from "./utils";
 
 interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -11,13 +11,13 @@ interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const FormField = React.forwardRef<HTMLDivElement, FormFieldProps>(
   ({ children, className, description, htmlFor, label, ...props }, ref) => (
-    <div ref={ref} className={cn("space-y-2 rounded-lg border bg-muted/20 p-4", className)} {...props}>
-      <div className="space-y-1">
-        <Label htmlFor={htmlFor}>{label}</Label>
-        {description ? <p className="text-sm leading-6 text-muted-foreground">{description}</p> : null}
+    <Field ref={ref} className={cn("gap-2 rounded-lg border bg-muted/20 p-4", className)} {...props}>
+      <div className="flex flex-col gap-1">
+        <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+        {description ? <FieldDescription>{description}</FieldDescription> : null}
       </div>
       {children}
-    </div>
+    </Field>
   ),
 );
 FormField.displayName = "FormField";

@@ -14,7 +14,11 @@ import (
 var distFS embed.FS
 
 func FS() fs.FS {
-	sub, err := fs.Sub(distFS, "dist")
+	return subFS(distFS, "dist")
+}
+
+func subFS(root fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(root, dir)
 	if err != nil {
 		panic(err)
 	}

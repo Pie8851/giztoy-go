@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./empty";
 import { cn } from "./utils";
 
 interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -9,17 +10,19 @@ interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
   ({ className, description, title, ...props }, ref) => (
-    <div
+    <Empty
       ref={ref}
       className={cn(
-        "flex min-h-56 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 px-6 py-10 text-center",
+        "min-h-56 border bg-muted/20",
         className,
       )}
       {...props}
     >
-      <div className="text-base font-medium">{title}</div>
-      <p className="max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
-    </div>
+      <EmptyHeader>
+        <EmptyTitle className="text-base">{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   ),
 );
 EmptyState.displayName = "EmptyState";

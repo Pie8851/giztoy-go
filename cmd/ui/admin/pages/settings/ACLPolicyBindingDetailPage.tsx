@@ -9,6 +9,7 @@ import { Badge } from "../../components/badge";
 import { Button } from "../../components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
 import { DateTimeInput } from "../../components/date-time-input";
+import { DeleteConfirmButton } from "../../components/delete-confirm-button";
 import { DetailBlock } from "../../components/detail-block";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorBanner } from "../../components/banners";
@@ -183,10 +184,10 @@ export function ACLPolicyBindingDetailPage(): JSX.Element {
                   <CardTitle>Edit policy binding</CardTitle>
                   <CardDescription>Update policy fields and display ordering.</CardDescription>
                 </div>
-                <Button className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={saving} onClick={() => void remove()} size="sm" type="button" variant="outline">
+                <DeleteConfirmButton disabled={saving} onConfirm={() => void remove()} size="sm" title="Delete policy binding?">
                   <Trash2 className="size-4" />
                   Delete
-                </Button>
+                </DeleteConfirmButton>
               </CardHeader>
               <CardContent className="space-y-4">
                 <BindingEditForm form={form} onChange={setForm} />

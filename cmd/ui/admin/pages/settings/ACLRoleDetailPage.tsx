@@ -8,6 +8,7 @@ import { expectData, toMessage } from "../../components/api";
 import { Badge } from "../../components/badge";
 import { Button } from "../../components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/card";
+import { DeleteConfirmButton } from "../../components/delete-confirm-button";
 import { DetailBlock } from "../../components/detail-block";
 import { EmptyState } from "../../components/empty-state";
 import { ErrorBanner } from "../../components/banners";
@@ -16,6 +17,7 @@ import { Input } from "../../components/input";
 import { PageHeader, PageSummaryCard } from "../../components/page-layout";
 import { Skeleton } from "../../components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/tabs";
+import { Textarea } from "../../components/textarea";
 import { appendPermissionText, commonPermissions, decodeRouteParam, permissionsFromText, permissionsText, shellQuote } from "./acl-utils";
 
 export function ACLRoleDetailPage(): JSX.Element {
@@ -168,18 +170,18 @@ export function ACLRoleDetailPage(): JSX.Element {
                   <CardTitle>Edit role</CardTitle>
                   <CardDescription>Update the permission list referenced by policy bindings.</CardDescription>
                 </div>
-                <Button className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={saving} onClick={() => void remove()} size="sm" type="button" variant="outline">
+                <DeleteConfirmButton disabled={saving} onConfirm={() => void remove()} size="sm" title="Delete ACL role?">
                   <Trash2 className="size-4" />
                   Delete
-                </Button>
+                </DeleteConfirmButton>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField label="Name">
                   <Input disabled value={role.name} />
                 </FormField>
                 <FormField description="Use one permission per line or comma-separated values." label="Permissions">
-                  <textarea
-                    className="min-h-48 w-full rounded-md border bg-background px-3 py-2 font-mono text-sm"
+                  <Textarea
+                    className="min-h-48 font-mono"
                     onChange={(event) => setPermissions(event.target.value)}
                     value={permissions}
                   />

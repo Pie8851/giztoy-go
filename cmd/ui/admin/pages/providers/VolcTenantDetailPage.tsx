@@ -16,6 +16,7 @@ import { PageHeader, PageSummaryCard } from "../../components/page-layout";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/select";
 import { Skeleton } from "../../components/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/tabs";
+import { Textarea } from "../../components/textarea";
 import { ResourceCliPanel } from "../../components/ResourceCliPanel";
 
 type VolcTenantForm = {
@@ -240,16 +241,16 @@ export function VolcTenantDetailPage(): JSX.Element {
                     <Input onChange={(event) => setForm((current) => ({ ...current, endpoint: event.target.value }))} placeholder="https://..." value={form.endpoint} />
                   </FormField>
                   <FormField description="Comma or newline separated ResourceIDs for purchased or cloned voices. Leave empty to sync public timbres only." label="Resource IDs">
-                    <textarea
-                      className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
+                    <Textarea
+                      className="min-h-24 font-mono"
                       onChange={(event) => setForm((current) => ({ ...current, resourceIDs: event.target.value }))}
                       placeholder={"seed-tts-2.0"}
                       value={form.resourceIDs}
                     />
                   </FormField>
                   <FormField description="Human-readable note for operators." label="Description">
-                    <textarea
-                      className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:cursor-not-allowed disabled:opacity-50"
+                    <Textarea
+                      className="min-h-24"
                       onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                       value={form.description}
                     />

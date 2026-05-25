@@ -30,7 +30,7 @@ export function ResourceCliPanel({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4" data-slot="resource-cli-panel">
       <Card>
         <CardHeader>
           <CardTitle>CLI Commands</CardTitle>
