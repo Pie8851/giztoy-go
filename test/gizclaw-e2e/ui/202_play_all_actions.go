@@ -1,5 +1,5 @@
 // User story: As a Play UI user, I can start a WebRTC call, open the RPC data
-// channel, and run gear-service RPC commands through the local proxy.
+// channel, and run peer RPC commands through the local proxy.
 package ui_test
 
 import (
@@ -20,17 +20,12 @@ func playAllActionsStories() []Story {
 			page.ClickRole("button", "Close RPC logs")
 			page.ClickRole("button", "Get Info")
 			page.ClickRole("button", "Logs")
-			page.ExpectText("gear.info.get")
+			page.ExpectText("peer.info.get")
 			page.ExpectText("Seeded UI Device")
-			page.ClickRole("button", "Close RPC logs")
-			page.ClickRole("button", "Get Config")
-			page.ClickRole("button", "Logs")
-			page.ExpectText("gear.config.get")
-			page.ExpectText("under-12")
 			page.ClickRole("button", "Close RPC logs")
 			page.ClickRole("button", "Get Runtime")
 			page.ClickRole("button", "Logs")
-			page.ExpectText("gear.runtime.get")
+			page.ExpectText("peer.runtime.get")
 			page.ExpectText("online")
 		},
 	}}

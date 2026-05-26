@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 )
@@ -15,11 +14,7 @@ func TestIntegrationAdminServiceWorkflowLifecycle(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	createDoc := mustWorkflowDocument(t, `{
 		"apiVersion": "gizclaw.flowcraft/v1alpha1",
@@ -87,11 +82,7 @@ func TestIntegrationAdminServiceWorkspaceLifecycle(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	workflowDoc := mustWorkflowDocument(t, `{
 		"apiVersion": "gizclaw.flowcraft/v1alpha1",
@@ -157,11 +148,7 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	createBody := mustCredentialUpsert(t, `{
 		"name": "openai-primary",

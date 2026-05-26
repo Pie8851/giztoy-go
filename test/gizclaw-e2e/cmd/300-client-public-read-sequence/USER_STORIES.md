@@ -2,20 +2,19 @@
 
 ## User Story
 
-As a device-side developer, I want to register one client context and then read
-the public peer configuration path without relying on removed `play` CLI
-subcommands.
+As a device-side developer, I want to prepare one client context and then read
+the peer-facing RPC path without relying on removed `play` CLI subcommands.
 
 ## Scenario
 
-1. Start a real server with registration enabled.
+1. Start a real server with automatic peer creation enabled.
 2. Create one device context.
-3. Register that context through the harness API using the registered device context.
-4. Read the device configuration through the gear public API.
+3. Prepare that context through the harness API using the device context.
+4. Read the stored device info through peer RPC.
 5. Verify the same context still answers `gizclaw ping`.
 
 ## Covered Behaviors
 
-- one client context can register with the server without `play register`
-- the public configuration read path succeeds after registration
+- one client context can be prepared without `play register`
+- the peer RPC info read path succeeds after preparation
 - the same context still answers `ping`

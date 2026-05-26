@@ -10,90 +10,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Defines values for GearRole.
-const (
-	GearRoleAdmin       GearRole = "admin"
-	GearRoleGear        GearRole = "gear"
-	GearRoleServer      GearRole = "server"
-	GearRoleUnspecified GearRole = "unspecified"
-)
-
-// Valid indicates whether the value is a known member of the GearRole enum.
-func (e GearRole) Valid() bool {
-	switch e {
-	case GearRoleAdmin:
-		return true
-	case GearRoleGear:
-		return true
-	case GearRoleServer:
-		return true
-	case GearRoleUnspecified:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GearRunTestResponseStatus.
-const (
-	GearRunTestResponseStatusStarted GearRunTestResponseStatus = "started"
-)
-
-// Valid indicates whether the value is a known member of the GearRunTestResponseStatus enum.
-func (e GearRunTestResponseStatus) Valid() bool {
-	switch e {
-	case GearRunTestResponseStatusStarted:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GearStatus.
-const (
-	GearStatusActive      GearStatus = "active"
-	GearStatusBlocked     GearStatus = "blocked"
-	GearStatusUnspecified GearStatus = "unspecified"
-)
-
-// Valid indicates whether the value is a known member of the GearStatus enum.
-func (e GearStatus) Valid() bool {
-	switch e {
-	case GearStatusActive:
-		return true
-	case GearStatusBlocked:
-		return true
-	case GearStatusUnspecified:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GearTestMode.
-const (
-	GearTestModeAudioLoopback GearTestMode = "audio-loopback"
-	GearTestModeAudioPlay     GearTestMode = "audio-play"
-	GearTestModeDownload      GearTestMode = "download"
-	GearTestModeUpload        GearTestMode = "upload"
-)
-
-// Valid indicates whether the value is a known member of the GearTestMode enum.
-func (e GearTestMode) Valid() bool {
-	switch e {
-	case GearTestModeAudioLoopback:
-		return true
-	case GearTestModeAudioPlay:
-		return true
-	case GearTestModeDownload:
-		return true
-	case GearTestModeUpload:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for RPCErrorCode.
 const (
 	RPCErrorCodeBadRequest     RPCErrorCode = 400
@@ -129,41 +45,29 @@ func (e RPCErrorCode) Valid() bool {
 
 // Defines values for RPCMethod.
 const (
-	RPCMethodGearConfigGet            RPCMethod = "gear.config.get"
-	RPCMethodGearInfoGet              RPCMethod = "gear.info.get"
-	RPCMethodGearInfoPut              RPCMethod = "gear.info.put"
-	RPCMethodGearRegistrationGet      RPCMethod = "gear.registration.get"
-	RPCMethodGearRegistrationRegister RPCMethod = "gear.registration.register"
-	RPCMethodGearRuntimeGet           RPCMethod = "gear.runtime.get"
-	RPCMethodGearTestRun              RPCMethod = "gear.test.run"
-	RPCMethodPeerIdentifiersGet       RPCMethod = "peer.identifiers.get"
-	RPCMethodPeerInfoGet              RPCMethod = "peer.info.get"
-	RPCMethodPeerPing                 RPCMethod = "peer.ping"
-	RPCMethodServerInfoGet            RPCMethod = "server.info.get"
+	RPCMethodDeviceIdentifiersGet RPCMethod = "device.identifiers.get"
+	RPCMethodDeviceInfoGet        RPCMethod = "device.info.get"
+	RPCMethodPeerInfoGet          RPCMethod = "peer.info.get"
+	RPCMethodPeerInfoPut          RPCMethod = "peer.info.put"
+	RPCMethodPeerPing             RPCMethod = "peer.ping"
+	RPCMethodPeerRuntimeGet       RPCMethod = "peer.runtime.get"
+	RPCMethodServerInfoGet        RPCMethod = "server.info.get"
 )
 
 // Valid indicates whether the value is a known member of the RPCMethod enum.
 func (e RPCMethod) Valid() bool {
 	switch e {
-	case RPCMethodGearConfigGet:
+	case RPCMethodDeviceIdentifiersGet:
 		return true
-	case RPCMethodGearInfoGet:
-		return true
-	case RPCMethodGearInfoPut:
-		return true
-	case RPCMethodGearRegistrationGet:
-		return true
-	case RPCMethodGearRegistrationRegister:
-		return true
-	case RPCMethodGearRuntimeGet:
-		return true
-	case RPCMethodGearTestRun:
-		return true
-	case RPCMethodPeerIdentifiersGet:
+	case RPCMethodDeviceInfoGet:
 		return true
 	case RPCMethodPeerInfoGet:
 		return true
+	case RPCMethodPeerInfoPut:
+		return true
 	case RPCMethodPeerPing:
+		return true
+	case RPCMethodPeerRuntimeGet:
 		return true
 	case RPCMethodServerInfoGet:
 		return true
@@ -187,11 +91,17 @@ func (e RPCVersion) Valid() bool {
 	}
 }
 
-// Configuration defines model for Configuration.
-type Configuration struct {
-	// View Current content view name selected for this gear.
-	View *string `json:"view,omitempty"`
-}
+// DeviceGetIdentifiersRequest defines model for DeviceGetIdentifiersRequest.
+type DeviceGetIdentifiersRequest = map[string]interface{}
+
+// DeviceGetIdentifiersResponse defines model for DeviceGetIdentifiersResponse.
+type DeviceGetIdentifiersResponse = RefreshIdentifiers
+
+// DeviceGetInfoRequest defines model for DeviceGetInfoRequest.
+type DeviceGetInfoRequest = map[string]interface{}
+
+// DeviceGetInfoResponse defines model for DeviceGetInfoResponse.
+type DeviceGetInfoResponse = RefreshInfo
 
 // DeviceInfo defines model for DeviceInfo.
 type DeviceInfo struct {
@@ -199,43 +109,6 @@ type DeviceInfo struct {
 	Name     *string       `json:"name,omitempty"`
 	Sn       *string       `json:"sn,omitempty"`
 }
-
-// Gear defines model for Gear.
-type Gear struct {
-	ApprovedAt     *time.Time    `json:"approved_at,omitempty"`
-	AutoRegistered *bool         `json:"auto_registered,omitempty"`
-	Configuration  Configuration `json:"configuration"`
-	CreatedAt      time.Time     `json:"created_at"`
-	Device         DeviceInfo    `json:"device"`
-	PublicKey      string        `json:"public_key"`
-	Role           GearRole      `json:"role"`
-	Status         GearStatus    `json:"status"`
-	UpdatedAt      time.Time     `json:"updated_at"`
-}
-
-// GearGetConfigRequest defines model for GearGetConfigRequest.
-type GearGetConfigRequest = map[string]interface{}
-
-// GearGetConfigResponse defines model for GearGetConfigResponse.
-type GearGetConfigResponse = Configuration
-
-// GearGetInfoRequest defines model for GearGetInfoRequest.
-type GearGetInfoRequest = map[string]interface{}
-
-// GearGetInfoResponse defines model for GearGetInfoResponse.
-type GearGetInfoResponse = DeviceInfo
-
-// GearGetRegistrationRequest defines model for GearGetRegistrationRequest.
-type GearGetRegistrationRequest = map[string]interface{}
-
-// GearGetRegistrationResponse defines model for GearGetRegistrationResponse.
-type GearGetRegistrationResponse = Registration
-
-// GearGetRuntimeRequest defines model for GearGetRuntimeRequest.
-type GearGetRuntimeRequest = map[string]interface{}
-
-// GearGetRuntimeResponse defines model for GearGetRuntimeResponse.
-type GearGetRuntimeResponse = Runtime
 
 // GearIMEI defines model for GearIMEI.
 type GearIMEI struct {
@@ -250,61 +123,6 @@ type GearLabel struct {
 	Value string `json:"value"`
 }
 
-// GearPutInfoRequest defines model for GearPutInfoRequest.
-type GearPutInfoRequest = DeviceInfo
-
-// GearPutInfoResponse defines model for GearPutInfoResponse.
-type GearPutInfoResponse = DeviceInfo
-
-// GearRegisterRequest defines model for GearRegisterRequest.
-type GearRegisterRequest struct {
-	Device DeviceInfo `json:"device"`
-}
-
-// GearRegisterResponse defines model for GearRegisterResponse.
-type GearRegisterResponse struct {
-	Gear         Gear         `json:"gear"`
-	Registration Registration `json:"registration"`
-}
-
-// GearRole defines model for GearRole.
-type GearRole string
-
-// GearRunTestRequest defines model for GearRunTestRequest.
-type GearRunTestRequest struct {
-	// Mode Built-in gear test mode.
-	Mode GearTestMode `json:"mode"`
-
-	// Params Mode-specific test parameters.
-	Params *map[string]interface{} `json:"params,omitempty"`
-
-	// Workflow Optional workflow or agent override for the test mode.
-	Workflow *string `json:"workflow,omitempty"`
-}
-
-// GearRunTestResponse defines model for GearRunTestResponse.
-type GearRunTestResponse struct {
-	Message *string `json:"message,omitempty"`
-
-	// Mode Built-in gear test mode.
-	Mode GearTestMode `json:"mode"`
-
-	// Status Current test run status.
-	Status GearRunTestResponseStatus `json:"status"`
-
-	// Workflow Workflow or agent selected for this test run.
-	Workflow *string `json:"workflow,omitempty"`
-}
-
-// GearRunTestResponseStatus Current test run status.
-type GearRunTestResponseStatus string
-
-// GearStatus defines model for GearStatus.
-type GearStatus string
-
-// GearTestMode Built-in gear test mode.
-type GearTestMode string
-
 // HardwareInfo defines model for HardwareInfo.
 type HardwareInfo struct {
 	HardwareRevision *string      `json:"hardware_revision,omitempty"`
@@ -314,17 +132,23 @@ type HardwareInfo struct {
 	Model            *string      `json:"model,omitempty"`
 }
 
-// PeerGetIdentifiersRequest defines model for PeerGetIdentifiersRequest.
-type PeerGetIdentifiersRequest = map[string]interface{}
-
-// PeerGetIdentifiersResponse defines model for PeerGetIdentifiersResponse.
-type PeerGetIdentifiersResponse = RefreshIdentifiers
-
 // PeerGetInfoRequest defines model for PeerGetInfoRequest.
 type PeerGetInfoRequest = map[string]interface{}
 
 // PeerGetInfoResponse defines model for PeerGetInfoResponse.
-type PeerGetInfoResponse = RefreshInfo
+type PeerGetInfoResponse = DeviceInfo
+
+// PeerGetRuntimeRequest defines model for PeerGetRuntimeRequest.
+type PeerGetRuntimeRequest = map[string]interface{}
+
+// PeerGetRuntimeResponse defines model for PeerGetRuntimeResponse.
+type PeerGetRuntimeResponse = Runtime
+
+// PeerPutInfoRequest defines model for PeerPutInfoRequest.
+type PeerPutInfoRequest = DeviceInfo
+
+// PeerPutInfoResponse defines model for PeerPutInfoResponse.
+type PeerPutInfoResponse = DeviceInfo
 
 // PingRequest defines model for PingRequest.
 type PingRequest struct {
@@ -392,18 +216,6 @@ type RefreshInfo struct {
 	Name             *string `json:"name,omitempty"`
 }
 
-// Registration defines model for Registration.
-type Registration struct {
-	ApprovedAt     *time.Time  `json:"approved_at,omitempty"`
-	AutoRegistered *bool       `json:"auto_registered,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	Device         *DeviceInfo `json:"device,omitempty"`
-	PublicKey      string      `json:"public_key"`
-	Role           GearRole    `json:"role"`
-	Status         GearStatus  `json:"status"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-}
-
 // Runtime defines model for Runtime.
 type Runtime struct {
 	LastAddr   *string   `json:"last_addr,omitempty"`
@@ -452,22 +264,22 @@ func (t *RPCRequest_Params) MergePingRequest(v PingRequest) error {
 	return err
 }
 
-// AsPeerGetInfoRequest returns the union data inside the RPCRequest_Params as a PeerGetInfoRequest
-func (t RPCRequest_Params) AsPeerGetInfoRequest() (PeerGetInfoRequest, error) {
-	var body PeerGetInfoRequest
+// AsDeviceGetInfoRequest returns the union data inside the RPCRequest_Params as a DeviceGetInfoRequest
+func (t RPCRequest_Params) AsDeviceGetInfoRequest() (DeviceGetInfoRequest, error) {
+	var body DeviceGetInfoRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetInfoRequest
-func (t *RPCRequest_Params) FromPeerGetInfoRequest(v PeerGetInfoRequest) error {
+// FromDeviceGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided DeviceGetInfoRequest
+func (t *RPCRequest_Params) FromDeviceGetInfoRequest(v DeviceGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetInfoRequest
-func (t *RPCRequest_Params) MergePeerGetInfoRequest(v PeerGetInfoRequest) error {
+// MergeDeviceGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided DeviceGetInfoRequest
+func (t *RPCRequest_Params) MergeDeviceGetInfoRequest(v DeviceGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -478,22 +290,22 @@ func (t *RPCRequest_Params) MergePeerGetInfoRequest(v PeerGetInfoRequest) error 
 	return err
 }
 
-// AsPeerGetIdentifiersRequest returns the union data inside the RPCRequest_Params as a PeerGetIdentifiersRequest
-func (t RPCRequest_Params) AsPeerGetIdentifiersRequest() (PeerGetIdentifiersRequest, error) {
-	var body PeerGetIdentifiersRequest
+// AsDeviceGetIdentifiersRequest returns the union data inside the RPCRequest_Params as a DeviceGetIdentifiersRequest
+func (t RPCRequest_Params) AsDeviceGetIdentifiersRequest() (DeviceGetIdentifiersRequest, error) {
+	var body DeviceGetIdentifiersRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetIdentifiersRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetIdentifiersRequest
-func (t *RPCRequest_Params) FromPeerGetIdentifiersRequest(v PeerGetIdentifiersRequest) error {
+// FromDeviceGetIdentifiersRequest overwrites any union data inside the RPCRequest_Params as the provided DeviceGetIdentifiersRequest
+func (t *RPCRequest_Params) FromDeviceGetIdentifiersRequest(v DeviceGetIdentifiersRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetIdentifiersRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetIdentifiersRequest
-func (t *RPCRequest_Params) MergePeerGetIdentifiersRequest(v PeerGetIdentifiersRequest) error {
+// MergeDeviceGetIdentifiersRequest performs a merge with any union data inside the RPCRequest_Params, using the provided DeviceGetIdentifiersRequest
+func (t *RPCRequest_Params) MergeDeviceGetIdentifiersRequest(v DeviceGetIdentifiersRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -530,22 +342,22 @@ func (t *RPCRequest_Params) MergeServerGetInfoRequest(v ServerGetInfoRequest) er
 	return err
 }
 
-// AsGearGetConfigRequest returns the union data inside the RPCRequest_Params as a GearGetConfigRequest
-func (t RPCRequest_Params) AsGearGetConfigRequest() (GearGetConfigRequest, error) {
-	var body GearGetConfigRequest
+// AsPeerGetInfoRequest returns the union data inside the RPCRequest_Params as a PeerGetInfoRequest
+func (t RPCRequest_Params) AsPeerGetInfoRequest() (PeerGetInfoRequest, error) {
+	var body PeerGetInfoRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearGetConfigRequest overwrites any union data inside the RPCRequest_Params as the provided GearGetConfigRequest
-func (t *RPCRequest_Params) FromGearGetConfigRequest(v GearGetConfigRequest) error {
+// FromPeerGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetInfoRequest
+func (t *RPCRequest_Params) FromPeerGetInfoRequest(v PeerGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearGetConfigRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearGetConfigRequest
-func (t *RPCRequest_Params) MergeGearGetConfigRequest(v GearGetConfigRequest) error {
+// MergePeerGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetInfoRequest
+func (t *RPCRequest_Params) MergePeerGetInfoRequest(v PeerGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -556,22 +368,22 @@ func (t *RPCRequest_Params) MergeGearGetConfigRequest(v GearGetConfigRequest) er
 	return err
 }
 
-// AsGearGetInfoRequest returns the union data inside the RPCRequest_Params as a GearGetInfoRequest
-func (t RPCRequest_Params) AsGearGetInfoRequest() (GearGetInfoRequest, error) {
-	var body GearGetInfoRequest
+// AsPeerPutInfoRequest returns the union data inside the RPCRequest_Params as a PeerPutInfoRequest
+func (t RPCRequest_Params) AsPeerPutInfoRequest() (PeerPutInfoRequest, error) {
+	var body PeerPutInfoRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided GearGetInfoRequest
-func (t *RPCRequest_Params) FromGearGetInfoRequest(v GearGetInfoRequest) error {
+// FromPeerPutInfoRequest overwrites any union data inside the RPCRequest_Params as the provided PeerPutInfoRequest
+func (t *RPCRequest_Params) FromPeerPutInfoRequest(v PeerPutInfoRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearGetInfoRequest
-func (t *RPCRequest_Params) MergeGearGetInfoRequest(v GearGetInfoRequest) error {
+// MergePeerPutInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerPutInfoRequest
+func (t *RPCRequest_Params) MergePeerPutInfoRequest(v PeerPutInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -582,126 +394,22 @@ func (t *RPCRequest_Params) MergeGearGetInfoRequest(v GearGetInfoRequest) error 
 	return err
 }
 
-// AsGearPutInfoRequest returns the union data inside the RPCRequest_Params as a GearPutInfoRequest
-func (t RPCRequest_Params) AsGearPutInfoRequest() (GearPutInfoRequest, error) {
-	var body GearPutInfoRequest
+// AsPeerGetRuntimeRequest returns the union data inside the RPCRequest_Params as a PeerGetRuntimeRequest
+func (t RPCRequest_Params) AsPeerGetRuntimeRequest() (PeerGetRuntimeRequest, error) {
+	var body PeerGetRuntimeRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearPutInfoRequest overwrites any union data inside the RPCRequest_Params as the provided GearPutInfoRequest
-func (t *RPCRequest_Params) FromGearPutInfoRequest(v GearPutInfoRequest) error {
+// FromPeerGetRuntimeRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetRuntimeRequest
+func (t *RPCRequest_Params) FromPeerGetRuntimeRequest(v PeerGetRuntimeRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearPutInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearPutInfoRequest
-func (t *RPCRequest_Params) MergeGearPutInfoRequest(v GearPutInfoRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearGetRegistrationRequest returns the union data inside the RPCRequest_Params as a GearGetRegistrationRequest
-func (t RPCRequest_Params) AsGearGetRegistrationRequest() (GearGetRegistrationRequest, error) {
-	var body GearGetRegistrationRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearGetRegistrationRequest overwrites any union data inside the RPCRequest_Params as the provided GearGetRegistrationRequest
-func (t *RPCRequest_Params) FromGearGetRegistrationRequest(v GearGetRegistrationRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearGetRegistrationRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearGetRegistrationRequest
-func (t *RPCRequest_Params) MergeGearGetRegistrationRequest(v GearGetRegistrationRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearRegisterRequest returns the union data inside the RPCRequest_Params as a GearRegisterRequest
-func (t RPCRequest_Params) AsGearRegisterRequest() (GearRegisterRequest, error) {
-	var body GearRegisterRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearRegisterRequest overwrites any union data inside the RPCRequest_Params as the provided GearRegisterRequest
-func (t *RPCRequest_Params) FromGearRegisterRequest(v GearRegisterRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearRegisterRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearRegisterRequest
-func (t *RPCRequest_Params) MergeGearRegisterRequest(v GearRegisterRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearGetRuntimeRequest returns the union data inside the RPCRequest_Params as a GearGetRuntimeRequest
-func (t RPCRequest_Params) AsGearGetRuntimeRequest() (GearGetRuntimeRequest, error) {
-	var body GearGetRuntimeRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearGetRuntimeRequest overwrites any union data inside the RPCRequest_Params as the provided GearGetRuntimeRequest
-func (t *RPCRequest_Params) FromGearGetRuntimeRequest(v GearGetRuntimeRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearGetRuntimeRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearGetRuntimeRequest
-func (t *RPCRequest_Params) MergeGearGetRuntimeRequest(v GearGetRuntimeRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearRunTestRequest returns the union data inside the RPCRequest_Params as a GearRunTestRequest
-func (t RPCRequest_Params) AsGearRunTestRequest() (GearRunTestRequest, error) {
-	var body GearRunTestRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearRunTestRequest overwrites any union data inside the RPCRequest_Params as the provided GearRunTestRequest
-func (t *RPCRequest_Params) FromGearRunTestRequest(v GearRunTestRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearRunTestRequest performs a merge with any union data inside the RPCRequest_Params, using the provided GearRunTestRequest
-func (t *RPCRequest_Params) MergeGearRunTestRequest(v GearRunTestRequest) error {
+// MergePeerGetRuntimeRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetRuntimeRequest
+func (t *RPCRequest_Params) MergePeerGetRuntimeRequest(v PeerGetRuntimeRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -748,22 +456,22 @@ func (t *RPCResponse_Result) MergePingResponse(v PingResponse) error {
 	return err
 }
 
-// AsPeerGetInfoResponse returns the union data inside the RPCResponse_Result as a PeerGetInfoResponse
-func (t RPCResponse_Result) AsPeerGetInfoResponse() (PeerGetInfoResponse, error) {
-	var body PeerGetInfoResponse
+// AsDeviceGetInfoResponse returns the union data inside the RPCResponse_Result as a DeviceGetInfoResponse
+func (t RPCResponse_Result) AsDeviceGetInfoResponse() (DeviceGetInfoResponse, error) {
+	var body DeviceGetInfoResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetInfoResponse
-func (t *RPCResponse_Result) FromPeerGetInfoResponse(v PeerGetInfoResponse) error {
+// FromDeviceGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided DeviceGetInfoResponse
+func (t *RPCResponse_Result) FromDeviceGetInfoResponse(v DeviceGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetInfoResponse
-func (t *RPCResponse_Result) MergePeerGetInfoResponse(v PeerGetInfoResponse) error {
+// MergeDeviceGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided DeviceGetInfoResponse
+func (t *RPCResponse_Result) MergeDeviceGetInfoResponse(v DeviceGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -774,22 +482,22 @@ func (t *RPCResponse_Result) MergePeerGetInfoResponse(v PeerGetInfoResponse) err
 	return err
 }
 
-// AsPeerGetIdentifiersResponse returns the union data inside the RPCResponse_Result as a PeerGetIdentifiersResponse
-func (t RPCResponse_Result) AsPeerGetIdentifiersResponse() (PeerGetIdentifiersResponse, error) {
-	var body PeerGetIdentifiersResponse
+// AsDeviceGetIdentifiersResponse returns the union data inside the RPCResponse_Result as a DeviceGetIdentifiersResponse
+func (t RPCResponse_Result) AsDeviceGetIdentifiersResponse() (DeviceGetIdentifiersResponse, error) {
+	var body DeviceGetIdentifiersResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetIdentifiersResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetIdentifiersResponse
-func (t *RPCResponse_Result) FromPeerGetIdentifiersResponse(v PeerGetIdentifiersResponse) error {
+// FromDeviceGetIdentifiersResponse overwrites any union data inside the RPCResponse_Result as the provided DeviceGetIdentifiersResponse
+func (t *RPCResponse_Result) FromDeviceGetIdentifiersResponse(v DeviceGetIdentifiersResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetIdentifiersResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetIdentifiersResponse
-func (t *RPCResponse_Result) MergePeerGetIdentifiersResponse(v PeerGetIdentifiersResponse) error {
+// MergeDeviceGetIdentifiersResponse performs a merge with any union data inside the RPCResponse_Result, using the provided DeviceGetIdentifiersResponse
+func (t *RPCResponse_Result) MergeDeviceGetIdentifiersResponse(v DeviceGetIdentifiersResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -826,22 +534,22 @@ func (t *RPCResponse_Result) MergeServerGetInfoResponse(v ServerGetInfoResponse)
 	return err
 }
 
-// AsGearGetConfigResponse returns the union data inside the RPCResponse_Result as a GearGetConfigResponse
-func (t RPCResponse_Result) AsGearGetConfigResponse() (GearGetConfigResponse, error) {
-	var body GearGetConfigResponse
+// AsPeerGetInfoResponse returns the union data inside the RPCResponse_Result as a PeerGetInfoResponse
+func (t RPCResponse_Result) AsPeerGetInfoResponse() (PeerGetInfoResponse, error) {
+	var body PeerGetInfoResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearGetConfigResponse overwrites any union data inside the RPCResponse_Result as the provided GearGetConfigResponse
-func (t *RPCResponse_Result) FromGearGetConfigResponse(v GearGetConfigResponse) error {
+// FromPeerGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetInfoResponse
+func (t *RPCResponse_Result) FromPeerGetInfoResponse(v PeerGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearGetConfigResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearGetConfigResponse
-func (t *RPCResponse_Result) MergeGearGetConfigResponse(v GearGetConfigResponse) error {
+// MergePeerGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetInfoResponse
+func (t *RPCResponse_Result) MergePeerGetInfoResponse(v PeerGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -852,22 +560,22 @@ func (t *RPCResponse_Result) MergeGearGetConfigResponse(v GearGetConfigResponse)
 	return err
 }
 
-// AsGearGetInfoResponse returns the union data inside the RPCResponse_Result as a GearGetInfoResponse
-func (t RPCResponse_Result) AsGearGetInfoResponse() (GearGetInfoResponse, error) {
-	var body GearGetInfoResponse
+// AsPeerPutInfoResponse returns the union data inside the RPCResponse_Result as a PeerPutInfoResponse
+func (t RPCResponse_Result) AsPeerPutInfoResponse() (PeerPutInfoResponse, error) {
+	var body PeerPutInfoResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided GearGetInfoResponse
-func (t *RPCResponse_Result) FromGearGetInfoResponse(v GearGetInfoResponse) error {
+// FromPeerPutInfoResponse overwrites any union data inside the RPCResponse_Result as the provided PeerPutInfoResponse
+func (t *RPCResponse_Result) FromPeerPutInfoResponse(v PeerPutInfoResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearGetInfoResponse
-func (t *RPCResponse_Result) MergeGearGetInfoResponse(v GearGetInfoResponse) error {
+// MergePeerPutInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerPutInfoResponse
+func (t *RPCResponse_Result) MergePeerPutInfoResponse(v PeerPutInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -878,126 +586,22 @@ func (t *RPCResponse_Result) MergeGearGetInfoResponse(v GearGetInfoResponse) err
 	return err
 }
 
-// AsGearPutInfoResponse returns the union data inside the RPCResponse_Result as a GearPutInfoResponse
-func (t RPCResponse_Result) AsGearPutInfoResponse() (GearPutInfoResponse, error) {
-	var body GearPutInfoResponse
+// AsPeerGetRuntimeResponse returns the union data inside the RPCResponse_Result as a PeerGetRuntimeResponse
+func (t RPCResponse_Result) AsPeerGetRuntimeResponse() (PeerGetRuntimeResponse, error) {
+	var body PeerGetRuntimeResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromGearPutInfoResponse overwrites any union data inside the RPCResponse_Result as the provided GearPutInfoResponse
-func (t *RPCResponse_Result) FromGearPutInfoResponse(v GearPutInfoResponse) error {
+// FromPeerGetRuntimeResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetRuntimeResponse
+func (t *RPCResponse_Result) FromPeerGetRuntimeResponse(v PeerGetRuntimeResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeGearPutInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearPutInfoResponse
-func (t *RPCResponse_Result) MergeGearPutInfoResponse(v GearPutInfoResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearGetRegistrationResponse returns the union data inside the RPCResponse_Result as a GearGetRegistrationResponse
-func (t RPCResponse_Result) AsGearGetRegistrationResponse() (GearGetRegistrationResponse, error) {
-	var body GearGetRegistrationResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearGetRegistrationResponse overwrites any union data inside the RPCResponse_Result as the provided GearGetRegistrationResponse
-func (t *RPCResponse_Result) FromGearGetRegistrationResponse(v GearGetRegistrationResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearGetRegistrationResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearGetRegistrationResponse
-func (t *RPCResponse_Result) MergeGearGetRegistrationResponse(v GearGetRegistrationResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearRegisterResponse returns the union data inside the RPCResponse_Result as a GearRegisterResponse
-func (t RPCResponse_Result) AsGearRegisterResponse() (GearRegisterResponse, error) {
-	var body GearRegisterResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearRegisterResponse overwrites any union data inside the RPCResponse_Result as the provided GearRegisterResponse
-func (t *RPCResponse_Result) FromGearRegisterResponse(v GearRegisterResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearRegisterResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearRegisterResponse
-func (t *RPCResponse_Result) MergeGearRegisterResponse(v GearRegisterResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearGetRuntimeResponse returns the union data inside the RPCResponse_Result as a GearGetRuntimeResponse
-func (t RPCResponse_Result) AsGearGetRuntimeResponse() (GearGetRuntimeResponse, error) {
-	var body GearGetRuntimeResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearGetRuntimeResponse overwrites any union data inside the RPCResponse_Result as the provided GearGetRuntimeResponse
-func (t *RPCResponse_Result) FromGearGetRuntimeResponse(v GearGetRuntimeResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearGetRuntimeResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearGetRuntimeResponse
-func (t *RPCResponse_Result) MergeGearGetRuntimeResponse(v GearGetRuntimeResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsGearRunTestResponse returns the union data inside the RPCResponse_Result as a GearRunTestResponse
-func (t RPCResponse_Result) AsGearRunTestResponse() (GearRunTestResponse, error) {
-	var body GearRunTestResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromGearRunTestResponse overwrites any union data inside the RPCResponse_Result as the provided GearRunTestResponse
-func (t *RPCResponse_Result) FromGearRunTestResponse(v GearRunTestResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeGearRunTestResponse performs a merge with any union data inside the RPCResponse_Result, using the provided GearRunTestResponse
-func (t *RPCResponse_Result) MergeGearRunTestResponse(v GearRunTestResponse) error {
+// MergePeerGetRuntimeResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetRuntimeResponse
+func (t *RPCResponse_Result) MergePeerGetRuntimeResponse(v PeerGetRuntimeResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

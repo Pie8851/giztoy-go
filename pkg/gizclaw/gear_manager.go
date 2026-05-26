@@ -45,15 +45,6 @@ func (m *Manager) allowService(ctx context.Context, publicKey giznet.PublicKey, 
 		return true
 	}
 	switch service {
-	case ServiceGear:
-		gear, err := m.Peers.LoadGear(ctx, publicKey)
-		if errors.Is(err, peer.ErrPeerNotFound) {
-			return true
-		}
-		if err != nil {
-			return false
-		}
-		return gear.Status == apitypes.GearStatusActive
 	case ServiceAdmin:
 		gear, err := m.Peers.LoadGear(ctx, publicKey)
 		if err != nil {
@@ -204,8 +195,8 @@ func (m *Manager) refreshPeer(ctx context.Context, publicKey giznet.PublicKey, g
 		disconnected  bool
 	)
 
-	infoResp, err := callPeerRPC(m, ctx, publicKey, func(client *rpcClient, conn net.Conn) (*rpcapi.PeerGetInfoResponse, error) {
-		return client.GetPeerInfo(ctx, conn, "peer.info.get")
+	infoResp, err := callPeerRPC(m, ctx, publicKey, func(client *rpcClient, conn net.Conn) (*rpcapi.DeviceGetInfoResponse, error) {
+		return client.GetDeviceInfo(ctx, conn, "device.info.get")
 	})
 	if err != nil {
 		if errors.Is(err, ErrDeviceOffline) || isPeerDisconnectedError(err) {
@@ -222,8 +213,8 @@ func (m *Manager) refreshPeer(ctx context.Context, publicKey giznet.PublicKey, g
 		}
 	}
 
-	identifiersResp, err := callPeerRPC(m, ctx, publicKey, func(client *rpcClient, conn net.Conn) (*rpcapi.PeerGetIdentifiersResponse, error) {
-		return client.GetPeerIdentifiers(ctx, conn, "peer.identifiers.get")
+	identifiersResp, err := callPeerRPC(m, ctx, publicKey, func(client *rpcClient, conn net.Conn) (*rpcapi.DeviceGetIdentifiersResponse, error) {
+		return client.GetDeviceIdentifiers(ctx, conn, "device.identifiers.get")
 	})
 	if err != nil {
 		if errors.Is(err, ErrDeviceOffline) || isPeerDisconnectedError(err) {

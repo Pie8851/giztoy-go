@@ -152,7 +152,9 @@ func (h *GearConn) initRPC() {
 	}
 	h.rpc = &rpcServer{}
 	if h.Service != nil {
-		h.rpc.gear = h.Service.gear
+		if h.Service.manager != nil {
+			h.rpc.peer = h.Service.manager.Peers
+		}
 		h.rpc.serverInfo = h.Service.public
 	}
 	if h.Conn != nil {

@@ -62,26 +62,14 @@ const RPC_COMMANDS: RpcCommand[] = [
     params: () => ({ client_send_time: Date.now() }),
   },
   {
-    label: "Get Registration",
-    method: "gear.registration.get",
-    description: "Read this gear's registration record.",
-    params: () => ({}),
-  },
-  {
     label: "Get Info",
-    method: "gear.info.get",
+    method: "peer.info.get",
     description: "Read device identity and hardware metadata.",
     params: () => ({}),
   },
   {
-    label: "Get Config",
-    method: "gear.config.get",
-    description: "Read the assigned gear configuration.",
-    params: () => ({}),
-  },
-  {
     label: "Get Runtime",
-    method: "gear.runtime.get",
+    method: "peer.runtime.get",
     description: "Read online state and transport counters.",
     params: () => ({}),
   },
@@ -483,7 +471,7 @@ function App(): JSX.Element {
                   <Send className="size-4" />
                   RPC Commands
                 </CardTitle>
-                <CardDescription className={cn(light ? "text-slate-500" : "text-slate-300")}>Send gear-service RPC methods through the active data channel.</CardDescription>
+                <CardDescription className={cn(light ? "text-slate-500" : "text-slate-300")}>Send peer RPC methods through the active data channel.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2">
                 {RPC_COMMANDS.map((command) => (

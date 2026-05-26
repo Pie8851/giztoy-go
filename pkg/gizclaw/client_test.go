@@ -105,14 +105,12 @@ func TestClientProxyMuxRoutesRemoteServices(t *testing.T) {
 		admin: &adminService{
 			PeerAdminService: gearServer,
 		},
-		gear: gearServer,
 		public: &serverPublic{
 			ServerPublicService: gearServer,
 		},
 	}
 
 	go func() { _ = service.serveAdmin(serverConn) }()
-	go func() { _ = service.serveGear(serverConn) }()
 	go func() { _ = service.servePublic(serverConn) }()
 
 	proxy := httptest.NewServer(client.ProxyHandler())
@@ -324,7 +322,7 @@ func newProxyTestPair(t *testing.T) (*Client, *giznet.Conn, func()) {
 		SecurityPolicy: testGiznetSecurityPolicy{
 			allowService: func(_ giznet.PublicKey, service uint64) bool {
 				switch service {
-				case ServiceAdmin, ServiceGear, ServiceServerPublic:
+				case ServiceAdmin, ServiceServerPublic:
 					return true
 				default:
 					return false

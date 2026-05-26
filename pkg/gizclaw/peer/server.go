@@ -11,7 +11,6 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/serverpublic"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
@@ -58,21 +57,11 @@ type PeerAdminService interface {
 	RefreshPeer(context.Context, adminservice.RefreshPeerRequestObject) (adminservice.RefreshPeerResponseObject, error)
 }
 
-type GearService interface {
-	GetConfig(context.Context, gearservice.GetConfigRequestObject) (gearservice.GetConfigResponseObject, error)
-	GetInfo(context.Context, gearservice.GetInfoRequestObject) (gearservice.GetInfoResponseObject, error)
-	PutInfo(context.Context, gearservice.PutInfoRequestObject) (gearservice.PutInfoResponseObject, error)
-	GetRegistration(context.Context, gearservice.GetRegistrationRequestObject) (gearservice.GetRegistrationResponseObject, error)
-	RegisterGear(context.Context, gearservice.RegisterGearRequestObject) (gearservice.RegisterGearResponseObject, error)
-	GetRuntime(context.Context, gearservice.GetRuntimeRequestObject) (gearservice.GetRuntimeResponseObject, error)
-}
-
 type ServerPublicService interface {
 	GetServerInfo(context.Context, serverpublic.GetServerInfoRequestObject) (serverpublic.GetServerInfoResponseObject, error)
 }
 
 var _ PeerAdminService = (*Server)(nil)
-var _ GearService = (*Server)(nil)
 var _ ServerPublicService = (*Server)(nil)
 
 // ListPeers implements `adminservice.StrictServerInterface.ListPeers`.
@@ -289,83 +278,36 @@ func (s *Server) RefreshPeer(ctx context.Context, request adminservice.RefreshPe
 	return adminservice.RefreshPeer200JSONResponse(result), nil
 }
 
-// GetConfig implements `gearservice.StrictServerInterface.GetConfig`.
-func (s *Server) GetConfig(ctx context.Context, _ gearservice.GetConfigRequestObject) (gearservice.GetConfigResponseObject, error) {
-	gear, err := s.get(ctx, gearservice.CallerPublicKey(ctx))
+func (s *Server) GetSelfInfo(ctx context.Context, publicKey giznet.PublicKey) (apitypes.DeviceInfo, error) {
+	gear, err := s.get(ctx, publicKey)
 	if err != nil {
-		return gearservice.GetConfig404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
-	}
-	cfg, err := toGearConfiguration(gear.Configuration)
-	if err != nil {
-		return getConfig500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
-	}
-	return gearservice.GetConfig200JSONResponse(cfg), nil
-}
-
-// GetInfo implements `gearservice.StrictServerInterface.GetInfo`.
-func (s *Server) GetInfo(ctx context.Context, _ gearservice.GetInfoRequestObject) (gearservice.GetInfoResponseObject, error) {
-	gear, err := s.get(ctx, gearservice.CallerPublicKey(ctx))
-	if err != nil {
-		return gearservice.GetInfo404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
+		return apitypes.DeviceInfo{}, err
 	}
 	info, err := toGearDeviceInfo(gear.Device)
 	if err != nil {
-		return getInfo500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+		return apitypes.DeviceInfo{}, err
 	}
-	return gearservice.GetInfo200JSONResponse(info), nil
+	return info, nil
 }
 
-// PutInfo implements `gearservice.StrictServerInterface.PutInfo`.
-func (s *Server) PutInfo(ctx context.Context, request gearservice.PutInfoRequestObject) (gearservice.PutInfoResponseObject, error) {
-	if request.Body == nil {
-		return gearservice.PutInfo400JSONResponse(apitypes.NewErrorResponse("INVALID_DEVICE_INFO", "request body required")), nil
-	}
-	info, err := toAdminDeviceInfo(*request.Body)
+func (s *Server) PutSelfInfo(ctx context.Context, publicKey giznet.PublicKey, body apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
+	info, err := toAdminDeviceInfo(body)
 	if err != nil {
-		return gearservice.PutInfo400JSONResponse(apitypes.NewErrorResponse("INVALID_DEVICE_INFO", err.Error())), nil
+		return apitypes.DeviceInfo{}, err
 	}
-	gear, err := s.putInfo(ctx, gearservice.CallerPublicKey(ctx), info)
+	gear, err := s.putInfo(ctx, publicKey, info)
 	if err != nil {
-		return gearservice.PutInfo404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
+		return apitypes.DeviceInfo{}, err
 	}
 	out, err := toGearDeviceInfo(gear.Device)
 	if err != nil {
-		return putInfo500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+		return apitypes.DeviceInfo{}, err
 	}
-	return gearservice.PutInfo200JSONResponse(out), nil
+	return out, nil
 }
 
-// RegisterGear implements `gearservice.StrictServerInterface.RegisterGear`.
-func (s *Server) RegisterGear(ctx context.Context, request gearservice.RegisterGearRequestObject) (gearservice.RegisterGearResponseObject, error) {
-	if request.Body == nil {
-		return gearservice.RegisterGear400JSONResponse(apitypes.NewErrorResponse("INVALID_PARAMS", "request body required")), nil
-	}
-	gear, err := s.register(ctx, gearservice.CallerPublicKey(ctx), *request.Body)
-	if err != nil {
-		if errors.Is(err, ErrPeerAlreadyExists) {
-			return gearservice.RegisterGear409JSONResponse(apitypes.NewErrorResponse("PEER_ALREADY_EXISTS", err.Error())), nil
-		}
-		return gearservice.RegisterGear400JSONResponse(apitypes.NewErrorResponse("INVALID_PARAMS", err.Error())), nil
-	}
-	out, err := toPublicRegistrationResult(gear)
-	if err != nil {
-		return registerGear500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
-	}
-	return gearservice.RegisterGear200JSONResponse(out), nil
-}
-
-// GetRegistration implements `gearservice.StrictServerInterface.GetRegistration`.
-func (s *Server) GetRegistration(ctx context.Context, _ gearservice.GetRegistrationRequestObject) (gearservice.GetRegistrationResponseObject, error) {
-	gear, err := s.get(ctx, gearservice.CallerPublicKey(ctx))
-	if err != nil {
-		return gearservice.GetRegistration404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
-	}
-	return gearservice.GetRegistration200JSONResponse(toGearRegistration(gear)), nil
-}
-
-// GetRuntime implements `gearservice.StrictServerInterface.GetRuntime`.
-func (s *Server) GetRuntime(ctx context.Context, _ gearservice.GetRuntimeRequestObject) (gearservice.GetRuntimeResponseObject, error) {
-	return gearservice.GetRuntime200JSONResponse(s.peerRuntime(ctx, gearservice.CallerPublicKey(ctx))), nil
+func (s *Server) GetSelfRuntime(ctx context.Context, publicKey giznet.PublicKey) apitypes.Runtime {
+	return s.peerRuntime(ctx, publicKey)
 }
 
 // GetServerInfo implements `serverpublic.StrictServerInterface.GetServerInfo`.

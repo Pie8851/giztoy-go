@@ -6,37 +6,26 @@ import (
 	"testing"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 )
 
 func TestIntegrationGearServiceLifecycle(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	adminResult, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	})
-	if err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	adminPublicKey := ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	device := newTestClient(t, ts)
-	deviceResult, err := register(context.Background(), device, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{
-			Name: strPtr("gear"),
-			Sn:   strPtr("sn/1"),
-			Hardware: &apitypes.HardwareInfo{
-				Imeis: &[]apitypes.GearIMEI{{Name: strPtr("main"), Tac: "12345678", Serial: "0000001"}},
-				Labels: &[]apitypes.GearLabel{{
-					Key:   "batch",
-					Value: "cn/east",
-				}},
-			},
+	devicePublicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{
+		Name: strPtr("gear"),
+		Sn:   strPtr("sn/1"),
+		Hardware: &apitypes.HardwareInfo{
+			Imeis: &[]apitypes.GearIMEI{{Name: strPtr("main"), Tac: "12345678", Serial: "0000001"}},
+			Labels: &[]apitypes.GearLabel{{
+				Key:   "batch",
+				Value: "cn/east",
+			}},
 		},
 	})
-	if err != nil {
-		t.Fatalf("device register error: %v", err)
-	}
 
 	items, err := listPeers(context.Background(), admin)
 	if err != nil {
@@ -46,8 +35,6 @@ func TestIntegrationGearServiceLifecycle(t *testing.T) {
 		t.Fatalf("ListPeers returned %d items", len(items))
 	}
 
-	devicePublicKey := deviceResult.Gear.PublicKey
-	adminPublicKey := adminResult.Gear.PublicKey
 	if _, err := approvePeer(context.Background(), admin, devicePublicKey, apitypes.GearRoleGear); err != nil {
 		t.Fatalf("ApprovePeer error: %v", err)
 	}
@@ -88,11 +75,7 @@ func TestIntegrationAdminResourceAPIs(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	api, err := admin.ServerAdminClient()
 	if err != nil {

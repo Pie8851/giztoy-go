@@ -295,13 +295,13 @@ func startSeededUI(t testing.TB) Seed {
 func putGearInfo(t testing.TB, client *gizclaw.Client, publicKey string, info apitypes.DeviceInfo) {
 	t.Helper()
 
-	req, err := convertUIAPIType[rpcapi.GearPutInfoRequest](info)
+	req, err := convertUIAPIType[rpcapi.PeerPutInfoRequest](info)
 	if err != nil {
 		t.Fatalf("convert gear info %q: %v", publicKey, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
 	defer cancel()
-	resp, err := client.PutGearInfo(ctx, "gear.info.put", req)
+	resp, err := client.PutPeerInfo(ctx, "peer.info.put", req)
 	if err != nil {
 		t.Fatalf("put info %q: %v", publicKey, err)
 	}

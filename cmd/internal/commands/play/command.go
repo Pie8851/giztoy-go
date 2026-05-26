@@ -15,7 +15,7 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "play",
 		Short: "Open the Play web UI",
-		Long:  "Open the Play web UI. When --listen is set, the current context is automatically registered before the UI starts.",
+		Long:  "Open the Play web UI. When --listen is set, the current context is prepared before the UI starts.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(listenAddr) == "" {

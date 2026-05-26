@@ -11,7 +11,6 @@ import (
 func TestConvertHelpers(t *testing.T) {
 	now := time.Unix(1_700_600_000, 0).UTC()
 	autoRegistered := true
-	view := "under-12"
 	deviceName := "convert-device"
 	publicKey := giznet.PublicKey{1}
 	gear := apitypes.Gear{
@@ -21,38 +20,10 @@ func TestConvertHelpers(t *testing.T) {
 		AutoRegistered: &autoRegistered,
 		CreatedAt:      now,
 		UpdatedAt:      now,
-		Configuration: apitypes.Configuration{
-			View: &view,
-		},
+		Configuration:  apitypes.Configuration{},
 		Device: apitypes.DeviceInfo{
 			Name: &deviceName,
 		},
-	}
-
-	registration := toGearRegistration(gear)
-	if registration.PublicKey != gear.PublicKey || registration.Role != apitypes.GearRole(gear.Role) {
-		t.Fatalf("toGearRegistration = %+v", registration)
-	}
-
-	publicRegistration := toPublicRegistration(gear)
-	if publicRegistration.PublicKey != gear.PublicKey || publicRegistration.Role != apitypes.GearRole(gear.Role) {
-		t.Fatalf("toPublicRegistration = %+v", publicRegistration)
-	}
-
-	cfg, err := toPublicConfiguration(gear.Configuration)
-	if err != nil {
-		t.Fatalf("toPublicConfiguration error: %v", err)
-	}
-	if cfg.View == nil || *cfg.View != view {
-		t.Fatalf("toPublicConfiguration = %+v", cfg)
-	}
-
-	result, err := toPublicRegistrationResult(gear)
-	if err != nil {
-		t.Fatalf("toPublicRegistrationResult error: %v", err)
-	}
-	if result.Registration.PublicKey != gear.PublicKey || result.Gear.PublicKey != gear.PublicKey {
-		t.Fatalf("toPublicRegistrationResult = %+v", result)
 	}
 
 	adminRegistrations := toAdminRegistrationList([]apitypes.Gear{gear}, false, nil)

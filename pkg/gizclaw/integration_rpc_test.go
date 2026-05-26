@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
@@ -141,17 +142,14 @@ func TestIntegrationRPCGearClientMethods(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_, err := client.RegisterGear(ctx, "rpc-register", rpcapi.GearRegisterRequest{
-			Device: rpcapi.DeviceInfo{
-				Name: strPtr("rpc-gear"),
-				Sn:   strPtr("rpc-sn"),
-			},
-		})
-		if err != nil {
+		if _, err := client.PutPeerInfo(ctx, "rpc-put-info-initial", rpcapi.PeerPutInfoRequest{
+			Name: strPtr("rpc-gear"),
+			Sn:   strPtr("rpc-sn"),
+		}); err != nil {
 			errLast = err
 			return err
 		}
-		info, err := client.GetGearInfo(ctx, "rpc-info")
+		info, err := client.GetPeerInfo(ctx, "rpc-info")
 		if err != nil {
 			errLast = err
 			return err
@@ -160,24 +158,20 @@ func TestIntegrationRPCGearClientMethods(t *testing.T) {
 			errLast = fmt.Errorf("gear info = %+v", info)
 			return errLast
 		}
-		if _, err := client.PutGearInfo(ctx, "rpc-put-info", rpcapi.GearPutInfoRequest{Name: strPtr("rpc-gear-2")}); err != nil {
+		if _, err := client.PutPeerInfo(ctx, "rpc-put-info", rpcapi.PeerPutInfoRequest{Name: strPtr("rpc-gear-2")}); err != nil {
 			errLast = err
 			return err
 		}
-		if _, err := client.GetGearConfig(ctx, "rpc-config"); err != nil {
-			errLast = err
-			return err
-		}
-		registration, err := client.GetGearRegistration(ctx, "rpc-registration")
+		gear, err := ts.server.Manager().Peers.LoadGear(ctx, client.KeyPair.Public)
 		if err != nil {
 			errLast = err
 			return err
 		}
-		if registration.PublicKey == "" || registration.Role != rpcapi.GearRoleUnspecified {
-			errLast = fmt.Errorf("gear registration = %+v", registration)
+		if gear.PublicKey == "" || gear.Role != apitypes.GearRoleGear {
+			errLast = fmt.Errorf("gear = %+v", gear)
 			return errLast
 		}
-		runtime, err := client.GetGearRuntime(ctx, "rpc-runtime")
+		runtime, err := client.GetPeerRuntime(ctx, "rpc-runtime")
 		if err != nil {
 			errLast = err
 			return err

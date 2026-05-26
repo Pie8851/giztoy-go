@@ -1,15 +1,21 @@
 {
   "components": {
     "schemas": {
-      "Configuration": {
-        "properties": {
-          "view": {
-            "description": "Current content view name selected for this gear.",
-            "example": "under-12",
-            "type": "string"
-          }
-        },
+      "DeviceGetIdentifiersRequest": {
+        "additionalProperties": false,
+        "properties": {},
         "type": "object"
+      },
+      "DeviceGetIdentifiersResponse": {
+        "$ref": "#/components/schemas/RefreshIdentifiers"
+      },
+      "DeviceGetInfoRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "DeviceGetInfoResponse": {
+        "$ref": "#/components/schemas/RefreshInfo"
       },
       "DeviceInfo": {
         "properties": {
@@ -24,82 +30,6 @@
           }
         },
         "type": "object"
-      },
-      "Gear": {
-        "properties": {
-          "approved_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "auto_registered": {
-            "type": "boolean"
-          },
-          "configuration": {
-            "$ref": "#/components/schemas/Configuration"
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "device": {
-            "$ref": "#/components/schemas/DeviceInfo"
-          },
-          "public_key": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/GearRole"
-          },
-          "status": {
-            "$ref": "#/components/schemas/GearStatus"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "public_key",
-          "role",
-          "status",
-          "device",
-          "configuration",
-          "created_at",
-          "updated_at"
-        ],
-        "type": "object"
-      },
-      "GearGetConfigRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "GearGetConfigResponse": {
-        "$ref": "#/components/schemas/Configuration"
-      },
-      "GearGetInfoRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "GearGetInfoResponse": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "GearGetRegistrationRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "GearGetRegistrationResponse": {
-        "$ref": "#/components/schemas/Registration"
-      },
-      "GearGetRuntimeRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "GearGetRuntimeResponse": {
-        "$ref": "#/components/schemas/Runtime"
       },
       "GearIMEI": {
         "properties": {
@@ -134,122 +64,6 @@
         ],
         "type": "object"
       },
-      "GearPutInfoRequest": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "GearPutInfoResponse": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "GearRegisterRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "device": {
-            "$ref": "#/components/schemas/DeviceInfo"
-          }
-        },
-        "required": [
-          "device"
-        ],
-        "type": "object"
-      },
-      "GearRegisterResponse": {
-        "properties": {
-          "gear": {
-            "$ref": "#/components/schemas/Gear"
-          },
-          "registration": {
-            "$ref": "#/components/schemas/Registration"
-          }
-        },
-        "required": [
-          "gear",
-          "registration"
-        ],
-        "type": "object"
-      },
-      "GearRole": {
-        "enum": [
-          "unspecified",
-          "admin",
-          "server",
-          "gear"
-        ],
-        "type": "string"
-      },
-      "GearRunTestRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/GearTestMode"
-          },
-          "params": {
-            "additionalProperties": true,
-            "description": "Mode-specific test parameters.",
-            "type": "object"
-          },
-          "workflow": {
-            "description": "Optional workflow or agent override for the test mode.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode"
-        ],
-        "type": "object"
-      },
-      "GearRunTestResponse": {
-        "properties": {
-          "message": {
-            "type": "string"
-          },
-          "mode": {
-            "$ref": "#/components/schemas/GearTestMode"
-          },
-          "status": {
-            "description": "Current test run status.",
-            "enum": [
-              "started"
-            ],
-            "type": "string",
-            "x-enum-varnames": [
-              "Started"
-            ]
-          },
-          "workflow": {
-            "description": "Workflow or agent selected for this test run.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode",
-          "status"
-        ],
-        "type": "object"
-      },
-      "GearStatus": {
-        "enum": [
-          "unspecified",
-          "active",
-          "blocked"
-        ],
-        "type": "string"
-      },
-      "GearTestMode": {
-        "description": "Built-in gear test mode.",
-        "enum": [
-          "audio-play",
-          "audio-loopback",
-          "download",
-          "upload"
-        ],
-        "type": "string",
-        "x-enum-varnames": [
-          "AudioPlay",
-          "AudioLoopback",
-          "Download",
-          "Upload"
-        ]
-      },
       "HardwareInfo": {
         "properties": {
           "hardware_revision": {
@@ -276,21 +90,27 @@
         },
         "type": "object"
       },
-      "PeerGetIdentifiersRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerGetIdentifiersResponse": {
-        "$ref": "#/components/schemas/RefreshIdentifiers"
-      },
       "PeerGetInfoRequest": {
         "additionalProperties": false,
         "properties": {},
         "type": "object"
       },
       "PeerGetInfoResponse": {
-        "$ref": "#/components/schemas/RefreshInfo"
+        "$ref": "#/components/schemas/DeviceInfo"
+      },
+      "PeerGetRuntimeRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "PeerGetRuntimeResponse": {
+        "$ref": "#/components/schemas/Runtime"
+      },
+      "PeerPutInfoRequest": {
+        "$ref": "#/components/schemas/DeviceInfo"
+      },
+      "PeerPutInfoResponse": {
+        "$ref": "#/components/schemas/DeviceInfo"
       },
       "PingRequest": {
         "additionalProperties": false,
@@ -356,16 +176,12 @@
       "RPCMethod": {
         "enum": [
           "peer.ping",
+          "device.info.get",
+          "device.identifiers.get",
           "peer.info.get",
-          "peer.identifiers.get",
-          "server.info.get",
-          "gear.config.get",
-          "gear.info.get",
-          "gear.info.put",
-          "gear.registration.get",
-          "gear.registration.register",
-          "gear.runtime.get",
-          "gear.test.run"
+          "peer.info.put",
+          "peer.runtime.get",
+          "server.info.get"
         ],
         "type": "string"
       },
@@ -383,34 +199,22 @@
                 "$ref": "#/components/schemas/PingRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetInfoRequest"
+                "$ref": "#/components/schemas/DeviceGetInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetIdentifiersRequest"
+                "$ref": "#/components/schemas/DeviceGetIdentifiersRequest"
               },
               {
                 "$ref": "#/components/schemas/ServerGetInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/GearGetConfigRequest"
+                "$ref": "#/components/schemas/PeerGetInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/GearGetInfoRequest"
+                "$ref": "#/components/schemas/PeerPutInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/GearPutInfoRequest"
-              },
-              {
-                "$ref": "#/components/schemas/GearGetRegistrationRequest"
-              },
-              {
-                "$ref": "#/components/schemas/GearRegisterRequest"
-              },
-              {
-                "$ref": "#/components/schemas/GearGetRuntimeRequest"
-              },
-              {
-                "$ref": "#/components/schemas/GearRunTestRequest"
+                "$ref": "#/components/schemas/PeerGetRuntimeRequest"
               }
             ]
           },
@@ -439,34 +243,22 @@
                 "$ref": "#/components/schemas/PingResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetInfoResponse"
+                "$ref": "#/components/schemas/DeviceGetInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetIdentifiersResponse"
+                "$ref": "#/components/schemas/DeviceGetIdentifiersResponse"
               },
               {
                 "$ref": "#/components/schemas/ServerGetInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/GearGetConfigResponse"
+                "$ref": "#/components/schemas/PeerGetInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/GearGetInfoResponse"
+                "$ref": "#/components/schemas/PeerPutInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/GearPutInfoResponse"
-              },
-              {
-                "$ref": "#/components/schemas/GearGetRegistrationResponse"
-              },
-              {
-                "$ref": "#/components/schemas/GearRegisterResponse"
-              },
-              {
-                "$ref": "#/components/schemas/GearGetRuntimeResponse"
-              },
-              {
-                "$ref": "#/components/schemas/GearRunTestResponse"
+                "$ref": "#/components/schemas/PeerGetRuntimeResponse"
               }
             ]
           },
@@ -524,45 +316,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "Registration": {
-        "properties": {
-          "approved_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "auto_registered": {
-            "type": "boolean"
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "device": {
-            "$ref": "#/components/schemas/DeviceInfo"
-          },
-          "public_key": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/GearRole"
-          },
-          "status": {
-            "$ref": "#/components/schemas/GearStatus"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "public_key",
-          "role",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
         "type": "object"
       },
       "Runtime": {

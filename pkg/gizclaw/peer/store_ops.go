@@ -9,67 +9,10 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
 )
-
-func (s *Server) register(ctx context.Context, publicKey giznet.PublicKey, request gearservice.RegistrationRequest) (apitypes.Gear, error) {
-	if publicKey.IsZero() {
-		return apitypes.Gear{}, fmt.Errorf("gear: empty public key")
-	}
-	exists, err := s.exists(ctx, publicKey)
-	if err != nil {
-		return apitypes.Gear{}, err
-	}
-	if exists {
-		gear, err := s.registerExistingConnectedGear(ctx, publicKey, request)
-		if err == nil {
-			return gear, nil
-		}
-		if !errors.Is(err, ErrPeerAlreadyExists) {
-			return apitypes.Gear{}, err
-		}
-		return apitypes.Gear{}, ErrPeerAlreadyExists
-	}
-
-	autoRegistered := true
-	device, err := convertViaJSON[apitypes.DeviceInfo](request.Device)
-	if err != nil {
-		return apitypes.Gear{}, err
-	}
-	gear := apitypes.Gear{
-		PublicKey:      publicKey.String(),
-		Role:           apitypes.GearRoleUnspecified,
-		Status:         apitypes.GearStatusActive,
-		Device:         device,
-		Configuration:  apitypes.Configuration{},
-		AutoRegistered: &autoRegistered,
-	}
-
-	created, err := s.create(ctx, gear)
-	if err != nil {
-		return apitypes.Gear{}, err
-	}
-	return created, nil
-}
-
-func (s *Server) registerExistingConnectedGear(ctx context.Context, publicKey giznet.PublicKey, request gearservice.RegistrationRequest) (apitypes.Gear, error) {
-	gear, err := s.get(ctx, publicKey)
-	if err != nil {
-		return apitypes.Gear{}, err
-	}
-	if !isAutoConnectedGear(gear) {
-		return apitypes.Gear{}, ErrPeerAlreadyExists
-	}
-	device, err := convertViaJSON[apitypes.DeviceInfo](request.Device)
-	if err != nil {
-		return apitypes.Gear{}, err
-	}
-	gear.Device = device
-	return s.put(ctx, gear)
-}
 
 // EnsureConnectedGear creates a default active gear record for a connected peer
 // when the peer has not been registered yet. Existing records are preserved.
@@ -88,7 +31,7 @@ func (s *Server) EnsureConnectedGear(ctx context.Context, publicKey giznet.Publi
 	autoRegistered := true
 	created, err := s.create(ctx, apitypes.Gear{
 		PublicKey:      publicKey.String(),
-		Role:           apitypes.GearRoleUnspecified,
+		Role:           apitypes.GearRoleGear,
 		Status:         apitypes.GearStatusActive,
 		Device:         apitypes.DeviceInfo{},
 		Configuration:  apitypes.Configuration{},
@@ -104,7 +47,7 @@ func isAutoConnectedGear(gear apitypes.Gear) bool {
 	return gear.AutoRegistered != nil &&
 		*gear.AutoRegistered &&
 		gear.ApprovedAt == nil &&
-		gear.Role == apitypes.GearRoleUnspecified &&
+		gear.Role == apitypes.GearRoleGear &&
 		gear.Status == apitypes.GearStatusActive
 }
 

@@ -19,7 +19,6 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/publiclogin"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
@@ -265,7 +264,7 @@ func (h *Harness) EnsureContext(name string) Result {
 func (h *Harness) RegisterContext(name string, extraArgs ...string) Result {
 	h.t.Helper()
 
-	req, err := h.registrationRequest(name, extraArgs...)
+	info, err := h.deviceInfoFromArgs(name, extraArgs...)
 	if err != nil {
 		return Result{Args: append([]string{"register-context", name}, extraArgs...), Err: err, Stderr: err.Error()}
 	}
@@ -274,39 +273,34 @@ func (h *Harness) RegisterContext(name string, extraArgs ...string) Result {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
 	defer c.Close()
-	rpcReq, err := convertHarnessAPIType[rpcapi.GearRegisterRequest](req)
+	rpcReq, err := convertHarnessAPIType[rpcapi.PeerPutInfoRequest](info)
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
 	defer cancel()
-	resp, err := c.RegisterGear(ctx, "gear.registration.register", rpcReq)
+	resp, err := c.PutPeerInfo(ctx, "peer.info.put", rpcReq)
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
-	result, err := convertHarnessAPIType[gearservice.RegistrationResult](*resp)
-	if err != nil {
-		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
-	}
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(resp)
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
 	return Result{Args: append([]string{"register-context", name}, extraArgs...), Stdout: string(data)}
 }
 
-func (h *Harness) registrationRequest(_ string, extraArgs ...string) (gearservice.RegistrationRequest, error) {
-	req := gearservice.RegistrationRequest{}
+func (h *Harness) deviceInfoFromArgs(_ string, extraArgs ...string) (apitypes.DeviceInfo, error) {
 	device := apitypes.DeviceInfo{
 		Hardware: &apitypes.HardwareInfo{},
 	}
 	for i := 0; i < len(extraArgs); i++ {
 		flag := extraArgs[i]
 		if !strings.HasPrefix(flag, "--") {
-			return gearservice.RegistrationRequest{}, fmt.Errorf("unexpected register arg %q", flag)
+			return apitypes.DeviceInfo{}, fmt.Errorf("unexpected register arg %q", flag)
 		}
 		if i+1 >= len(extraArgs) {
-			return gearservice.RegistrationRequest{}, fmt.Errorf("missing value for %s", flag)
+			return apitypes.DeviceInfo{}, fmt.Errorf("missing value for %s", flag)
 		}
 		value := extraArgs[i+1]
 		i++
@@ -322,11 +316,10 @@ func (h *Harness) registrationRequest(_ string, extraArgs ...string) (gearservic
 		case "--hardware-revision":
 			device.Hardware.HardwareRevision = &value
 		default:
-			return gearservice.RegistrationRequest{}, fmt.Errorf("unsupported register arg %q", flag)
+			return apitypes.DeviceInfo{}, fmt.Errorf("unsupported register arg %q", flag)
 		}
 	}
-	req.Device = device
-	return req, nil
+	return device, nil
 }
 
 func convertHarnessAPIType[T any](value any) (T, error) {

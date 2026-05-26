@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
@@ -27,29 +26,18 @@ func TestStoreOpsHelpers(t *testing.T) {
 	}
 }
 
-func TestStoreOpsRegisterValidation(t *testing.T) {
+func TestStoreOpsEnsureConnectedGearValidation(t *testing.T) {
 	server := &Server{
 		Store: mustBadgerInMemory(t, nil),
 	}
 
-	_, err := server.register(context.Background(), giznet.PublicKey{}, gearservice.RegistrationRequest{})
+	_, err := server.EnsureConnectedGear(context.Background(), giznet.PublicKey{})
 	if err == nil || !strings.Contains(err.Error(), "empty public key") {
 		t.Fatalf("empty public key err = %v", err)
 	}
-
-	publicKey := giznet.PublicKey{1}
-	registered, err := server.register(context.Background(), publicKey, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{},
-	})
-	if err != nil {
-		t.Fatalf("register without token error = %v", err)
-	}
-	if registered.Status != apitypes.GearStatusActive || registered.Role != apitypes.GearRoleUnspecified {
-		t.Fatalf("registered gear = %+v", registered)
-	}
 }
 
-func TestStoreOpsEnsureConnectedGearAndRegister(t *testing.T) {
+func TestStoreOpsEnsureConnectedGear(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 	ctx := context.Background()
 	publicKey := giznet.PublicKey{1}
@@ -58,22 +46,11 @@ func TestStoreOpsEnsureConnectedGearAndRegister(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureConnectedGear error = %v", err)
 	}
-	if connected.Role != apitypes.GearRoleUnspecified || connected.Status != apitypes.GearStatusActive {
+	if connected.Role != apitypes.GearRoleGear || connected.Status != apitypes.GearStatusActive {
 		t.Fatalf("connected gear = %+v", connected)
 	}
-
-	name := "demo"
-	registered, err := server.register(ctx, publicKey, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: &name},
-	})
-	if err != nil {
-		t.Fatalf("register existing connected gear error = %v", err)
-	}
-	if registered.Role != apitypes.GearRoleUnspecified || registered.Status != apitypes.GearStatusActive {
-		t.Fatalf("registered gear = %+v", registered)
-	}
-	if registered.Device.Name == nil || *registered.Device.Name != "demo" {
-		t.Fatalf("registered device = %+v", registered.Device)
+	if connected.AutoRegistered == nil || !*connected.AutoRegistered {
+		t.Fatalf("connected auto_registered = %+v", connected.AutoRegistered)
 	}
 }
 

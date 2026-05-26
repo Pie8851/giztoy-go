@@ -18,14 +18,14 @@ func TestClientPublicRetryableReadsUserStory(t *testing.T) {
 	for i := range 4 {
 		c := h.ConnectClientFromContext("device-a")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		config, err := c.GetGearConfig(ctx, "gear.config.get")
+		info, err := c.GetPeerInfo(ctx, "peer.info.get")
 		cancel()
 		_ = c.Close()
 		if err != nil {
-			t.Fatalf("get device config on iteration %d: %v", i, err)
+			t.Fatalf("get device info on iteration %d: %v", i, err)
 		}
-		if config == nil {
-			t.Fatalf("expected public config response on iteration %d", i)
+		if info == nil || info.Sn == nil || *info.Sn != "device-a-sn" {
+			t.Fatalf("expected device info response on iteration %d, got %+v", i, info)
 		}
 		if _, err := h.RunCLIUntilSuccess("ping", "--context", "device-a"); err != nil {
 			t.Fatal(err)

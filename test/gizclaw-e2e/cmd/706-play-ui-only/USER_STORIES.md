@@ -25,5 +25,4 @@ to the Play UI instead of exposing partially aligned `play` subcommands.
 - `play register`, `play config`, `play ota`, and `play serve` are removed from
   the CLI surface.
 - Running `play` without `--listen` is safe and informational.
-- Running `play --listen` automatically registers the current context before the
-  UI is served.
+- Running `play --listen` prepares the current context before the UI is served.

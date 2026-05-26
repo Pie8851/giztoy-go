@@ -150,23 +150,23 @@ Cases:
 ### `300-*` Single-Client Public Flows
 
 Purpose:
-- validate one registered client context and its public device-facing flows
+- validate one prepared client context and its peer RPC device-facing flows
   without depending on removed `play` CLI subcommands
 
 Cases:
 - `300-client-public-read-sequence`
-  - register one device/client against the server through the harness API
-  - read public device configuration through the gear public API
+  - prepare one device/client against the server through the harness API
+  - read device info through peer RPC
   - verify the context remains usable through `ping`
   - status: implemented
 - `301-client-register-then-read`
-  - register one device/client against the server
+  - prepare one device/client against the server
   - read back registration info through admin CLI
   - verify user-visible state transitions
   - status: implemented
 - `302-client-public-retryable-reads`
-  - register one device/client against the server through the harness API
-  - repeat public device configuration reads
+  - prepare one device/client against the server through the harness API
+  - repeat peer RPC info reads
   - verify `ping` remains stable between reads
   - status: implemented
 
@@ -261,9 +261,9 @@ Cases:
   - verify the workspace remains reusable and identity persists
   - status: implemented
 - `603-repeat-command-after-partial-state`
-  - register one context through the harness API
-  - repeat the same registration request
-  - verify the duplicate registration fails predictably and the context remains usable
+  - prepare one context through the harness API
+  - repeat the same preparation request
+  - verify repeated preparation updates metadata predictably and the context remains usable
   - status: implemented
 
 ### `700-*` Failure And Recovery
@@ -299,7 +299,7 @@ Cases:
 - `706-play-ui-only`
   - verify `play` exposes only the UI `--listen` entry
   - verify removed `play` subcommands fail as unknown commands
-  - verify `play --listen` automatically registers the selected context
+  - verify `play --listen` prepares the selected context
   - status: implemented
 
 ## Ordering Strategy

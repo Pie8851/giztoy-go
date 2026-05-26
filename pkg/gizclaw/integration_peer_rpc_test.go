@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
@@ -19,19 +18,10 @@ func TestIntegrationPeerRPCRefresh(t *testing.T) {
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	device := newTestClient(t, ts)
-	deviceResult, err := register(context.Background(), device, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("gear")},
-	})
-	if err != nil {
-		t.Fatalf("device register error: %v", err)
-	}
+	devicePublicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{Name: strPtr("gear")})
 
 	device.Device = apitypes.DeviceInfo{
 		Hardware: &apitypes.HardwareInfo{
@@ -41,7 +31,7 @@ func TestIntegrationPeerRPCRefresh(t *testing.T) {
 		Sn: strPtr("sn-r1"),
 	}
 
-	result, err := waitForRefreshPeerSuccess(admin, deviceResult.Gear.PublicKey)
+	result, err := waitForRefreshPeerSuccess(admin, devicePublicKey)
 	if err != nil {
 		t.Fatalf("RefreshPeer error: %v", err)
 	}
@@ -54,24 +44,15 @@ func TestIntegrationPeerRPCRefreshReportsOfflineWhenDeviceDisconnected(t *testin
 	ts := startTestServer(t)
 
 	admin := newTestClient(t, ts)
-	if _, err := register(context.Background(), admin, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("admin")},
-	}); err != nil {
-		t.Fatalf("admin register error: %v", err)
-	}
+	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	device := newTestClient(t, ts)
-	deviceResult, err := register(context.Background(), device, gearservice.RegistrationRequest{
-		Device: apitypes.DeviceInfo{Name: strPtr("gear")},
-	})
-	if err != nil {
-		t.Fatalf("device register error: %v", err)
-	}
+	devicePublicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{Name: strPtr("gear")})
 	if err := device.Close(); err != nil {
 		t.Fatalf("device close error: %v", err)
 	}
 
-	err = waitForRefreshPeerFailure(admin, deviceResult.Gear.PublicKey)
+	err := waitForRefreshPeerFailure(admin, devicePublicKey)
 	if err == nil {
 		t.Fatal("RefreshPeer should fail when peer disconnects")
 	}

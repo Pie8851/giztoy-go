@@ -36,35 +36,3 @@ func (response refreshGear500JSONResponse) VisitRefreshPeerResponse(ctx *fiber.C
 	ctx.Status(500)
 	return ctx.JSON(&response)
 }
-
-type getConfig500JSONResponse apitypes.ErrorResponse
-
-func (response getConfig500JSONResponse) VisitGetConfigResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-	return ctx.JSON(&response)
-}
-
-type getInfo500JSONResponse apitypes.ErrorResponse
-
-func (response getInfo500JSONResponse) VisitGetInfoResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-	return ctx.JSON(&response)
-}
-
-type putInfo500JSONResponse apitypes.ErrorResponse
-
-func (response putInfo500JSONResponse) VisitPutInfoResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-	return ctx.JSON(&response)
-}
-
-type registerGear500JSONResponse apitypes.ErrorResponse
-
-func (response registerGear500JSONResponse) VisitRegisterGearResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-	return ctx.JSON(&response)
-}

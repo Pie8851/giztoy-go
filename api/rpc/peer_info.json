@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "RPC Peer Info Types",
-    "description": "Schemas for peer.info.get and peer.identifiers.get RPC methods.",
+    "description": "Schemas for peer.info.get and peer.info.put RPC methods.",
     "version": "1.0.0"
   },
   "paths": {},
@@ -14,15 +14,13 @@
         "properties": {}
       },
       "PeerGetInfoResponse": {
-        "$ref": "../type/refresh_info.json#/components/schemas/RefreshInfo"
+        "$ref": "../type/device_info.json#/components/schemas/DeviceInfo"
       },
-      "PeerGetIdentifiersRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {}
+      "PeerPutInfoRequest": {
+        "$ref": "../type/device_info.json#/components/schemas/DeviceInfo"
       },
-      "PeerGetIdentifiersResponse": {
-        "$ref": "../type/refresh_identifiers.json#/components/schemas/RefreshIdentifiers"
+      "PeerPutInfoResponse": {
+        "$ref": "../type/device_info.json#/components/schemas/DeviceInfo"
       }
     }
   }

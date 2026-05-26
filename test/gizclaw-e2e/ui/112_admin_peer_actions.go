@@ -1,5 +1,5 @@
 // User story: As an admin operator, I can perform peer actions against real
-// seeded registrations, including approve, refresh, block, and reset.
+// seeded registrations, including refresh, role updates, block, and reset.
 package ui_test
 
 import (
@@ -16,8 +16,8 @@ func adminPeerActionsStories() []Story {
 				page.ClickRole("button", "Refresh Peer")
 				page.ExpectText("Peer refreshed.")
 				page.ClickRole("tab", "Edit")
-				page.ClickRole("button", "Approve")
-				page.ExpectText("Peer approved as gear.")
+				page.ClickRole("button", "Save Role")
+				page.ExpectText("Peer role saved as gear.")
 				page.ClickRole("tab", "Edit")
 				page.ClickRole("button", "Block")
 				page.ExpectText("Peer blocked.")

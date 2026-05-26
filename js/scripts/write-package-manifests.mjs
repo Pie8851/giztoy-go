@@ -2,7 +2,6 @@ import { writeFile } from "node:fs/promises";
 
 const packages = [
   "adminservice",
-  "gearservice",
   "serverpublic",
 ];
 

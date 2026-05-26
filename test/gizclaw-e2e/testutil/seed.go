@@ -11,7 +11,6 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 )
 
 const (
@@ -44,12 +43,6 @@ func LoadRegistrationSeed(name string) (RegistrationSeed, error) {
 		return RegistrationSeed{}, err
 	}
 	return seed, nil
-}
-
-func RegistrationRequest(_ string, seed RegistrationSeed) gearservice.RegistrationRequest {
-	return gearservice.RegistrationRequest{
-		Device: seed.Device,
-	}
 }
 
 func LoadDeviceConfigSeed() (apitypes.Configuration, error) {

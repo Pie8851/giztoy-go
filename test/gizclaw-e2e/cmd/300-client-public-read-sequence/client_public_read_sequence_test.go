@@ -25,12 +25,12 @@ func TestClientPublicReadSequenceUserStory(t *testing.T) {
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	config, err := c.GetGearConfig(ctx, "gear.config.get")
+	info, err := c.GetPeerInfo(ctx, "peer.info.get")
 	if err != nil {
-		t.Fatalf("get device config: %v", err)
+		t.Fatalf("get device info: %v", err)
 	}
-	if config == nil {
-		t.Fatal("expected public config response")
+	if info == nil || info.Sn == nil || *info.Sn != "device-a-sn" {
+		t.Fatalf("expected device info response, got %+v", info)
 	}
 
 	if _, err := h.RunCLIUntilSuccess("ping", "--context", "device-a"); err != nil {

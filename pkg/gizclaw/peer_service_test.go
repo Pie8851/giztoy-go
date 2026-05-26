@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet/gizhttp"
 )
@@ -61,26 +60,26 @@ func TestPeerServiceValidateServices(t *testing.T) {
 			wantErr: "nil admin service",
 		},
 		{
-			name: "missing gear service",
-			service: &PeerService{
-				admin: &adminService{},
-			},
-			wantErr: "nil gear service",
-		},
-		{
 			name: "missing public service",
 			service: &PeerService{
-				admin: &adminService{},
-				gear:  &peer.Server{},
+				admin:   &adminService{},
+				manager: &Manager{},
 			},
 			wantErr: "nil public service",
 		},
 		{
+			name: "missing manager",
+			service: &PeerService{
+				admin: &adminService{},
+			},
+			wantErr: "nil manager",
+		},
+		{
 			name: "complete service bundle",
 			service: &PeerService{
-				admin:  &adminService{},
-				gear:   &peer.Server{},
-				public: &serverPublic{},
+				admin:   &adminService{},
+				manager: &Manager{},
+				public:  &serverPublic{},
 			},
 		},
 	}
@@ -118,7 +117,7 @@ func TestIntegrationPeerServiceServeConnClientCloseUnblocksAndMarksPeerOffline(t
 		SecurityPolicy: testGiznetSecurityPolicy{
 			allowService: func(_ giznet.PublicKey, service uint64) bool {
 				switch service {
-				case ServiceAdmin, ServiceGear, ServiceServerPublic, ServiceRPC:
+				case ServiceAdmin, ServiceServerPublic, ServiceRPC:
 					return true
 				default:
 					return false
@@ -195,7 +194,7 @@ func TestIntegrationPeerServiceServeConnClientCloseUnblocksAndMarksPeerOffline(t
 		if loadErr != nil {
 			return fmt.Errorf("auto-created gear not ready: %w", loadErr)
 		}
-		if gear.Role != apitypes.GearRoleUnspecified || gear.Status != apitypes.GearStatusActive {
+		if gear.Role != apitypes.GearRoleGear || gear.Status != apitypes.GearStatusActive {
 			return fmt.Errorf("auto-created gear = %+v", gear)
 		}
 

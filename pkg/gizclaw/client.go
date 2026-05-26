@@ -162,39 +162,21 @@ func (c *Client) Ping(ctx context.Context, id string) (*rpcapi.PingResponse, err
 	return c.rpcClient().Ping(ctx, stream, id)
 }
 
-func (c *Client) GetGearConfig(ctx context.Context, id string) (*rpcapi.GearGetConfigResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearGetConfigResponse, error) {
-		return client.GetConfig(ctx, conn, id)
+func (c *Client) GetPeerInfo(ctx context.Context, id string) (*rpcapi.PeerGetInfoResponse, error) {
+	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.PeerGetInfoResponse, error) {
+		return client.GetPeerInfo(ctx, conn, id)
 	})
 }
 
-func (c *Client) GetGearInfo(ctx context.Context, id string) (*rpcapi.GearGetInfoResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearGetInfoResponse, error) {
-		return client.GetInfo(ctx, conn, id)
+func (c *Client) PutPeerInfo(ctx context.Context, id string, request rpcapi.PeerPutInfoRequest) (*rpcapi.PeerPutInfoResponse, error) {
+	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.PeerPutInfoResponse, error) {
+		return client.PutPeerInfo(ctx, conn, id, request)
 	})
 }
 
-func (c *Client) PutGearInfo(ctx context.Context, id string, request rpcapi.GearPutInfoRequest) (*rpcapi.GearPutInfoResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearPutInfoResponse, error) {
-		return client.PutInfo(ctx, conn, id, request)
-	})
-}
-
-func (c *Client) GetGearRegistration(ctx context.Context, id string) (*rpcapi.GearGetRegistrationResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearGetRegistrationResponse, error) {
-		return client.GetRegistration(ctx, conn, id)
-	})
-}
-
-func (c *Client) RegisterGear(ctx context.Context, id string, request rpcapi.GearRegisterRequest) (*rpcapi.GearRegisterResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearRegisterResponse, error) {
-		return client.RegisterGear(ctx, conn, id, request)
-	})
-}
-
-func (c *Client) GetGearRuntime(ctx context.Context, id string) (*rpcapi.GearGetRuntimeResponse, error) {
-	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.GearGetRuntimeResponse, error) {
-		return client.GetRuntime(ctx, conn, id)
+func (c *Client) GetPeerRuntime(ctx context.Context, id string) (*rpcapi.PeerGetRuntimeResponse, error) {
+	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.PeerGetRuntimeResponse, error) {
+		return client.GetPeerRuntime(ctx, conn, id)
 	})
 }
 
@@ -358,10 +340,8 @@ func (c *Client) ProxyHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/admin/", http.StripPrefix("/api/admin", c.proxyService(ServiceAdmin)))
 	mux.Handle("/api/public/", http.StripPrefix("/api/public", c.proxyService(ServiceServerPublic)))
-	mux.Handle("/api/gear/", http.StripPrefix("/api/gear", c.proxyService(ServiceGear)))
 	mux.HandleFunc("/api/admin", redirectProxyPrefix("/api/admin/"))
 	mux.HandleFunc("/api/public", redirectProxyPrefix("/api/public/"))
-	mux.HandleFunc("/api/gear", redirectProxyPrefix("/api/gear/"))
 	mux.HandleFunc("/api", redirectProxyPrefix("/api/"))
 	return mux
 }

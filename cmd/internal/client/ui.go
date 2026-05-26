@@ -31,7 +31,7 @@ func ListenAndServeAdminUI(ctxName, addr string, out io.Writer) error {
 }
 
 func ListenAndServePlayUI(ctxName, addr string, out io.Writer) error {
-	return listenAndServeUI(ctxName, addr, "GizClaw Play UI", playui.FS(), out, ensurePlayRegistration, registerPlayUIRoutes(ctxName))
+	return listenAndServeUI(ctxName, addr, "GizClaw Play UI", playui.FS(), out, ensurePlayReady, registerPlayUIRoutes(ctxName))
 }
 
 func listenAndServeUI(
@@ -264,8 +264,8 @@ func (r *bufferedHTTPResponse) writeTo(w http.ResponseWriter) {
 	_, _ = r.body.WriteTo(w)
 }
 
-func ensurePlayRegistration(ctx context.Context, c *gizclaw.Client) error {
-	_, err := c.GetGearRegistration(ctx, "gear.registration.get")
+func ensurePlayReady(ctx context.Context, c *gizclaw.Client) error {
+	_, err := GetServerInfo(ctx, c)
 	return err
 }
 

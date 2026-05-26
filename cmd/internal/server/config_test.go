@@ -45,7 +45,7 @@ func TestAdminPublicKeySecurityPolicy(t *testing.T) {
 	if policy.AllowService(other, gizclaw.ServiceAdmin) {
 		t.Fatal("AllowService allowed a different public key")
 	}
-	if policy.AllowService(allowed, gizclaw.ServiceGear) {
+	if policy.AllowService(allowed, gizclaw.ServiceServerPublic) {
 		t.Fatal("AllowService allowed a non-admin service")
 	}
 }

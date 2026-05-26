@@ -6,7 +6,7 @@ interfaces, and shared API types under `pkg/gizclaw/api/`.
 
 ## Layout
 
-- `admin_service.json`, `gear_service.json`, `openai_service.json`, `server_public.json`,
+- `admin_service.json`, `openai_service.json`, `server_public.json`,
   and `rpc.json` define API surfaces or shared
   protocol documents.
 - `types.json` collects shared schemas and exposes them through
@@ -22,7 +22,6 @@ Generated Go code lives outside this directory:
 
 - `pkg/gizclaw/api/adminservice/generated.go`
 - `pkg/gizclaw/api/apitypes/generated.go`
-- `pkg/gizclaw/api/gearservice/generated.go`
 - `pkg/gizclaw/api/openaiservice/generated.go`
 - `pkg/gizclaw/api/rpcapi/generated.go`
 - `pkg/gizclaw/api/serverpublic/generated.go`
@@ -35,7 +34,6 @@ Common commands:
 ```sh
 go generate ./pkg/gizclaw/api/adminservice
 go generate ./pkg/gizclaw/api/apitypes
-go generate ./pkg/gizclaw/api/gearservice
 go generate ./pkg/gizclaw/api/openaiservice
 go generate ./pkg/gizclaw/api/rpcapi
 go generate ./pkg/gizclaw/api/serverpublic

@@ -13,7 +13,6 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
@@ -201,16 +200,33 @@ func probeServerPublicReady(c *gizclaw.Client) error {
 	return err
 }
 
-func register(ctx context.Context, c *gizclaw.Client, req gearservice.RegistrationRequest) (gearservice.RegistrationResult, error) {
-	rpcReq, err := convertIntegrationAPIType[rpcapi.GearRegisterRequest](req)
-	if err != nil {
-		return gearservice.RegistrationResult{}, err
+func ensureAdminPeer(t testing.TB, ts *testServer, c *gizclaw.Client, info apitypes.DeviceInfo) string {
+	t.Helper()
+	publicKey := c.KeyPair.Public
+	if err := waitUntil(testReadyTimeout, func() error {
+		gear, err := ts.server.Manager().Peers.LoadGear(context.Background(), publicKey)
+		if err != nil {
+			return err
+		}
+		gear.Role = apitypes.GearRoleAdmin
+		gear.Status = apitypes.GearStatusActive
+		gear.Device = info
+		if _, err := ts.server.Manager().Peers.SaveGear(context.Background(), gear); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ensure admin peer: %v", err)
 	}
-	resp, err := c.RegisterGear(ctx, "gear.registration.register", rpcReq)
-	if err != nil {
-		return gearservice.RegistrationResult{}, err
+	return publicKey.String()
+}
+
+func ensureGearInfo(t testing.TB, c *gizclaw.Client, info apitypes.DeviceInfo) string {
+	t.Helper()
+	if _, err := putInfo(context.Background(), c, info); err != nil {
+		t.Fatalf("PutInfo error: %v", err)
 	}
-	return convertIntegrationAPIType[gearservice.RegistrationResult](*resp)
+	return c.KeyPair.Public.String()
 }
 
 func getServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo, error) {
@@ -229,7 +245,7 @@ func getServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo,
 }
 
 func getInfo(ctx context.Context, c *gizclaw.Client) (apitypes.DeviceInfo, error) {
-	resp, err := c.GetGearInfo(ctx, "gear.info.get")
+	resp, err := c.GetPeerInfo(ctx, "peer.info.get")
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
@@ -237,11 +253,11 @@ func getInfo(ctx context.Context, c *gizclaw.Client) (apitypes.DeviceInfo, error
 }
 
 func putInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
-	rpcReq, err := convertIntegrationAPIType[rpcapi.GearPutInfoRequest](info)
+	rpcReq, err := convertIntegrationAPIType[rpcapi.PeerPutInfoRequest](info)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	resp, err := c.PutGearInfo(ctx, "gear.info.put", rpcReq)
+	resp, err := c.PutPeerInfo(ctx, "peer.info.put", rpcReq)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
@@ -249,31 +265,11 @@ func putInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (
 }
 
 func getRuntime(ctx context.Context, c *gizclaw.Client) (apitypes.Runtime, error) {
-	resp, err := c.GetGearRuntime(ctx, "gear.runtime.get")
+	resp, err := c.GetPeerRuntime(ctx, "peer.runtime.get")
 	if err != nil {
 		return apitypes.Runtime{}, err
 	}
 	return convertIntegrationAPIType[apitypes.Runtime](*resp)
-}
-
-func getRegistration(ctx context.Context, c *gizclaw.Client) (apitypes.Registration, error) {
-	resp, err := c.GetGearRegistration(ctx, "gear.registration.get")
-	if err != nil {
-		return apitypes.Registration{}, err
-	}
-	return convertIntegrationAPIType[apitypes.Registration](*resp)
-}
-
-func getConfig(ctx context.Context, c *gizclaw.Client) (apitypes.Configuration, error) {
-	resp, err := c.GetGearConfig(ctx, "gear.config.get")
-	if err != nil {
-		return apitypes.Configuration{}, err
-	}
-	cfg, err := convertIntegrationAPIType[apitypes.Configuration](*resp)
-	if err != nil {
-		return apitypes.Configuration{}, err
-	}
-	return cfg, nil
 }
 
 func convertIntegrationAPIType[T any](value any) (T, error) {

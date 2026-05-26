@@ -6,7 +6,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/serverpublic"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/publiclogin"
@@ -17,7 +16,6 @@ const (
 	ServiceRPC          uint64 = 0x00
 	ServiceServerPublic uint64 = 0x01
 	ServiceAdmin        uint64 = 0x10
-	ServiceGear         uint64 = 0x11
 
 	ProtocolEvent       byte = 0x03
 	ProtocolStampedOpus byte = 0x10
@@ -31,7 +29,6 @@ type serverPublic struct {
 // PeerService serves one peer connection.
 type PeerService struct {
 	admin   *adminService
-	gear    gearservice.StrictServerInterface
 	public  *serverPublic
 	manager *Manager
 }
@@ -60,7 +57,6 @@ func (s *PeerService) ServeConn(conn *giznet.Conn) error {
 
 	var g errgroup.Group
 	g.Go(func() error { return s.serveAdmin(conn) })
-	g.Go(func() error { return s.serveGear(conn) })
 	g.Go(func() error { return s.servePublic(conn) })
 
 	return g.Wait()
@@ -78,8 +74,8 @@ func (s *PeerService) validateServices() error {
 	switch {
 	case s.admin == nil:
 		return errors.New("gizclaw: nil admin service")
-	case s.gear == nil:
-		return errors.New("gizclaw: nil gear service")
+	case s.manager == nil:
+		return errors.New("gizclaw: nil manager")
 	case s.public == nil:
 		return errors.New("gizclaw: nil public service")
 	default:

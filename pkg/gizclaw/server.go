@@ -52,7 +52,7 @@ type Server struct {
 	httpHandler http.Handler
 }
 
-// ServeHTTP exposes server-public and gear APIs over ordinary HTTP.
+// ServeHTTP exposes server-public APIs over ordinary HTTP.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.httpHandler.ServeHTTP(w, r)
 }
@@ -244,7 +244,6 @@ func (s *Server) init() error {
 			ACL:                         aclServer,
 			ResourceManager:             resourceManager,
 		},
-		gear: peersServer,
 		public: &serverPublic{
 			ServerPublicService: peersServer,
 			ServerPublic:        publicLoginServer,

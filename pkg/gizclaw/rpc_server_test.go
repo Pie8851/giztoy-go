@@ -11,23 +11,20 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/serverpublic"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
-func TestRPCClientServerGearMethods(t *testing.T) {
+func TestRPCClientServerPeerMethods(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	publicKey := giznet.PublicKey{1, 2, 3}
-	fake := &fakeRPCGearService{
+	fake := &fakeRPCPeerService{
 		t:               t,
 		wantPublicKey:   publicKey,
-		config:          apitypes.Configuration{},
 		info:            apitypes.DeviceInfo{Name: stringPtr("gear-1")},
-		registration:    testRPCRegistration(publicKey, now),
 		runtime:         apitypes.Runtime{Online: true, LastSeenAt: now},
-		registerResult:  testRPCRegistrationResult(publicKey, now),
 		putInfoResponse: apitypes.DeviceInfo{Name: stringPtr("gear-2")},
 	}
 	serverPublicKey := giznet.PublicKey{9, 8, 7}
@@ -40,7 +37,7 @@ func TestRPCClientServerGearMethods(t *testing.T) {
 			BuildCommit: "test",
 		},
 	}
-	server := &rpcServer{gear: fake, serverInfo: serverInfo, callerPublicKey: publicKey}
+	server := &rpcServer{peer: fake, serverInfo: serverInfo, callerPublicKey: publicKey}
 	client := &rpcClient{}
 
 	infoResp := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.ServerGetInfoResponse, error) {
@@ -50,21 +47,15 @@ func TestRPCClientServerGearMethods(t *testing.T) {
 		t.Fatalf("GetServerInfo() = %+v", infoResp)
 	}
 
-	if got := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearGetConfigResponse, error) {
-		return client.GetConfig(context.Background(), conn, "config")
-	}); got == nil {
-		t.Fatal("GetConfig() returned nil")
-	}
-
-	info := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearGetInfoResponse, error) {
-		return client.GetInfo(context.Background(), conn, "info")
+	info := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.PeerGetInfoResponse, error) {
+		return client.GetPeerInfo(context.Background(), conn, "info")
 	})
 	if info.Name == nil || *info.Name != "gear-1" {
 		t.Fatalf("GetInfo() = %+v", info)
 	}
 
-	putInfo := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearPutInfoResponse, error) {
-		return client.PutInfo(context.Background(), conn, "put-info", rpcapi.GearPutInfoRequest{Name: stringPtr("gear-put")})
+	putInfo := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.PeerPutInfoResponse, error) {
+		return client.PutPeerInfo(context.Background(), conn, "put-info", rpcapi.PeerPutInfoRequest{Name: stringPtr("gear-put")})
 	})
 	if putInfo.Name == nil || *putInfo.Name != "gear-2" {
 		t.Fatalf("PutInfo() = %+v", putInfo)
@@ -73,25 +64,8 @@ func TestRPCClientServerGearMethods(t *testing.T) {
 		t.Fatalf("PutInfo request = %+v", fake.lastPutInfo)
 	}
 
-	registration := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearGetRegistrationResponse, error) {
-		return client.GetRegistration(context.Background(), conn, "registration")
-	})
-	if registration.PublicKey != publicKey.String() {
-		t.Fatalf("GetRegistration() = %+v", registration)
-	}
-
-	register := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearRegisterResponse, error) {
-		return client.RegisterGear(context.Background(), conn, "register", rpcapi.GearRegisterRequest{Device: rpcapi.DeviceInfo{Name: stringPtr("gear-register")}})
-	})
-	if register.Registration.PublicKey != publicKey.String() {
-		t.Fatalf("RegisterGear() = %+v", register)
-	}
-	if fake.lastRegister == nil || fake.lastRegister.Device.Name == nil || *fake.lastRegister.Device.Name != "gear-register" {
-		t.Fatalf("RegisterGear request = %+v", fake.lastRegister)
-	}
-
-	runtime := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.GearGetRuntimeResponse, error) {
-		return client.GetRuntime(context.Background(), conn, "runtime")
+	runtime := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.PeerGetRuntimeResponse, error) {
+		return client.GetPeerRuntime(context.Background(), conn, "runtime")
 	})
 	if !runtime.Online || !runtime.LastSeenAt.Equal(now) {
 		t.Fatalf("GetRuntime() = %+v", runtime)
@@ -131,7 +105,7 @@ func TestRPCServerPingClientHandle(t *testing.T) {
 	}
 }
 
-func TestRPCClientHandlePeerInfoMethods(t *testing.T) {
+func TestRPCClientHandleDeviceInfoMethods(t *testing.T) {
 	serverSide, clientSide := net.Pipe()
 	defer serverSide.Close()
 	defer clientSide.Close()
@@ -157,12 +131,12 @@ func TestRPCClientHandlePeerInfoMethods(t *testing.T) {
 	}()
 
 	caller := &rpcClient{}
-	info, err := caller.GetPeerInfo(context.Background(), serverSide, "peer-info")
+	info, err := caller.GetDeviceInfo(context.Background(), serverSide, "device-info")
 	if err != nil {
-		t.Fatalf("GetPeerInfo() error = %v", err)
+		t.Fatalf("GetDeviceInfo() error = %v", err)
 	}
 	if info.Name == nil || *info.Name != "gear-1" || info.Manufacturer == nil || *info.Manufacturer != "Acme" {
-		t.Fatalf("GetPeerInfo() = %+v", info)
+		t.Fatalf("GetDeviceInfo() = %+v", info)
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("Handle(info) error = %v", err)
@@ -176,25 +150,25 @@ func TestRPCClientHandlePeerInfoMethods(t *testing.T) {
 		errCh <- (&rpcClient{peer: device}).Handle(clientSide)
 	}()
 
-	identifiers, err := caller.GetPeerIdentifiers(context.Background(), serverSide, "peer-identifiers")
+	identifiers, err := caller.GetDeviceIdentifiers(context.Background(), serverSide, "device-identifiers")
 	if err != nil {
-		t.Fatalf("GetPeerIdentifiers() error = %v", err)
+		t.Fatalf("GetDeviceIdentifiers() error = %v", err)
 	}
 	if identifiers.Sn == nil || *identifiers.Sn != "sn-1" || identifiers.Imeis == nil || len(*identifiers.Imeis) != 1 {
-		t.Fatalf("GetPeerIdentifiers() = %+v", identifiers)
+		t.Fatalf("GetDeviceIdentifiers() = %+v", identifiers)
 	}
 	if err := <-errCh; err != nil {
 		t.Fatalf("Handle(identifiers) error = %v", err)
 	}
 }
 
-func TestRPCServerGearErrorResponse(t *testing.T) {
-	server := &rpcServer{gear: &fakeRPCGearService{getInfoError: apitypes.NewErrorResponse("GEAR_NOT_FOUND", "missing")}}
+func TestRPCServerPeerErrorResponse(t *testing.T) {
+	server := &rpcServer{peer: &fakeRPCPeerService{getInfoError: peer.ErrPeerNotFound}}
 	client := &rpcClient{}
-	_, err := callRPCPairErr(server, func(conn net.Conn) (*rpcapi.GearGetInfoResponse, error) {
-		return client.GetInfo(context.Background(), conn, "info-error")
+	_, err := callRPCPairErr(server, func(conn net.Conn) (*rpcapi.PeerGetInfoResponse, error) {
+		return client.GetPeerInfo(context.Background(), conn, "info-error")
 	})
-	if err == nil || err.Error() != "rpc: missing" {
+	if err == nil || err.Error() != "rpc: gear: gear not found" {
 		t.Fatalf("GetInfo(error) err = %v", err)
 	}
 	var rpcErr rpcapi.Error
@@ -218,20 +192,20 @@ func TestRPCServerContextCancelsWhenConnCloses(t *testing.T) {
 	serverSide, clientSide := net.Pipe()
 	defer serverSide.Close()
 
-	server := &rpcServer{gear: &fakeRPCGearService{waitRuntimeContext: true}}
+	server := &rpcServer{peer: &fakeRPCPeerService{waitPutInfoContext: true}}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- server.Handle(serverSide)
 	}()
 
-	params := mustRPCParams(rpcapi.GearGetRuntimeRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetRuntimeRequest)
-	if err := rpcapi.WriteRequest(clientSide, newRPCRequest("runtime-cancel", rpcapi.RPCMethodGearRuntimeGet, params)); err != nil {
+	params := mustRPCParams(rpcapi.PeerPutInfoRequest{}, (*rpcapi.RPCRequest_Params).FromPeerPutInfoRequest)
+	if err := rpcapi.WriteRequest(clientSide, newRPCRequest("put-info-cancel", rpcapi.RPCMethodPeerInfoPut, params)); err != nil {
 		t.Fatalf("WriteRequest() error = %v", err)
 	}
 	_ = clientSide.Close()
 
-	if err := <-errCh; !errors.Is(err, io.EOF) {
-		t.Fatalf("Handle() error = %v, want %v", err, io.EOF)
+	if err := <-errCh; !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("Handle() error = %v, want %v or %v", err, io.EOF, io.ErrClosedPipe)
 	}
 }
 
@@ -253,7 +227,6 @@ func TestRPCServerDispatchErrorPaths(t *testing.T) {
 		t.Fatalf("dispatch(ping missing params) = %+v, %v", resp, err)
 	}
 
-	errResp := apitypes.NewErrorResponse("ERR", "boom")
 	for _, tc := range []struct {
 		name    string
 		server  *rpcServer
@@ -261,57 +234,21 @@ func TestRPCServerDispatchErrorPaths(t *testing.T) {
 		code    rpcapi.RPCErrorCode
 	}{
 		{
-			name:    "config not found",
-			server:  &rpcServer{gear: &fakeRPCGearService{configError: errResp}},
-			request: newRPCRequest("config", rpcapi.RPCMethodGearConfigGet, mustRPCParams(rpcapi.GearGetConfigRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetConfigRequest)),
-			code:    404,
-		},
-		{
-			name:    "put info bad request",
-			server:  &rpcServer{gear: &fakeRPCGearService{putInfo400: errResp}},
-			request: newRPCRequest("put-400", rpcapi.RPCMethodGearInfoPut, mustRPCParams(rpcapi.GearPutInfoRequest{}, (*rpcapi.RPCRequest_Params).FromGearPutInfoRequest)),
-			code:    rpcapi.RPCErrorCode(400),
-		},
-		{
-			name:    "put info not found",
-			server:  &rpcServer{gear: &fakeRPCGearService{putInfo404: errResp}},
-			request: newRPCRequest("put-404", rpcapi.RPCMethodGearInfoPut, mustRPCParams(rpcapi.GearPutInfoRequest{}, (*rpcapi.RPCRequest_Params).FromGearPutInfoRequest)),
-			code:    404,
-		},
-		{
-			name:    "registration not found",
-			server:  &rpcServer{gear: &fakeRPCGearService{registrationError: errResp}},
-			request: newRPCRequest("registration", rpcapi.RPCMethodGearRegistrationGet, mustRPCParams(rpcapi.GearGetRegistrationRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetRegistrationRequest)),
-			code:    404,
-		},
-		{
-			name:    "register bad request",
-			server:  &rpcServer{gear: &fakeRPCGearService{register400: errResp}},
-			request: newRPCRequest("register-400", rpcapi.RPCMethodGearRegistrationRegister, mustRPCParams(rpcapi.GearRegisterRequest{}, (*rpcapi.RPCRequest_Params).FromGearRegisterRequest)),
-			code:    400,
-		},
-		{
-			name:    "register conflict",
-			server:  &rpcServer{gear: &fakeRPCGearService{register409: errResp}},
-			request: newRPCRequest("register-409", rpcapi.RPCMethodGearRegistrationRegister, mustRPCParams(rpcapi.GearRegisterRequest{}, (*rpcapi.RPCRequest_Params).FromGearRegisterRequest)),
-			code:    409,
-		},
-		{
-			name:    "runtime bad request",
-			server:  &rpcServer{gear: &fakeRPCGearService{runtimeError: errResp}},
-			request: newRPCRequest("runtime", rpcapi.RPCMethodGearRuntimeGet, mustRPCParams(rpcapi.GearGetRuntimeRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetRuntimeRequest)),
-			code:    400,
-		},
-		{
-			name:    "run test unimplemented",
-			server:  &rpcServer{},
-			request: newRPCRequest("run-test", rpcapi.RPCMethodGearTestRun, mustRPCParams(rpcapi.GearRunTestRequest{Mode: rpcapi.GearTestModeAudioPlay}, (*rpcapi.RPCRequest_Params).FromGearRunTestRequest)),
+			name:    "put info internal error",
+			server:  &rpcServer{peer: &fakeRPCPeerService{putInfoError: errors.New("boom")}},
+			request: newRPCRequest("put-400", rpcapi.RPCMethodPeerInfoPut, mustRPCParams(rpcapi.PeerPutInfoRequest{}, (*rpcapi.RPCRequest_Params).FromPeerPutInfoRequest)),
 			code:    rpcapi.RPCErrorCodeInternalError,
 		},
 		{
-			name:    "unexpected response",
-			server:  &rpcServer{gear: &fakeRPCGearService{unexpectedConfig: true}},
-			request: newRPCRequest("unexpected", rpcapi.RPCMethodGearConfigGet, mustRPCParams(rpcapi.GearGetConfigRequest{}, (*rpcapi.RPCRequest_Params).FromGearGetConfigRequest)),
+			name:    "put info not found",
+			server:  &rpcServer{peer: &fakeRPCPeerService{putInfoError: peer.ErrPeerNotFound}},
+			request: newRPCRequest("put-404", rpcapi.RPCMethodPeerInfoPut, mustRPCParams(rpcapi.PeerPutInfoRequest{}, (*rpcapi.RPCRequest_Params).FromPeerPutInfoRequest)),
+			code:    404,
+		},
+		{
+			name:    "runtime missing service",
+			server:  &rpcServer{},
+			request: newRPCRequest("runtime", rpcapi.RPCMethodPeerRuntimeGet, mustRPCParams(rpcapi.PeerGetRuntimeRequest{}, (*rpcapi.RPCRequest_Params).FromPeerGetRuntimeRequest)),
 			code:    rpcapi.RPCErrorCodeInternalError,
 		},
 	} {
@@ -326,21 +263,14 @@ func TestRPCServerDispatchErrorPaths(t *testing.T) {
 		})
 	}
 
-	if resp, err := (&rpcServer{gear: &fakeRPCGearService{}}).dispatch(context.Background(), newRPCRequest("put-missing", rpcapi.RPCMethodGearInfoPut, nil)); err != nil || resp.Error == nil || resp.Error.Message != "missing params" {
+	if resp, err := (&rpcServer{peer: &fakeRPCPeerService{}}).dispatch(context.Background(), newRPCRequest("put-missing", rpcapi.RPCMethodPeerInfoPut, nil)); err != nil || resp.Error == nil || resp.Error.Message != "missing params" {
 		t.Fatalf("dispatch(put missing params) = %+v, %v", resp, err)
 	}
-	if resp, err := (&rpcServer{gear: &fakeRPCGearService{}}).dispatch(context.Background(), newRPCRequest("register-missing", rpcapi.RPCMethodGearRegistrationRegister, nil)); err != nil || resp.Error == nil || resp.Error.Message != "missing params" {
-		t.Fatalf("dispatch(register missing params) = %+v, %v", resp, err)
-	}
-	if resp, err := (&rpcServer{}).dispatch(context.Background(), newRPCRequest("run-test-missing", rpcapi.RPCMethodGearTestRun, nil)); err != nil || resp.Error == nil || resp.Error.Message != "missing params" {
-		t.Fatalf("dispatch(run test missing params) = %+v, %v", resp, err)
-	}
-
 	var invalidParamsReq rpcapi.RPCRequest
-	if err := json.Unmarshal([]byte(`{"v":1,"id":"invalid","method":"gear.config.get","params":[]}`), &invalidParamsReq); err != nil {
+	if err := json.Unmarshal([]byte(`{"v":1,"id":"invalid","method":"peer.info.get","params":[]}`), &invalidParamsReq); err != nil {
 		t.Fatalf("unmarshal invalid params request: %v", err)
 	}
-	if resp, err := (&rpcServer{gear: &fakeRPCGearService{}}).dispatch(context.Background(), &invalidParamsReq); err != nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeInvalidParams {
+	if resp, err := (&rpcServer{peer: &fakeRPCPeerService{}}).dispatch(context.Background(), &invalidParamsReq); err != nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeInvalidParams {
 		t.Fatalf("dispatch(invalid params) = %+v, %v", resp, err)
 	}
 }
@@ -371,29 +301,18 @@ func callRPCPairErr[T any](server *rpcServer, call func(net.Conn) (*T, error)) (
 	return result, err
 }
 
-type fakeRPCGearService struct {
+type fakeRPCPeerService struct {
 	t             *testing.T
 	wantPublicKey giznet.PublicKey
 
-	config          apitypes.Configuration
 	info            apitypes.DeviceInfo
 	putInfoResponse apitypes.DeviceInfo
-	registration    apitypes.Registration
-	registerResult  gearservice.RegistrationResult
 	runtime         apitypes.Runtime
 
-	lastPutInfo        *gearservice.PutInfoJSONRequestBody
-	lastRegister       *gearservice.RegisterGearJSONRequestBody
-	configError        apitypes.ErrorResponse
-	getInfoError       apitypes.ErrorResponse
-	putInfo400         apitypes.ErrorResponse
-	putInfo404         apitypes.ErrorResponse
-	registrationError  apitypes.ErrorResponse
-	register400        apitypes.ErrorResponse
-	register409        apitypes.ErrorResponse
-	runtimeError       apitypes.ErrorResponse
-	unexpectedConfig   bool
-	waitRuntimeContext bool
+	lastPutInfo        *apitypes.DeviceInfo
+	getInfoError       error
+	putInfoError       error
+	waitPutInfoContext bool
 }
 
 type fakeRPCServerInfoService struct {
@@ -415,101 +334,38 @@ func (f *fakeRPCServerInfoService) GetServerInfo(ctx context.Context, _ serverpu
 	return serverpublic.GetServerInfo200JSONResponse(f.info), nil
 }
 
-func (f *fakeRPCGearService) GetConfig(ctx context.Context, _ gearservice.GetConfigRequestObject) (gearservice.GetConfigResponseObject, error) {
-	f.checkPublicKey(ctx)
-	if f.unexpectedConfig {
-		return nil, nil
+func (f *fakeRPCPeerService) GetSelfInfo(_ context.Context, publicKey giznet.PublicKey) (apitypes.DeviceInfo, error) {
+	f.checkPublicKey(publicKey)
+	if f.getInfoError != nil {
+		return apitypes.DeviceInfo{}, f.getInfoError
 	}
-	if f.configError.Error.Code != "" {
-		return gearservice.GetConfig404JSONResponse(f.configError), nil
-	}
-	return gearservice.GetConfig200JSONResponse(f.config), nil
+	return f.info, nil
 }
 
-func (f *fakeRPCGearService) GetInfo(ctx context.Context, _ gearservice.GetInfoRequestObject) (gearservice.GetInfoResponseObject, error) {
-	f.checkPublicKey(ctx)
-	if f.getInfoError.Error.Code != "" {
-		return gearservice.GetInfo404JSONResponse(f.getInfoError), nil
-	}
-	return gearservice.GetInfo200JSONResponse(f.info), nil
-}
-
-func (f *fakeRPCGearService) PutInfo(ctx context.Context, request gearservice.PutInfoRequestObject) (gearservice.PutInfoResponseObject, error) {
-	f.checkPublicKey(ctx)
-	f.lastPutInfo = request.Body
-	if f.putInfo400.Error.Code != "" {
-		return gearservice.PutInfo400JSONResponse(f.putInfo400), nil
-	}
-	if f.putInfo404.Error.Code != "" {
-		return gearservice.PutInfo404JSONResponse(f.putInfo404), nil
-	}
-	return gearservice.PutInfo200JSONResponse(f.putInfoResponse), nil
-}
-
-func (f *fakeRPCGearService) GetRegistration(ctx context.Context, _ gearservice.GetRegistrationRequestObject) (gearservice.GetRegistrationResponseObject, error) {
-	f.checkPublicKey(ctx)
-	if f.registrationError.Error.Code != "" {
-		return gearservice.GetRegistration404JSONResponse(f.registrationError), nil
-	}
-	return gearservice.GetRegistration200JSONResponse(f.registration), nil
-}
-
-func (f *fakeRPCGearService) RegisterGear(ctx context.Context, request gearservice.RegisterGearRequestObject) (gearservice.RegisterGearResponseObject, error) {
-	f.checkPublicKey(ctx)
-	f.lastRegister = request.Body
-	if f.register400.Error.Code != "" {
-		return gearservice.RegisterGear400JSONResponse(f.register400), nil
-	}
-	if f.register409.Error.Code != "" {
-		return gearservice.RegisterGear409JSONResponse(f.register409), nil
-	}
-	return gearservice.RegisterGear200JSONResponse(f.registerResult), nil
-}
-
-func (f *fakeRPCGearService) GetRuntime(ctx context.Context, _ gearservice.GetRuntimeRequestObject) (gearservice.GetRuntimeResponseObject, error) {
-	f.checkPublicKey(ctx)
-	if f.waitRuntimeContext {
+func (f *fakeRPCPeerService) PutSelfInfo(ctx context.Context, publicKey giznet.PublicKey, info apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
+	f.checkPublicKey(publicKey)
+	f.lastPutInfo = &info
+	if f.waitPutInfoContext {
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return apitypes.DeviceInfo{}, ctx.Err()
 	}
-	if f.runtimeError.Error.Code != "" {
-		return gearservice.GetRuntime400JSONResponse(f.runtimeError), nil
+	if f.putInfoError != nil {
+		return apitypes.DeviceInfo{}, f.putInfoError
 	}
-	return gearservice.GetRuntime200JSONResponse(f.runtime), nil
+	return f.putInfoResponse, nil
 }
 
-func (f *fakeRPCGearService) checkPublicKey(ctx context.Context) {
+func (f *fakeRPCPeerService) GetSelfRuntime(_ context.Context, publicKey giznet.PublicKey) apitypes.Runtime {
+	f.checkPublicKey(publicKey)
+	return f.runtime
+}
+
+func (f *fakeRPCPeerService) checkPublicKey(publicKey giznet.PublicKey) {
 	if f.t == nil || f.wantPublicKey == (giznet.PublicKey{}) {
 		return
 	}
-	if got := gearservice.CallerPublicKey(ctx); got != f.wantPublicKey {
-		f.t.Fatalf("caller public key = %s, want %s", got, f.wantPublicKey)
-	}
-}
-
-func testRPCRegistration(publicKey giznet.PublicKey, now time.Time) apitypes.Registration {
-	return apitypes.Registration{
-		PublicKey: publicKey.String(),
-		Role:      apitypes.GearRoleGear,
-		Status:    apitypes.GearStatusActive,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-}
-
-func testRPCRegistrationResult(publicKey giznet.PublicKey, now time.Time) gearservice.RegistrationResult {
-	registration := testRPCRegistration(publicKey, now)
-	return gearservice.RegistrationResult{
-		Gear: apitypes.Gear{
-			PublicKey:     publicKey.String(),
-			Role:          apitypes.GearRoleGear,
-			Status:        apitypes.GearStatusActive,
-			Device:        apitypes.DeviceInfo{Name: stringPtr("gear-registered")},
-			Configuration: apitypes.Configuration{},
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		},
-		Registration: registration,
+	if publicKey != f.wantPublicKey {
+		f.t.Fatalf("caller public key = %s, want %s", publicKey, f.wantPublicKey)
 	}
 }
 

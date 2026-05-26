@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/gearservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 )
 
@@ -61,30 +59,6 @@ func probeServerPublicReady(c *gizclaw.Client) error {
 	return err
 }
 
-func Register(ctx context.Context, c *gizclaw.Client, req gearservice.RegistrationRequest) (gearservice.RegistrationResult, error) {
-	rpcReq, err := convertClientAPIType[rpcapi.GearRegisterRequest](req)
-	if err != nil {
-		return gearservice.RegistrationResult{}, err
-	}
-	resp, err := c.RegisterGear(ctx, "gear.registration.register", rpcReq)
-	if err != nil {
-		return gearservice.RegistrationResult{}, err
-	}
-	return convertClientAPIType[gearservice.RegistrationResult](*resp)
-}
-
-func GetConfig(ctx context.Context, c *gizclaw.Client) (apitypes.Configuration, error) {
-	resp, err := c.GetGearConfig(ctx, "gear.config.get")
-	if err != nil {
-		return apitypes.Configuration{}, err
-	}
-	cfg, err := convertClientAPIType[apitypes.Configuration](*resp)
-	if err != nil {
-		return apitypes.Configuration{}, err
-	}
-	return cfg, nil
-}
-
 func GetServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo, error) {
 	api, err := c.ServerPublicClient()
 	if err != nil {
@@ -101,7 +75,7 @@ func GetServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo,
 }
 
 func GetInfo(ctx context.Context, c *gizclaw.Client) (apitypes.DeviceInfo, error) {
-	resp, err := c.GetGearInfo(ctx, "gear.info.get")
+	resp, err := c.GetPeerInfo(ctx, "peer.info.get")
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
@@ -109,11 +83,11 @@ func GetInfo(ctx context.Context, c *gizclaw.Client) (apitypes.DeviceInfo, error
 }
 
 func PutInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
-	rpcReq, err := convertClientAPIType[rpcapi.GearPutInfoRequest](info)
+	rpcReq, err := convertClientAPIType[rpcapi.PeerPutInfoRequest](info)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	resp, err := c.PutGearInfo(ctx, "gear.info.put", rpcReq)
+	resp, err := c.PutPeerInfo(ctx, "peer.info.put", rpcReq)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
@@ -122,35 +96,19 @@ func PutInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (
 
 func SetName(ctx context.Context, c *gizclaw.Client, name string) (apitypes.DeviceInfo, error) {
 	info, err := GetInfo(ctx, c)
-	if err == nil {
-		info.Name = &name
-		return PutInfo(ctx, c, info)
-	}
-	var rpcErr rpcapi.Error
-	if !errors.As(err, &rpcErr) || rpcErr.Code != rpcapi.RPCErrorCodeNotFound {
-		return apitypes.DeviceInfo{}, err
-	}
-	result, err := Register(ctx, c, gearservice.RegistrationRequest{Device: apitypes.DeviceInfo{Name: &name}})
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	return result.Gear.Device, nil
+	info.Name = &name
+	return PutInfo(ctx, c, info)
 }
 
 func GetRuntime(ctx context.Context, c *gizclaw.Client) (apitypes.Runtime, error) {
-	resp, err := c.GetGearRuntime(ctx, "gear.runtime.get")
+	resp, err := c.GetPeerRuntime(ctx, "peer.runtime.get")
 	if err != nil {
 		return apitypes.Runtime{}, err
 	}
 	return convertClientAPIType[apitypes.Runtime](*resp)
-}
-
-func GetRegistration(ctx context.Context, c *gizclaw.Client) (apitypes.Registration, error) {
-	resp, err := c.GetGearRegistration(ctx, "gear.registration.get")
-	if err != nil {
-		return apitypes.Registration{}, err
-	}
-	return convertClientAPIType[apitypes.Registration](*resp)
 }
 
 func convertClientAPIType[T any](value any) (T, error) {

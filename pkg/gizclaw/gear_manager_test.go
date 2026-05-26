@@ -67,7 +67,7 @@ func TestManagerSetPeerUpAndDownUpdatesRuntime(t *testing.T) {
 	}
 }
 
-func TestManagerEnsureGearCreatesDefaultUnspecifiedGear(t *testing.T) {
+func TestManagerEnsureGearCreatesDefaultGear(t *testing.T) {
 	service := &peer.Server{Store: mustBadgerInMemory(t, nil)}
 	manager := NewManager(service)
 	ctx := context.Background()
@@ -80,8 +80,8 @@ func TestManagerEnsureGearCreatesDefaultUnspecifiedGear(t *testing.T) {
 	if created.PublicKey != key.String() {
 		t.Fatalf("PublicKey = %q, want %q", created.PublicKey, key.String())
 	}
-	if created.Role != apitypes.GearRoleUnspecified {
-		t.Fatalf("Role = %q, want unspecified", created.Role)
+	if created.Role != apitypes.GearRoleGear {
+		t.Fatalf("Role = %q, want gear", created.Role)
 	}
 	if created.Status != apitypes.GearStatusActive {
 		t.Fatalf("Status = %q, want active", created.Status)
@@ -94,7 +94,7 @@ func TestManagerEnsureGearCreatesDefaultUnspecifiedGear(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGear error = %v", err)
 	}
-	if loaded.Role != apitypes.GearRoleUnspecified || loaded.Status != apitypes.GearStatusActive {
+	if loaded.Role != apitypes.GearRoleGear || loaded.Status != apitypes.GearStatusActive {
 		t.Fatalf("loaded gear = %+v", loaded)
 	}
 }

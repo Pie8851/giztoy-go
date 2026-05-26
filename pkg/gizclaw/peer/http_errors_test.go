@@ -44,19 +44,6 @@ func TestHTTPErrorHelpersAndVisitors(t *testing.T) {
 	checkStatus("refresh-gear", func(c *fiber.Ctx) error {
 		return refreshGear500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitRefreshPeerResponse(c)
 	})
-	checkStatus("get-config", func(c *fiber.Ctx) error {
-		return getConfig500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetConfigResponse(c)
-	})
-	checkStatus("get-info", func(c *fiber.Ctx) error {
-		return getInfo500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetInfoResponse(c)
-	})
-	checkStatus("put-info", func(c *fiber.Ctx) error {
-		return putInfo500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitPutInfoResponse(c)
-	})
-	checkStatus("register-gear", func(c *fiber.Ctx) error {
-		return registerGear500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitRegisterGearResponse(c)
-	})
-
 	var (
 		_ apitypes.ErrorResponse
 		_ apitypes.ErrorResponse
