@@ -289,10 +289,6 @@ func (s *Server) resolveByIMEI(ctx context.Context, tac, serial string) (giznet.
 	return s.resolveSingle(ctx, imeiKey(tac, serial), ErrPeerNotFound)
 }
 
-func (s *Server) listByLabel(ctx context.Context, key, value, cursor string, limit int) ([]apitypes.Gear, bool, *string, error) {
-	return s.listByReferencePrefixPage(ctx, labelPrefix(key, value), cursor, limit)
-}
-
 func (s *Server) writeGearLocked(ctx context.Context, gear apitypes.Gear, previous *apitypes.Gear) error {
 	store, err := s.store()
 	if err != nil {
@@ -342,65 +338,6 @@ func (s *Server) resolveSingle(ctx context.Context, key kv.Key, notFound error) 
 		return giznet.PublicKey{}, err
 	}
 	return publicKey, nil
-}
-
-func (s *Server) listByReferencePrefixPage(ctx context.Context, prefix kv.Key, cursor string, limit int) ([]apitypes.Gear, bool, *string, error) {
-	store, err := s.store()
-	if err != nil {
-		return nil, false, nil, err
-	}
-	entries, err := kv.ListAfter(ctx, store, prefix, cursorAfterKey(prefix, cursor), limit+1)
-	if err != nil {
-		return nil, false, nil, err
-	}
-	pageEntries, hasNext, nextCursor := paginateEntries(entries, limit)
-
-	items := make([]apitypes.Gear, 0, len(pageEntries))
-	for _, entry := range pageEntries {
-		if len(entry.Key) == 0 {
-			continue
-		}
-		publicKey, err := publicKeyFromText(entry.Key[len(entry.Key)-1])
-		if err != nil {
-			return nil, false, nil, err
-		}
-		gear, err := s.get(ctx, publicKey)
-		if err != nil {
-			if errors.Is(err, ErrPeerNotFound) {
-				continue
-			}
-			return nil, false, nil, err
-		}
-		items = append(items, gear)
-	}
-	return items, hasNext, nextCursor, nil
-}
-
-func cursorAfterKey(prefix kv.Key, cursor string) kv.Key {
-	if cursor == "" {
-		return nil
-	}
-	after := append(kv.Key{}, prefix...)
-	return append(after, cursor)
-}
-
-func paginateEntries(entries []kv.Entry, limit int) ([]kv.Entry, bool, *string) {
-	if len(entries) == 0 {
-		return nil, false, nil
-	}
-
-	hasNext := len(entries) > limit
-	if !hasNext {
-		return entries, false, nil
-	}
-
-	page := entries[:limit]
-	if len(page) == 0 || len(page[len(page)-1].Key) == 0 {
-		return page, true, nil
-	}
-
-	nextCursor := page[len(page)-1].Key[len(page[len(page)-1].Key)-1]
-	return page, true, &nextCursor
 }
 
 func (s *Server) store() (kv.Store, error) {

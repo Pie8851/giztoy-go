@@ -60,9 +60,6 @@ func TestIntegrationGearServiceLifecycle(t *testing.T) {
 	if _, err := getPeerRuntime(context.Background(), admin, devicePublicKey); err != nil {
 		t.Fatalf("GetPeerRuntime error: %v", err)
 	}
-	if _, err := listPeersByLabel(context.Background(), admin, "batch", "cn/east"); err != nil {
-		t.Fatalf("ListPeersByLabel error: %v", err)
-	}
 	if _, err := blockPeer(context.Background(), admin, devicePublicKey); err != nil {
 		t.Fatalf("BlockPeer error: %v", err)
 	}

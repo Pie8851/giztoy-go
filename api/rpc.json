@@ -28,25 +28,25 @@
           "params": {
             "oneOf": [
               {
-                "$ref": "./rpc/ping.json#/components/schemas/PingRequest"
+                "$ref": "./rpc/peer.json#/components/schemas/PingRequest"
               },
               {
-                "$ref": "./rpc/device_info.json#/components/schemas/DeviceGetInfoRequest"
+                "$ref": "./rpc/gear.json#/components/schemas/DeviceGetInfoRequest"
               },
               {
-                "$ref": "./rpc/device_info.json#/components/schemas/DeviceGetIdentifiersRequest"
+                "$ref": "./rpc/gear.json#/components/schemas/DeviceGetIdentifiersRequest"
               },
               {
-                "$ref": "./rpc/server_info.json#/components/schemas/ServerGetInfoRequest"
+                "$ref": "./rpc/public.json#/components/schemas/ServerGetInfoRequest"
               },
               {
-                "$ref": "./rpc/peer_info.json#/components/schemas/PeerGetInfoRequest"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerGetInfoRequest"
               },
               {
-                "$ref": "./rpc/peer_info.json#/components/schemas/PeerPutInfoRequest"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerPutInfoRequest"
               },
               {
-                "$ref": "./rpc/peer_runtime.json#/components/schemas/PeerGetRuntimeRequest"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRuntimeRequest"
               }
             ]
           }
@@ -68,25 +68,25 @@
           "result": {
             "oneOf": [
               {
-                "$ref": "./rpc/ping.json#/components/schemas/PingResponse"
+                "$ref": "./rpc/peer.json#/components/schemas/PingResponse"
               },
               {
-                "$ref": "./rpc/device_info.json#/components/schemas/DeviceGetInfoResponse"
+                "$ref": "./rpc/gear.json#/components/schemas/DeviceGetInfoResponse"
               },
               {
-                "$ref": "./rpc/device_info.json#/components/schemas/DeviceGetIdentifiersResponse"
+                "$ref": "./rpc/gear.json#/components/schemas/DeviceGetIdentifiersResponse"
               },
               {
-                "$ref": "./rpc/server_info.json#/components/schemas/ServerGetInfoResponse"
+                "$ref": "./rpc/public.json#/components/schemas/ServerGetInfoResponse"
               },
               {
-                "$ref": "./rpc/peer_info.json#/components/schemas/PeerGetInfoResponse"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerGetInfoResponse"
               },
               {
-                "$ref": "./rpc/peer_info.json#/components/schemas/PeerPutInfoResponse"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerPutInfoResponse"
               },
               {
-                "$ref": "./rpc/peer_runtime.json#/components/schemas/PeerGetRuntimeResponse"
+                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRuntimeResponse"
               }
             ]
           },

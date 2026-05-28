@@ -165,18 +165,6 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 		t.Fatalf("ResolvePeerBySN = %+v", resolvedSN)
 	}
 
-	byLabelResp, err := server.ListPeersByLabel(ctx, adminservice.ListPeersByLabelRequestObject{Key: labelKey, Value: labelValue})
-	if err != nil {
-		t.Fatalf("ListPeersByLabel error: %v", err)
-	}
-	byLabel, ok := byLabelResp.(adminservice.ListPeersByLabel200JSONResponse)
-	if !ok {
-		t.Fatalf("ListPeersByLabel response type = %T", byLabelResp)
-	}
-	if len(byLabel.Items) != 1 || byLabel.Items[0].PublicKey != peerPublicKey {
-		t.Fatalf("ListPeersByLabel items = %+v", byLabel.Items)
-	}
-
 	resolveIMEIResp, err := server.ResolvePeerByIMEI(ctx, adminservice.ResolvePeerByIMEIRequestObject{
 		Tac:    tac,
 		Serial: serial,
@@ -252,7 +240,6 @@ func TestServerListPeersPagination(t *testing.T) {
 	gearB := giznet.PublicKey{2}
 	gearC := giznet.PublicKey{3}
 	gearAText := gearA.String()
-	gearBText := gearB.String()
 
 	registerGear := func(publicKey giznet.PublicKey, labelValue string) {
 		saveTestGear(t, server, publicKey, apitypes.DeviceInfo{
@@ -286,45 +273,6 @@ func TestServerListPeersPagination(t *testing.T) {
 		t.Fatalf("ListPeers paged items = %+v", listed.Items)
 	}
 
-	firstFilteredResp, err := server.ListPeersByLabel(context.Background(), adminservice.ListPeersByLabelRequestObject{
-		Key:   "region",
-		Value: "cn",
-		Params: adminservice.ListPeersByLabelParams{
-			Limit: &limit,
-		},
-	})
-	if err != nil {
-		t.Fatalf("ListPeersByLabel pagination error: %v", err)
-	}
-	firstFiltered, ok := firstFilteredResp.(adminservice.ListPeersByLabel200JSONResponse)
-	if !ok {
-		t.Fatalf("ListPeersByLabel response type = %T", firstFilteredResp)
-	}
-	if !firstFiltered.HasNext || firstFiltered.NextCursor == nil || *firstFiltered.NextCursor != gearAText {
-		t.Fatalf("ListPeersByLabel first page metadata = %+v", firstFiltered)
-	}
-
-	filteredResp, err := server.ListPeersByLabel(context.Background(), adminservice.ListPeersByLabelRequestObject{
-		Key:   "region",
-		Value: "cn",
-		Params: adminservice.ListPeersByLabelParams{
-			Cursor: firstFiltered.NextCursor,
-			Limit:  &limit,
-		},
-	})
-	if err != nil {
-		t.Fatalf("ListPeersByLabel second page error: %v", err)
-	}
-	filtered, ok := filteredResp.(adminservice.ListPeersByLabel200JSONResponse)
-	if !ok {
-		t.Fatalf("ListPeersByLabel second response type = %T", filteredResp)
-	}
-	if filtered.HasNext || filtered.NextCursor != nil {
-		t.Fatalf("ListPeersByLabel pagination metadata = %+v", filtered)
-	}
-	if len(filtered.Items) != 1 || filtered.Items[0].PublicKey != gearBText {
-		t.Fatalf("ListPeersByLabel paged items = %+v", filtered.Items)
-	}
 }
 
 func TestServerListPeersPaginationPreservesCreationOrder(t *testing.T) {

@@ -712,34 +712,6 @@ func getPeerRuntime(ctx context.Context, c *gizclaw.Client, publicKey string) (a
 	return apitypes.Runtime{}, responseError(resp.StatusCode(), resp.Body)
 }
 
-func listPeersByLabel(ctx context.Context, c *gizclaw.Client, key, value string) ([]apitypes.Registration, error) {
-	api, err := c.ServerAdminClient()
-	if err != nil {
-		return nil, err
-	}
-	limit := int32(200)
-	var cursor *string
-	items := make([]apitypes.Registration, 0)
-	for {
-		resp, err := api.ListPeersByLabelWithResponse(ctx, key, value, &adminservice.ListPeersByLabelParams{
-			Cursor: cursor,
-			Limit:  &limit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if resp.JSON200 == nil {
-			return nil, responseError(resp.StatusCode(), resp.Body, resp.JSON500)
-		}
-		items = append(items, resp.JSON200.Items...)
-		if !resp.JSON200.HasNext || resp.JSON200.NextCursor == nil || *resp.JSON200.NextCursor == "" {
-			return items, nil
-		}
-		next := string(*resp.JSON200.NextCursor)
-		cursor = &next
-	}
-}
-
 func deletePeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {

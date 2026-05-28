@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "RPC Server Info Types",
-    "description": "Schemas for the server.info.get RPC method.",
+    "title": "RPC Public Service Types",
+    "description": "Schemas for public bootstrap RPC methods.",
     "version": "1.0.0"
   },
   "paths": {},

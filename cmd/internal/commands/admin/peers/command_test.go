@@ -48,7 +48,6 @@ func TestPeerCommandsReturnContextErrors(t *testing.T) {
 		{"info", "device-pk"},
 		{"config", "device-pk"},
 		{"runtime", "device-pk"},
-		{"list-by-label", "batch", "test"},
 		{"delete", "device-pk"},
 		{"refresh", "device-pk"},
 	}
@@ -77,7 +76,6 @@ func TestPeerCommandsUseClientOperations(t *testing.T) {
 		{"info", "device-pk"},
 		{"config", "device-pk"},
 		{"runtime", "device-pk"},
-		{"list-by-label", "batch", "test"},
 		{"delete", "device-pk"},
 		{"refresh", "device-pk"},
 	}
@@ -110,7 +108,6 @@ func stubPeerCommandClients(t *testing.T) func() {
 	originalConfig := getPeerConfig
 	originalPutConfig := putPeerConfig
 	originalRuntime := getPeerRuntime
-	originalListLabel := listPeersByLabel
 	originalDelete := deletePeer
 	originalRefresh := refreshPeer
 
@@ -150,9 +147,6 @@ func stubPeerCommandClients(t *testing.T) func() {
 		online := true
 		return apitypes.Runtime{Online: online}, nil
 	}
-	listPeersByLabel = func(context.Context, *gizclaw.Client, string, string) ([]apitypes.Registration, error) {
-		return []apitypes.Registration{registration}, nil
-	}
 	deletePeer = func(context.Context, *gizclaw.Client, string) (apitypes.Registration, error) {
 		return registration, nil
 	}
@@ -172,7 +166,6 @@ func stubPeerCommandClients(t *testing.T) func() {
 		getPeerConfig = originalConfig
 		putPeerConfig = originalPutConfig
 		getPeerRuntime = originalRuntime
-		listPeersByLabel = originalListLabel
 		deletePeer = originalDelete
 		refreshPeer = originalRefresh
 	}

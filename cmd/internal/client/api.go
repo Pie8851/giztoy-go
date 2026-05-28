@@ -308,30 +308,6 @@ func GetPeerRuntime(ctx context.Context, c *gizclaw.Client, publicKey string) (a
 	return apitypes.Runtime{}, responseError(resp.StatusCode(), resp.Body)
 }
 
-func ListPeersByLabel(ctx context.Context, c *gizclaw.Client, key, value string) ([]apitypes.Registration, error) {
-	api, err := c.ServerAdminClient()
-	if err != nil {
-		return nil, err
-	}
-	return collectAllPages(func(cursor *string, limit *int32) (pagedItems[apitypes.Registration], error) {
-		resp, err := api.ListPeersByLabelWithResponse(ctx, key, value, &adminservice.ListPeersByLabelParams{
-			Cursor: cursor,
-			Limit:  limit,
-		})
-		if err != nil {
-			return pagedItems[apitypes.Registration]{}, err
-		}
-		if resp.JSON200 == nil {
-			return pagedItems[apitypes.Registration]{}, responseError(resp.StatusCode(), resp.Body, resp.JSON500)
-		}
-		return pagedItems[apitypes.Registration]{
-			HasNext:    resp.JSON200.HasNext,
-			Items:      resp.JSON200.Items,
-			NextCursor: resp.JSON200.NextCursor,
-		}, nil
-	})
-}
-
 func DeletePeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {

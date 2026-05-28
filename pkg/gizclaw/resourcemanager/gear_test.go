@@ -142,10 +142,6 @@ func (f *fakePeers) ResolvePeerByIMEI(context.Context, adminservice.ResolvePeerB
 	return nil, nil
 }
 
-func (f *fakePeers) ListPeersByLabel(context.Context, adminservice.ListPeersByLabelRequestObject) (adminservice.ListPeersByLabelResponseObject, error) {
-	return nil, nil
-}
-
 func (f *fakePeers) ResolvePeerBySN(context.Context, adminservice.ResolvePeerBySNRequestObject) (adminservice.ResolvePeerBySNResponseObject, error) {
 	return nil, nil
 }

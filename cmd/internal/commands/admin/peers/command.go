@@ -55,7 +55,6 @@ var (
 	getPeerConfig      = client.GetPeerConfig
 	putPeerConfig      = client.PutPeerConfig
 	getPeerRuntime     = client.GetPeerRuntime
-	listPeersByLabel   = client.ListPeersByLabel
 	deletePeer         = client.DeletePeer
 	refreshPeer        = client.RefreshPeer
 )
@@ -227,23 +226,6 @@ func newCmd(use, short string) *cobra.Command {
 					return err
 				}
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(item)
-			},
-		},
-		&cobra.Command{
-			Use:   "list-by-label <key> <value>",
-			Short: "List peers by label",
-			Args:  cobra.ExactArgs(2),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				c, err := connectFromContext(ctxName)
-				if err != nil {
-					return err
-				}
-				defer c.Close()
-				items, err := listPeersByLabel(context.Background(), c, args[0], args[1])
-				if err != nil {
-					return err
-				}
-				return json.NewEncoder(cmd.OutOrStdout()).Encode(items)
 			},
 		},
 		&cobra.Command{

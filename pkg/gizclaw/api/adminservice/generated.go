@@ -436,15 +436,6 @@ type ListPeersParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// ListPeersByLabelParams defines parameters for ListPeersByLabel.
-type ListPeersByLabelParams struct {
-	// Cursor Opaque cursor returned by the previous list response
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
-
-	// Limit Maximum number of items to return. Omitted or non-positive values use the default page size; values above 200 are clamped.
-	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
 // ListVoicesParams defines parameters for ListVoices.
 type ListVoicesParams struct {
 	// Source Filter voices by source
@@ -871,9 +862,6 @@ type ClientInterface interface {
 
 	// ResolvePeerByIMEI request
 	ResolvePeerByIMEI(ctx context.Context, tac string, serial string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// ListPeersByLabel request
-	ListPeersByLabel(ctx context.Context, key string, value string, params *ListPeersByLabelParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResolvePeerBySN request
 	ResolvePeerBySN(ctx context.Context, sn string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1919,18 +1907,6 @@ func (c *Client) ListPeers(ctx context.Context, params *ListPeersParams, reqEdit
 
 func (c *Client) ResolvePeerByIMEI(ctx context.Context, tac string, serial string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolvePeerByIMEIRequest(c.Server, tac, serial)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) ListPeersByLabel(ctx context.Context, key string, value string, params *ListPeersByLabelParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListPeersByLabelRequest(c.Server, key, value, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5129,85 +5105,6 @@ func NewResolvePeerByIMEIRequest(server string, tac string, serial string) (*htt
 	return req, nil
 }
 
-// NewListPeersByLabelRequest generates requests for ListPeersByLabel
-func NewListPeersByLabelRequest(server string, key string, value string, params *ListPeersByLabelParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "value", value, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/peers/label/%s/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Cursor != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Limit != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewResolvePeerBySNRequest generates requests for ResolvePeerBySN
 func NewResolvePeerBySNRequest(server string, sn string) (*http.Request, error) {
 	var err error
@@ -6972,9 +6869,6 @@ type ClientWithResponsesInterface interface {
 	// ResolvePeerByIMEIWithResponse request
 	ResolvePeerByIMEIWithResponse(ctx context.Context, tac string, serial string, reqEditors ...RequestEditorFn) (*ResolvePeerByIMEIResponse, error)
 
-	// ListPeersByLabelWithResponse request
-	ListPeersByLabelWithResponse(ctx context.Context, key string, value string, params *ListPeersByLabelParams, reqEditors ...RequestEditorFn) (*ListPeersByLabelResponse, error)
-
 	// ResolvePeerBySNWithResponse request
 	ResolvePeerBySNWithResponse(ctx context.Context, sn string, reqEditors ...RequestEditorFn) (*ResolvePeerBySNResponse, error)
 
@@ -8448,29 +8342,6 @@ func (r ResolvePeerByIMEIResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ResolvePeerByIMEIResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type ListPeersByLabelResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *RegistrationList
-	JSON500      *externalRef0.ErrorResponse
-}
-
-// Status returns HTTPResponse.Status
-func (r ListPeersByLabelResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ListPeersByLabelResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -9989,15 +9860,6 @@ func (c *ClientWithResponses) ResolvePeerByIMEIWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseResolvePeerByIMEIResponse(rsp)
-}
-
-// ListPeersByLabelWithResponse request returning *ListPeersByLabelResponse
-func (c *ClientWithResponses) ListPeersByLabelWithResponse(ctx context.Context, key string, value string, params *ListPeersByLabelParams, reqEditors ...RequestEditorFn) (*ListPeersByLabelResponse, error) {
-	rsp, err := c.ListPeersByLabel(ctx, key, value, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseListPeersByLabelResponse(rsp)
 }
 
 // ResolvePeerBySNWithResponse request returning *ResolvePeerBySNResponse
@@ -12686,39 +12548,6 @@ func ParseResolvePeerByIMEIResponse(rsp *http.Response) (*ResolvePeerByIMEIRespo
 	return response, nil
 }
 
-// ParseListPeersByLabelResponse parses an HTTP response from a ListPeersByLabelWithResponse call
-func ParseListPeersByLabelResponse(rsp *http.Response) (*ListPeersByLabelResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListPeersByLabelResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RegistrationList
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest externalRef0.ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseResolvePeerBySNResponse parses an HTTP response from a ResolvePeerBySNWithResponse call
 func ParseResolvePeerBySNResponse(rsp *http.Response) (*ResolvePeerBySNResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14303,9 +14132,6 @@ type ServerInterface interface {
 	// Resolve peer public key by IMEI
 	// (GET /peers/imei/{tac}/{serial})
 	ResolvePeerByIMEI(c *fiber.Ctx, tac string, serial string) error
-	// List peers by label
-	// (GET /peers/label/{key}/{value})
-	ListPeersByLabel(c *fiber.Ctx, key string, value string, params ListPeersByLabelParams) error
 	// Resolve peer public key by serial number
 	// (GET /peers/sn/{sn})
 	ResolvePeerBySN(c *fiber.Ctx, sn string) error
@@ -15456,53 +15282,6 @@ func (siw *ServerInterfaceWrapper) ResolvePeerByIMEI(c *fiber.Ctx) error {
 	return siw.Handler.ResolvePeerByIMEI(c, tac, serial)
 }
 
-// ListPeersByLabel operation middleware
-func (siw *ServerInterfaceWrapper) ListPeersByLabel(c *fiber.Ctx) error {
-
-	var err error
-
-	// ------------- Path parameter "key" -------------
-	var key string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "key", c.Params("key"), &key, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter key: %w", err).Error())
-	}
-
-	// ------------- Path parameter "value" -------------
-	var value string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "value", c.Params("value"), &value, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter value: %w", err).Error())
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListPeersByLabelParams
-
-	var query url.Values
-	query, err = url.ParseQuery(string(c.Request().URI().QueryString()))
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for query string: %w", err).Error())
-	}
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", query, &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter cursor: %w", err).Error())
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", query, &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter limit: %w", err).Error())
-	}
-
-	return siw.Handler.ListPeersByLabel(c, key, value, params)
-}
-
 // ResolvePeerBySN operation middleware
 func (siw *ServerInterfaceWrapper) ResolvePeerBySN(c *fiber.Ctx) error {
 
@@ -16260,8 +16039,6 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Get(options.BaseURL+"/peers", wrapper.ListPeers)
 
 	router.Get(options.BaseURL+"/peers/imei/:tac/:serial", wrapper.ResolvePeerByIMEI)
-
-	router.Get(options.BaseURL+"/peers/label/:key/:value", wrapper.ListPeersByLabel)
 
 	router.Get(options.BaseURL+"/peers/sn/:sn", wrapper.ResolvePeerBySN)
 
@@ -18352,34 +18129,6 @@ func (response ResolvePeerByIMEI404JSONResponse) VisitResolvePeerByIMEIResponse(
 	return ctx.JSON(&response)
 }
 
-type ListPeersByLabelRequestObject struct {
-	Key    string `json:"key"`
-	Value  string `json:"value"`
-	Params ListPeersByLabelParams
-}
-
-type ListPeersByLabelResponseObject interface {
-	VisitListPeersByLabelResponse(ctx *fiber.Ctx) error
-}
-
-type ListPeersByLabel200JSONResponse RegistrationList
-
-func (response ListPeersByLabel200JSONResponse) VisitListPeersByLabelResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(200)
-
-	return ctx.JSON(&response)
-}
-
-type ListPeersByLabel500JSONResponse externalRef0.ErrorResponse
-
-func (response ListPeersByLabel500JSONResponse) VisitListPeersByLabelResponse(ctx *fiber.Ctx) error {
-	ctx.Response().Header.Set("Content-Type", "application/json")
-	ctx.Status(500)
-
-	return ctx.JSON(&response)
-}
-
 type ResolvePeerBySNRequestObject struct {
 	Sn string `json:"sn"`
 }
@@ -19805,9 +19554,6 @@ type StrictServerInterface interface {
 	// Resolve peer public key by IMEI
 	// (GET /peers/imei/{tac}/{serial})
 	ResolvePeerByIMEI(ctx context.Context, request ResolvePeerByIMEIRequestObject) (ResolvePeerByIMEIResponseObject, error)
-	// List peers by label
-	// (GET /peers/label/{key}/{value})
-	ListPeersByLabel(ctx context.Context, request ListPeersByLabelRequestObject) (ListPeersByLabelResponseObject, error)
 	// Resolve peer public key by serial number
 	// (GET /peers/sn/{sn})
 	ResolvePeerBySN(ctx context.Context, request ResolvePeerBySNRequestObject) (ResolvePeerBySNResponseObject, error)
@@ -21544,35 +21290,6 @@ func (sh *strictHandler) ResolvePeerByIMEI(ctx *fiber.Ctx, tac string, serial st
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	} else if validResponse, ok := response.(ResolvePeerByIMEIResponseObject); ok {
 		if err := validResponse.VisitResolvePeerByIMEIResponse(ctx); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
-}
-
-// ListPeersByLabel operation middleware
-func (sh *strictHandler) ListPeersByLabel(ctx *fiber.Ctx, key string, value string, params ListPeersByLabelParams) error {
-	var request ListPeersByLabelRequestObject
-
-	request.Key = key
-	request.Value = value
-	request.Params = params
-
-	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
-		return sh.ssi.ListPeersByLabel(ctx.UserContext(), request.(ListPeersByLabelRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListPeersByLabel")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	} else if validResponse, ok := response.(ListPeersByLabelResponseObject); ok {
-		if err := validResponse.VisitListPeersByLabelResponse(ctx); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	} else if response != nil {

@@ -43,7 +43,6 @@ type Server struct {
 type PeerAdminService interface {
 	ListPeers(context.Context, adminservice.ListPeersRequestObject) (adminservice.ListPeersResponseObject, error)
 	ResolvePeerByIMEI(context.Context, adminservice.ResolvePeerByIMEIRequestObject) (adminservice.ResolvePeerByIMEIResponseObject, error)
-	ListPeersByLabel(context.Context, adminservice.ListPeersByLabelRequestObject) (adminservice.ListPeersByLabelResponseObject, error)
 	ResolvePeerBySN(context.Context, adminservice.ResolvePeerBySNRequestObject) (adminservice.ResolvePeerBySNResponseObject, error)
 	DeletePeer(context.Context, adminservice.DeletePeerRequestObject) (adminservice.DeletePeerResponseObject, error)
 	GetPeer(context.Context, adminservice.GetPeerRequestObject) (adminservice.GetPeerResponseObject, error)
@@ -89,24 +88,6 @@ func (s *Server) ResolvePeerByIMEI(ctx context.Context, request adminservice.Res
 		return adminservice.ResolvePeerByIMEI404JSONResponse(apitypes.NewErrorResponse("PEER_IMEI_NOT_FOUND", err.Error())), nil
 	}
 	return adminservice.ResolvePeerByIMEI200JSONResponse(adminservice.PublicKeyResponse{PublicKey: publicKey.String()}), nil
-}
-
-// ListPeersByLabel implements `adminservice.StrictServerInterface.ListPeersByLabel`.
-func (s *Server) ListPeersByLabel(ctx context.Context, request adminservice.ListPeersByLabelRequestObject) (adminservice.ListPeersByLabelResponseObject, error) {
-	key, err := pathUnescape(request.Key)
-	if err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-	value, err := pathUnescape(request.Value)
-	if err != nil {
-		return nil, fmt.Errorf("invalid params: %w", err)
-	}
-	cursor, limit := normalizeListParams(request.Params.Cursor, request.Params.Limit)
-	items, hasNext, nextCursor, err := s.listByLabel(ctx, key, value, cursor, limit)
-	if err != nil {
-		return adminservice.ListPeersByLabel500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
-	}
-	return adminservice.ListPeersByLabel200JSONResponse(toAdminRegistrationList(items, hasNext, nextCursor)), nil
 }
 
 // ResolvePeerBySN implements `adminservice.StrictServerInterface.ResolvePeerBySN`.

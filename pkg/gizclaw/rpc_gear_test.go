@@ -17,7 +17,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
-func TestRPCClientServerPeerMethods(t *testing.T) {
+func TestRPCGearPeerMethods(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	publicKey := giznet.PublicKey{1, 2, 3}
 	fake := &fakeRPCPeerService{
@@ -27,25 +27,8 @@ func TestRPCClientServerPeerMethods(t *testing.T) {
 		runtime:         apitypes.Runtime{Online: true, LastSeenAt: now},
 		putInfoResponse: apitypes.DeviceInfo{Name: stringPtr("gear-2")},
 	}
-	serverPublicKey := giznet.PublicKey{9, 8, 7}
-	serverInfo := &fakeRPCServerInfoService{
-		t:             t,
-		wantPublicKey: publicKey,
-		info: apitypes.ServerInfo{
-			PublicKey:   serverPublicKey.String(),
-			ServerTime:  123,
-			BuildCommit: "test",
-		},
-	}
-	server := &rpcServer{peer: fake, serverInfo: serverInfo, callerPublicKey: publicKey}
+	server := &rpcServer{peer: fake, callerPublicKey: publicKey}
 	client := &rpcClient{}
-
-	infoResp := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.ServerGetInfoResponse, error) {
-		return client.GetServerInfo(context.Background(), conn, "server-info")
-	})
-	if infoResp.PublicKey != serverPublicKey.String() || infoResp.ServerTime != 123 || infoResp.BuildCommit != "test" {
-		t.Fatalf("GetServerInfo() = %+v", infoResp)
-	}
 
 	info := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.PeerGetInfoResponse, error) {
 		return client.GetPeerInfo(context.Background(), conn, "info")
@@ -69,39 +52,6 @@ func TestRPCClientServerPeerMethods(t *testing.T) {
 	})
 	if !runtime.Online || !runtime.LastSeenAt.Equal(now) {
 		t.Fatalf("GetRuntime() = %+v", runtime)
-	}
-}
-
-func TestRPCServerPingHandle(t *testing.T) {
-	server := &rpcServer{}
-	client := &rpcClient{}
-	ping := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.PingResponse, error) {
-		return client.Ping(context.Background(), conn, "ping")
-	})
-	if ping.ServerTime <= 0 {
-		t.Fatalf("Ping() = %+v", ping)
-	}
-}
-
-func TestRPCServerPingClientHandle(t *testing.T) {
-	serverSide, clientSide := net.Pipe()
-	defer serverSide.Close()
-	defer clientSide.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- (&rpcClient{}).Handle(clientSide)
-	}()
-
-	ping, err := (&rpcServer{}).Ping(context.Background(), serverSide, "server-ping")
-	if err != nil {
-		t.Fatalf("Ping() error = %v", err)
-	}
-	if ping.ServerTime <= 0 {
-		t.Fatalf("Ping() = %+v", ping)
-	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("Handle() error = %v", err)
 	}
 }
 

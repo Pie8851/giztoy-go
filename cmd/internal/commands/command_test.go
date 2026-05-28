@@ -290,7 +290,6 @@ func TestAdminPeersHelp(t *testing.T) {
 	for _, want := range []string{
 		"resolve-sn",
 		"resolve-imei",
-		"list-by-label",
 		"info",
 		"config",
 		"put-config",
