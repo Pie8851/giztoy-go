@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
-	"io/fs"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -13,73 +11,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/GizClaw/gizclaw-go/pkg/store/filesystem"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// testDirFS is a minimal [filesystem.FS] backed by a local directory.
-// Used only in tests — production implementations live elsewhere.
-type testDirFS struct{ root string }
-
-var _ filesystem.FS = (*testDirFS)(nil)
-
-func newTestDirFS(root string) *testDirFS { return &testDirFS{root: root} }
-
-func (d *testDirFS) Open(name string) (fs.File, error) {
-	return os.Open(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Create(name string) (io.WriteCloser, error) {
-	path := filepath.Join(d.root, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	return os.Create(path)
-}
-
-func (d *testDirFS) Remove(name string) error {
-	err := os.Remove(filepath.Join(d.root, name))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-func (d *testDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	return os.ReadDir(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Stat(name string) (fs.FileInfo, error) {
-	return os.Stat(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Glob(pattern string) ([]string, error) {
-	return fs.Glob(d, pattern)
-}
-
-func (d *testDirFS) Sub(dir string) (fs.FS, error) {
-	return os.DirFS(filepath.Join(d.root, dir)), nil
-}
-
-func (d *testDirFS) MkdirAll(name string) error {
-	return os.MkdirAll(filepath.Join(d.root, name), 0o755)
-}
-
-func (d *testDirFS) Rename(oldName, newName string) error {
-	oldPath := filepath.Join(d.root, oldName)
-	newPath := filepath.Join(d.root, newName)
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
-		return err
-	}
-	return os.Rename(oldPath, newPath)
-}
-
-func (d *testDirFS) RemoveAll(name string) error {
-	return os.RemoveAll(filepath.Join(d.root, name))
-}
 
 // newTestHNSW creates an HNSW index with small parameters for fast tests.
 func newTestHNSW(dim int) *HNSW {
@@ -1033,7 +970,7 @@ func BenchmarkHNSWSaveLoad(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func TestOpenHNSWCreateNew(t *testing.T) {
-	fs := newTestDirFS(t.TempDir())
+	fs := objectstore.Dir(t.TempDir())
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1048,8 +985,14 @@ func TestOpenHNSWCreateNew(t *testing.T) {
 	}
 }
 
+func TestOpenHNSWRejectsNilObjectStore(t *testing.T) {
+	if _, err := OpenHNSW(nil, "test.hnsw", HNSWConfig{Dim: 3}); err == nil {
+		t.Fatal("OpenHNSW(nil) error = nil")
+	}
+}
+
 func TestOpenHNSWInsertFlushReopen(t *testing.T) {
-	fs := newTestDirFS(t.TempDir())
+	fs := objectstore.Dir(t.TempDir())
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1094,7 +1037,7 @@ func TestOpenHNSWInsertFlushReopen(t *testing.T) {
 }
 
 func TestOpenHNSWDeleteMarksDirty(t *testing.T) {
-	fs := newTestDirFS(t.TempDir())
+	fs := objectstore.Dir(t.TempDir())
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1125,7 +1068,7 @@ func TestOpenHNSWDeleteMarksDirty(t *testing.T) {
 }
 
 func TestOpenHNSWBatchInsert(t *testing.T) {
-	fs := newTestDirFS(t.TempDir())
+	fs := objectstore.Dir(t.TempDir())
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1152,7 +1095,7 @@ func TestOpenHNSWBatchInsert(t *testing.T) {
 }
 
 func TestOpenHNSWDimMismatch(t *testing.T) {
-	fs := newTestDirFS(t.TempDir())
+	fs := objectstore.Dir(t.TempDir())
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1171,7 +1114,7 @@ func TestOpenHNSWDimMismatch(t *testing.T) {
 
 func TestOpenHNSWRemove(t *testing.T) {
 	dir := t.TempDir()
-	fs := newTestDirFS(dir)
+	fs := objectstore.Dir(dir)
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1197,7 +1140,7 @@ func TestOpenHNSWRemove(t *testing.T) {
 
 func TestOpenHNSWFlushNoopWhenClean(t *testing.T) {
 	dir := t.TempDir()
-	fs := newTestDirFS(dir)
+	fs := objectstore.Dir(dir)
 	idx, err := OpenHNSW(fs, "test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW: %v", err)
@@ -1215,7 +1158,7 @@ func TestOpenHNSWFlushNoopWhenClean(t *testing.T) {
 
 func TestOpenHNSWNestedDir(t *testing.T) {
 	dir := t.TempDir()
-	fs := newTestDirFS(dir)
+	fs := objectstore.Dir(dir)
 	idx, err := OpenHNSW(fs, "a/b/c/test.hnsw", HNSWConfig{Dim: 3})
 	if err != nil {
 		t.Fatalf("OpenHNSW nested: %v", err)

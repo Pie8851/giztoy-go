@@ -3,17 +3,13 @@ package memory
 import (
 	"context"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/agent/recall"
-	"github.com/GizClaw/gizclaw-go/pkg/store/filesystem"
 	"github.com/GizClaw/gizclaw-go/pkg/store/graph"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 // ---------------------------------------------------------------------------
@@ -190,10 +186,10 @@ func newTestHost(t *testing.T) *Host {
 	emb := newMockEmbedder()
 
 	h, err := NewHost(context.Background(), HostConfig{
-		Store:     store,
-		Embedder:  emb,
-		FS:        &testDirFS{root: t.TempDir()},
-		Separator: testSep,
+		Store:       store,
+		Embedder:    emb,
+		ObjectStore: objectstore.Dir(t.TempDir()),
+		Separator:   testSep,
 	})
 	if err != nil {
 		t.Fatalf("NewHost: %v", err)
@@ -256,12 +252,12 @@ func TestHostNilStoreReturnsError(t *testing.T) {
 func TestHostEmbedModelPersistence(t *testing.T) {
 	ctx := context.Background()
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
-	fs := &testDirFS{root: t.TempDir()}
+	fs := objectstore.Dir(t.TempDir())
 
 	// First NewHost: should persist mock-embed model metadata.
 	emb := newMockEmbedder()
 	h1, err := NewHost(ctx, HostConfig{
-		Store: store, Embedder: emb, FS: fs, Separator: testSep,
+		Store: store, Embedder: emb, ObjectStore: fs, Separator: testSep,
 	})
 	if err != nil {
 		t.Fatalf("first NewHost: %v", err)
@@ -270,7 +266,7 @@ func TestHostEmbedModelPersistence(t *testing.T) {
 
 	// Second NewHost with same embedder: should succeed.
 	h2, err := NewHost(ctx, HostConfig{
-		Store: store, Embedder: emb, FS: fs, Separator: testSep,
+		Store: store, Embedder: emb, ObjectStore: fs, Separator: testSep,
 	})
 	if err != nil {
 		t.Fatalf("second NewHost (same model): %v", err)
@@ -281,7 +277,7 @@ func TestHostEmbedModelPersistence(t *testing.T) {
 	differentEmb := &mockEmbedder{dim: 8, vectors: map[string][]float32{}}
 	differentEmb.model = "different-model"
 	_, err = NewHost(ctx, HostConfig{
-		Store: store, Embedder: differentEmb, FS: fs, Separator: testSep,
+		Store: store, Embedder: differentEmb, ObjectStore: fs, Separator: testSep,
 	})
 	if err == nil {
 		t.Fatal("expected error on model mismatch, got nil")
@@ -292,12 +288,12 @@ func TestHostEmbedModelPersistence(t *testing.T) {
 func TestHostEmbedDimensionMismatch(t *testing.T) {
 	ctx := context.Background()
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
-	fs := &testDirFS{root: t.TempDir()}
+	fs := objectstore.Dir(t.TempDir())
 
 	// First NewHost with dim=8.
 	emb8 := newMockEmbedder() // dim=8
 	h1, err := NewHost(ctx, HostConfig{
-		Store: store, Embedder: emb8, FS: fs, Separator: testSep,
+		Store: store, Embedder: emb8, ObjectStore: fs, Separator: testSep,
 	})
 	if err != nil {
 		t.Fatalf("first NewHost: %v", err)
@@ -307,7 +303,7 @@ func TestHostEmbedDimensionMismatch(t *testing.T) {
 	// Second NewHost with same model but dim=4: should fail.
 	emb4 := &mockEmbedder{dim: 4, vectors: map[string][]float32{}}
 	_, err = NewHost(ctx, HostConfig{
-		Store: store, Embedder: emb4, FS: fs, Separator: testSep,
+		Store: store, Embedder: emb4, ObjectStore: fs, Separator: testSep,
 	})
 	if err == nil {
 		t.Fatal("expected error on dimension mismatch, got nil")
@@ -319,15 +315,15 @@ func TestNewHostRejectsNilFields(t *testing.T) {
 	ctx := context.Background()
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
 	emb := newMockEmbedder()
-	fs := &testDirFS{root: t.TempDir()}
+	fs := objectstore.Dir(t.TempDir())
 
-	if _, err := NewHost(ctx, HostConfig{FS: fs, Embedder: emb, Separator: testSep}); err == nil {
+	if _, err := NewHost(ctx, HostConfig{ObjectStore: fs, Embedder: emb, Separator: testSep}); err == nil {
 		t.Fatal("expected error on nil Store")
 	}
 	if _, err := NewHost(ctx, HostConfig{Store: store, Embedder: emb, Separator: testSep}); err == nil {
-		t.Fatal("expected error on nil FS")
+		t.Fatal("expected error on nil ObjectStore")
 	}
-	if _, err := NewHost(ctx, HostConfig{Store: store, FS: fs, Separator: testSep}); err == nil {
+	if _, err := NewHost(ctx, HostConfig{Store: store, ObjectStore: fs, Separator: testSep}); err == nil {
 		t.Fatal("expected error on nil Embedder")
 	}
 }
@@ -336,7 +332,7 @@ func TestHostOpenRejectsIDContainingSeparator(t *testing.T) {
 	ctx := context.Background()
 	store := mustBadgerInMemory(t, nil) // default separator ':'
 	h, err := NewHost(ctx, HostConfig{
-		Store: store, Embedder: newMockEmbedder(), FS: &testDirFS{root: t.TempDir()},
+		Store: store, Embedder: newMockEmbedder(), ObjectStore: objectstore.Dir(t.TempDir()),
 	})
 	if err != nil {
 		t.Fatalf("NewHost: %v", err)
@@ -677,7 +673,7 @@ func newTestHostWithCompactor(t *testing.T, policy CompressPolicy) *Host {
 	h, err := NewHost(context.Background(), HostConfig{
 		Store:          store,
 		Embedder:       emb,
-		FS:             &testDirFS{root: t.TempDir()},
+		ObjectStore:    objectstore.Dir(t.TempDir()),
 		Separator:      testSep,
 		Compressor:     &mockCompressor{},
 		CompressPolicy: policy,
@@ -886,7 +882,7 @@ func TestZeroCompressPolicyDisablesAutoCompression(t *testing.T) {
 	h, err := NewHost(context.Background(), HostConfig{
 		Store:          store,
 		Embedder:       newMockEmbedder(),
-		FS:             &testDirFS{root: t.TempDir()},
+		ObjectStore:    objectstore.Dir(t.TempDir()),
 		Compressor:     &mockCompressor{},
 		CompressPolicy: CompressPolicy{}, // zero policy => disable auto-compress
 		Separator:      testSep,
@@ -2037,74 +2033,16 @@ func BenchmarkConversationAppend(b *testing.B) {
 	}
 }
 
-// testDirFS is a minimal [filesystem.FS] backed by a local directory.
-type testDirFS struct{ root string }
-
-var _ filesystem.FS = (*testDirFS)(nil)
-
-func (d *testDirFS) Open(name string) (fs.File, error) {
-	return os.Open(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Create(name string) (io.WriteCloser, error) {
-	path := filepath.Join(d.root, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	return os.Create(path)
-}
-
-func (d *testDirFS) Remove(name string) error {
-	err := os.Remove(filepath.Join(d.root, name))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
-}
-
-func (d *testDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	return os.ReadDir(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Stat(name string) (fs.FileInfo, error) {
-	return os.Stat(filepath.Join(d.root, name))
-}
-
-func (d *testDirFS) Glob(pattern string) ([]string, error) {
-	return fs.Glob(d, pattern)
-}
-
-func (d *testDirFS) Sub(dir string) (fs.FS, error) {
-	return os.DirFS(filepath.Join(d.root, dir)), nil
-}
-
-func (d *testDirFS) MkdirAll(name string) error {
-	return os.MkdirAll(filepath.Join(d.root, name), 0o755)
-}
-
-func (d *testDirFS) Rename(oldName, newName string) error {
-	oldPath := filepath.Join(d.root, oldName)
-	newPath := filepath.Join(d.root, newName)
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
-		return err
-	}
-	return os.Rename(oldPath, newPath)
-}
-
-func (d *testDirFS) RemoveAll(name string) error {
-	return os.RemoveAll(filepath.Join(d.root, name))
-}
-
-func TestVecFSPerPersonaFiles(t *testing.T) {
+func TestVecObjectStorePerPersonaObjects(t *testing.T) {
 	dir := t.TempDir()
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
 	emb := newMockEmbedder()
 
 	h, err := NewHost(context.Background(), HostConfig{
-		Store:     store,
-		Embedder:  emb,
-		FS:        &testDirFS{root: dir},
-		Separator: testSep,
+		Store:       store,
+		Embedder:    emb,
+		ObjectStore: objectstore.Dir(dir),
+		Separator:   testSep,
 	})
 	if err != nil {
 		t.Fatalf("NewHost: %v", err)
@@ -2152,7 +2090,7 @@ func TestVecFSPerPersonaFiles(t *testing.T) {
 func BenchmarkConversationRecent(b *testing.B) {
 	store := mustBadgerInMemory(b, &kv.Options{Separator: testSep})
 	h, err := NewHost(context.Background(), HostConfig{
-		Store: store, Embedder: newMockEmbedder(), FS: &testDirFS{root: b.TempDir()}, Separator: testSep,
+		Store: store, Embedder: newMockEmbedder(), ObjectStore: objectstore.Dir(b.TempDir()), Separator: testSep,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -2180,7 +2118,7 @@ func BenchmarkStoreSegment(b *testing.B) {
 	store := mustBadgerInMemory(b, &kv.Options{Separator: testSep})
 	emb := newMockEmbedder()
 	h, err := NewHost(context.Background(), HostConfig{
-		Store: store, Embedder: emb, FS: &testDirFS{root: b.TempDir()}, Separator: testSep,
+		Store: store, Embedder: emb, ObjectStore: objectstore.Dir(b.TempDir()), Separator: testSep,
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -2202,7 +2140,7 @@ func BenchmarkRecall(b *testing.B) {
 	store := mustBadgerInMemory(b, &kv.Options{Separator: testSep})
 	emb := newMockEmbedder()
 	h, err := NewHost(context.Background(), HostConfig{
-		Store: store, Embedder: emb, FS: &testDirFS{root: b.TempDir()}, Separator: testSep,
+		Store: store, Embedder: emb, ObjectStore: objectstore.Dir(b.TempDir()), Separator: testSep,
 	})
 	if err != nil {
 		b.Fatal(err)

@@ -9,14 +9,14 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/agent/embed"
 	"github.com/GizClaw/gizclaw-go/pkg/agent/recall"
-	"github.com/GizClaw/gizclaw-go/pkg/store/filesystem"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 	"github.com/GizClaw/gizclaw-go/pkg/store/vecstore"
 )
 
 // HostConfig configures a [Host].
 //
-// Store, FS, and Embedder are all required. NewHost returns an error if
+// Store, ObjectStore, and Embedder are all required. NewHost returns an error if
 // any of them is nil.
 type HostConfig struct {
 	// Store is the shared KV store. Required.
@@ -24,12 +24,12 @@ type HostConfig struct {
 	// Each persona's data is isolated under "mem{sep}{id}{sep}..." prefixes.
 	Store kv.Store
 
-	// FS provides filesystem access for per-persona HNSW vector index
-	// files. Required.
+	// ObjectStore provides object storage for per-persona HNSW vector indexes.
+	// Required.
 	//
-	// Each persona's file name is stored in KV on first open and loaded
-	// through FS on subsequent opens.
-	FS filesystem.FS
+	// Each persona's object name is stored in KV on first open and loaded
+	// through ObjectStore on subsequent opens.
+	ObjectStore objectstore.ObjectStore
 
 	// Embedder converts text to vectors. Required.
 	//
@@ -76,7 +76,7 @@ type embedMeta struct {
 // Host is the process-level entry point for the memory system.
 // It manages Memory instances for many personas, all sharing a single
 // KV store and embedder. Each persona gets its own HNSW vector index
-// file whose name is tracked in KV and opened through [HostConfig.FS].
+// object whose name is tracked in KV and opened through [HostConfig.ObjectStore].
 //
 // Host is safe for concurrent use. Multiple goroutines can call Open
 // simultaneously for different persona IDs.
@@ -89,7 +89,7 @@ type Host struct {
 
 // NewHost creates a new Host and validates configuration.
 //
-// Store, FS, and Embedder must all be non-nil. NewHost checks the KV store
+// Store, ObjectStore, and Embedder must all be non-nil. NewHost checks the KV store
 // for previously persisted embedding model metadata. If found and the model
 // name or dimension differs, NewHost returns an error. If not found, it
 // persists the current model info.
@@ -97,8 +97,8 @@ func NewHost(ctx context.Context, cfg HostConfig) (*Host, error) {
 	if cfg.Store == nil {
 		return nil, fmt.Errorf("memory: HostConfig.Store is required")
 	}
-	if cfg.FS == nil {
-		return nil, fmt.Errorf("memory: HostConfig.FS is required")
+	if cfg.ObjectStore == nil {
+		return nil, fmt.Errorf("memory: HostConfig.ObjectStore is required")
 	}
 	if cfg.Embedder == nil {
 		return nil, fmt.Errorf("memory: HostConfig.Embedder is required")
@@ -219,7 +219,7 @@ func (h *Host) Open(id string, opts ...OpenOption) (*Memory, error) {
 
 // openVec creates or loads a per-persona vector index.
 // The file name is read from KV (or generated and stored on first open),
-// then loaded through FS.
+// then loaded through ObjectStore.
 func (h *Host) openVec(id string, dim int) (vecstore.Index, error) {
 	ctx := context.Background()
 	key := vecPathKey(id)
@@ -227,7 +227,7 @@ func (h *Host) openVec(id string, dim int) (vecstore.Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vecstore.OpenHNSW(h.cfg.FS, name, vecstore.HNSWConfig{Dim: dim})
+	return vecstore.OpenHNSW(h.cfg.ObjectStore, name, vecstore.HNSWConfig{Dim: dim})
 }
 
 // resolveVecName reads the HNSW file name from KV. If not found, it
@@ -303,7 +303,7 @@ func (h *Host) Delete(ctx context.Context, id string) error {
 		delete(h.memories, id)
 	}
 	if vecName != "" {
-		_ = h.cfg.FS.Remove(vecName)
+		_ = h.cfg.ObjectStore.Delete(vecName)
 	}
 	return nil
 }

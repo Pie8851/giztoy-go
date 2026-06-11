@@ -7,6 +7,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/agent/recall"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 type multiOutputCompressor struct{}
@@ -56,7 +57,7 @@ func TestCompactBucketMultiOutputKeepsUniqueSegments(t *testing.T) {
 	host, err := NewHost(ctx, HostConfig{
 		Store:          store,
 		Embedder:       newMockEmbedder(),
-		FS:             &testDirFS{root: t.TempDir()},
+		ObjectStore:    objectstore.Dir(t.TempDir()),
 		Compressor:     multiOutputCompressor{},
 		CompressPolicy: CompressPolicy{MaxMessages: 2, MaxChars: 1 << 20},
 		Separator:      testSep,
@@ -151,7 +152,7 @@ func TestCompactBucketPreservesHistoricalLastTimestamp(t *testing.T) {
 	host, err := NewHost(ctx, HostConfig{
 		Store:          store,
 		Embedder:       newMockEmbedder(),
-		FS:             &testDirFS{root: t.TempDir()},
+		ObjectStore:    objectstore.Dir(t.TempDir()),
 		Compressor:     singleOutputCompressor{},
 		CompressPolicy: CompressPolicy{MaxMessages: 2, MaxChars: 1 << 20},
 		Separator:      testSep,

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/GizClaw/gizclaw-go/pkg/store/filesystem"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 // ---------------------------------------------------------------------------
@@ -125,15 +126,15 @@ type HNSW struct {
 	free     []uint32          // recycled internal IDs for reuse
 	levelMul float64           // 1/ln(M), for random level generation
 
-	// Persistence. When fs is non-nil, Flush and Close write the index
-	// through the filesystem.FS interface. fileMu serialises file I/O
+	// Persistence. When objects is non-nil, Flush and Close write the index
+	// through the objectstore.ObjectStore interface. fileMu serialises file I/O
 	// so that concurrent flushes do not race. dirty is an atomic flag
 	// set by mutating operations (Insert/Delete) without holding fileMu,
 	// avoiding a lock-order inversion between mu and fileMu.
-	fs     filesystem.FS
-	name   string // file name within fs
-	fileMu sync.Mutex
-	dirty  atomic.Bool
+	objects objectstore.ObjectStore
+	name    string // object name within objects
+	fileMu  sync.Mutex
+	dirty   atomic.Bool
 }
 
 // Compile-time interface check.
@@ -155,14 +156,17 @@ func NewHNSW(cfg HNSWConfig) *HNSW {
 }
 
 // OpenHNSW opens or creates a persistent HNSW index.
-// The index is stored in fs under the given name. If the file exists, it
-// is loaded and the dimension is validated against cfg. If the file does
+// The index is stored in objects under the given name. If the object exists, it
+// is loaded and the dimension is validated against cfg. If the object does
 // not exist, a new empty index is created.
 //
 // Subsequent mutations mark the index as dirty, and [HNSW.Flush] /
-// [HNSW.Close] write the index through fs.
-func OpenHNSW(fs filesystem.FS, name string, cfg HNSWConfig) (*HNSW, error) {
-	r, err := fs.Open(name)
+// [HNSW.Close] write the index through objects.
+func OpenHNSW(objects objectstore.ObjectStore, name string, cfg HNSWConfig) (*HNSW, error) {
+	if objects == nil {
+		return nil, fmt.Errorf("vecstore: hnsw object store is nil")
+	}
+	r, err := objects.Get(name)
 	if err == nil {
 		defer r.Close()
 		idx, loadErr := LoadHNSW(r)
@@ -172,7 +176,7 @@ func OpenHNSW(fs filesystem.FS, name string, cfg HNSWConfig) (*HNSW, error) {
 		if got := idx.Config().Dim; got != cfg.Dim {
 			return nil, fmt.Errorf("vecstore: hnsw %q: dimension mismatch: file=%d config=%d", name, got, cfg.Dim)
 		}
-		idx.fs = fs
+		idx.objects = objects
 		idx.name = name
 		return idx, nil
 	}
@@ -181,24 +185,24 @@ func OpenHNSW(fs filesystem.FS, name string, cfg HNSWConfig) (*HNSW, error) {
 	}
 
 	idx := NewHNSW(cfg)
-	idx.fs = fs
+	idx.objects = objects
 	idx.name = name
 	return idx, nil
 }
 
-// Name returns the file name within the [FS] for a persistent index,
+// Name returns the object name within the [objectstore.ObjectStore] for a persistent index,
 // or "" for in-memory indexes.
 func (h *HNSW) Name() string { return h.name }
 
-// Remove removes the underlying file from the [FS].
+// Remove removes the underlying object from the [objectstore.ObjectStore].
 // No-op for in-memory indexes. After Remove the index must not be used.
 func (h *HNSW) Remove() error {
-	if h.fs == nil {
+	if h.objects == nil {
 		return nil
 	}
 	h.fileMu.Lock()
 	defer h.fileMu.Unlock()
-	return h.fs.Remove(h.name)
+	return h.objects.Delete(h.name)
 }
 
 // SetEfSearch adjusts the search-time candidate list size.
@@ -229,10 +233,10 @@ func (h *HNSW) Len() int {
 	return n
 }
 
-// Flush persists the index through the [FS] if it has pending changes.
+// Flush persists the index through the [objectstore.ObjectStore] if it has pending changes.
 // For in-memory indexes (created via [NewHNSW]) this is a no-op.
 func (h *HNSW) Flush() error {
-	if h.fs == nil {
+	if h.objects == nil {
 		return nil
 	}
 	h.fileMu.Lock()
@@ -243,7 +247,7 @@ func (h *HNSW) Flush() error {
 // Close persists any pending changes and releases resources.
 // The index should not be used after Close.
 func (h *HNSW) Close() error {
-	if h.fs == nil {
+	if h.objects == nil {
 		return nil
 	}
 	h.fileMu.Lock()
@@ -252,7 +256,7 @@ func (h *HNSW) Close() error {
 }
 
 func (h *HNSW) markDirty() {
-	if h.fs != nil {
+	if h.objects != nil {
 		h.dirty.Store(true)
 	}
 }
@@ -261,19 +265,26 @@ func (h *HNSW) flushLocked() error {
 	if !h.dirty.Swap(false) {
 		return nil
 	}
-	w, err := h.fs.Create(h.name)
-	if err != nil {
-		h.dirty.Store(true)
-		return fmt.Errorf("vecstore: hnsw create %q: %w", h.name, err)
-	}
-	if err := h.Save(w); err != nil {
-		_ = w.Close()
+	pr, pw := io.Pipe()
+	putErr := make(chan error, 1)
+	go func() {
+		putErr <- h.objects.Put(h.name, pr)
+		_ = pr.Close()
+	}()
+	if err := h.Save(pw); err != nil {
+		_ = pw.CloseWithError(err)
+		err = errors.Join(err, <-putErr)
 		h.dirty.Store(true)
 		return fmt.Errorf("vecstore: hnsw save %q: %w", h.name, err)
 	}
-	if err := w.Close(); err != nil {
+	if err := pw.Close(); err != nil {
+		err = errors.Join(err, <-putErr)
 		h.dirty.Store(true)
 		return fmt.Errorf("vecstore: hnsw flush %q: %w", h.name, err)
+	}
+	if err := <-putErr; err != nil {
+		h.dirty.Store(true)
+		return fmt.Errorf("vecstore: hnsw put %q: %w", h.name, err)
 	}
 	return nil
 }

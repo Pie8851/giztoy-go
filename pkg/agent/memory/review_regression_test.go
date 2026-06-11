@@ -8,6 +8,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/agent/recall"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 type starvationEmbedder struct{}
@@ -46,10 +47,10 @@ func TestRecallPerPersonaVecIsolation(t *testing.T) {
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
 
 	host, err := NewHost(ctx, HostConfig{
-		Store:     store,
-		Embedder:  starvationEmbedder{},
-		FS:        &testDirFS{root: t.TempDir()},
-		Separator: testSep,
+		Store:       store,
+		Embedder:    starvationEmbedder{},
+		ObjectStore: objectstore.Dir(t.TempDir()),
+		Separator:   testSep,
 	})
 	if err != nil {
 		t.Fatalf("new host: %v", err)
@@ -90,10 +91,10 @@ func TestHostDeleteClearsPersonaData(t *testing.T) {
 	store := mustBadgerInMemory(t, &kv.Options{Separator: testSep})
 
 	host, err := NewHost(ctx, HostConfig{
-		Store:     store,
-		Embedder:  starvationEmbedder{},
-		FS:        &testDirFS{root: t.TempDir()},
-		Separator: testSep,
+		Store:       store,
+		Embedder:    starvationEmbedder{},
+		ObjectStore: objectstore.Dir(t.TempDir()),
+		Separator:   testSep,
 	})
 	if err != nil {
 		t.Fatalf("new host: %v", err)

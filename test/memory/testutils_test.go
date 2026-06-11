@@ -23,6 +23,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/genx/profilers"
 	"github.com/GizClaw/gizclaw-go/pkg/genx/segmentors"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 const integrationSeparator byte = 0x1F
@@ -485,6 +486,7 @@ func newIntegrationHost(t *testing.T, compressor memory.Compressor) *memory.Host
 	store := mustBadgerInMemory(t, &kv.Options{Separator: integrationSeparator})
 	host, err := memory.NewHost(context.Background(), memory.HostConfig{
 		Store:          store,
+		ObjectStore:    objectstore.Dir(t.TempDir()),
 		Compressor:     compressor,
 		CompressPolicy: memory.CompressPolicy{MaxMessages: 1 << 30, MaxChars: 1 << 30},
 		Separator:      integrationSeparator,

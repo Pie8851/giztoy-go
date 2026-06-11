@@ -40,8 +40,9 @@
 //
 //	store := kv.NewBadger(dir, &kv.Options{Separator: 0x1F})
 //	host, err := memory.NewHost(ctx, memory.HostConfig{
-//	    Store:     store,
-//	    Separator: 0x1F,
+//	    Store:       store,
+//	    ObjectStore: objectstore.Dir(dir),
+//	    Separator:   0x1F,
 //	})
 //
 // Then labels like "person:小明", "voice:A3F8" work naturally.
