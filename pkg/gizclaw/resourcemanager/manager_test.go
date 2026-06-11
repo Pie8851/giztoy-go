@@ -100,7 +100,7 @@ func TestPutRejectsMissingServicesByKind(t *testing.T) {
 	}{
 		{name: "credential", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Credential","metadata":{"name":"name"},"spec":{"provider":"minimax","method":"api_key","body":{"api_key":"secret"}}}`},
 		{name: "firmware", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Firmware","metadata":{"name":"firmware"},"spec":{"slots":{"stable":{"version":"1.0.0"}}}}`},
-		{name: "peer config", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"PeerConfig","metadata":{"name":"gear"},"spec":{}}`},
+		{name: "peer config", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"PeerConfig","metadata":{"name":"peer"},"spec":{}}`},
 		{name: "model", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Model","metadata":{"name":"model"},"spec":{"kind":"llm","provider":{"kind":"openai-tenant","name":"main"},"source":"manual"}}`},
 		{name: "dashscope tenant", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"DashScopeTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
 		{name: "gemini tenant", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"GeminiTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
@@ -136,7 +136,7 @@ func TestPutRejectsUnsupportedVersionByKind(t *testing.T) {
 	}{
 		{name: "credential", resource: `{"apiVersion":"unsupported","kind":"Credential","metadata":{"name":"name"},"spec":{"provider":"minimax","method":"api_key","body":{"api_key":"secret"}}}`},
 		{name: "firmware", resource: `{"apiVersion":"unsupported","kind":"Firmware","metadata":{"name":"firmware"},"spec":{"slots":{"stable":{"version":"1.0.0"}}}}`},
-		{name: "peer config", resource: `{"apiVersion":"unsupported","kind":"PeerConfig","metadata":{"name":"gear"},"spec":{}}`},
+		{name: "peer config", resource: `{"apiVersion":"unsupported","kind":"PeerConfig","metadata":{"name":"peer"},"spec":{}}`},
 		{name: "model", resource: `{"apiVersion":"unsupported","kind":"Model","metadata":{"name":"model"},"spec":{"kind":"llm","provider":{"kind":"openai-tenant","name":"main"},"source":"manual"}}`},
 		{name: "dashscope tenant", resource: `{"apiVersion":"unsupported","kind":"DashScopeTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
 		{name: "gemini tenant", resource: `{"apiVersion":"unsupported","kind":"GeminiTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
@@ -171,7 +171,7 @@ func TestDeleteRejectsUnsupportedInputs(t *testing.T) {
 	_, err = manager.Delete(context.Background(), apitypes.ResourceKindResourceList, "bundle")
 	assertResourceError(t, err, 400, "UNSUPPORTED_RESOURCE_DELETE")
 
-	_, err = manager.Delete(context.Background(), apitypes.ResourceKindPeerConfig, "gear")
+	_, err = manager.Delete(context.Background(), apitypes.ResourceKindPeerConfig, "peer")
 	assertResourceError(t, err, 400, "UNSUPPORTED_RESOURCE_DELETE")
 
 	_, err = manager.Delete(context.Background(), apitypes.ResourceKindCredential, "example")
@@ -306,7 +306,7 @@ func TestApplyRejectsMissingServicesByKind(t *testing.T) {
 	}{
 		{name: "credential", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Credential","metadata":{"name":"name"},"spec":{"provider":"minimax","method":"api_key","body":{"api_key":"secret"}}}`},
 		{name: "firmware", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Firmware","metadata":{"name":"firmware"},"spec":{"slots":{"stable":{"version":"1.0.0"}}}}`},
-		{name: "peer config", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"PeerConfig","metadata":{"name":"gear"},"spec":{}}`},
+		{name: "peer config", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"PeerConfig","metadata":{"name":"peer"},"spec":{}}`},
 		{name: "model", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"Model","metadata":{"name":"model"},"spec":{"kind":"llm","provider":{"kind":"openai-tenant","name":"main"},"source":"manual"}}`},
 		{name: "dashscope tenant", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"DashScopeTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
 		{name: "gemini tenant", resource: `{"apiVersion":"gizclaw.admin/v1alpha1","kind":"GeminiTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
@@ -342,7 +342,7 @@ func TestApplyRejectsUnsupportedVersionByKind(t *testing.T) {
 	}{
 		{name: "credential", resource: `{"apiVersion":"unsupported","kind":"Credential","metadata":{"name":"name"},"spec":{"provider":"minimax","method":"api_key","body":{"api_key":"secret"}}}`},
 		{name: "firmware", resource: `{"apiVersion":"unsupported","kind":"Firmware","metadata":{"name":"firmware"},"spec":{"slots":{"stable":{"version":"1.0.0"}}}}`},
-		{name: "peer config", resource: `{"apiVersion":"unsupported","kind":"PeerConfig","metadata":{"name":"gear"},"spec":{}}`},
+		{name: "peer config", resource: `{"apiVersion":"unsupported","kind":"PeerConfig","metadata":{"name":"peer"},"spec":{}}`},
 		{name: "model", resource: `{"apiVersion":"unsupported","kind":"Model","metadata":{"name":"model"},"spec":{"kind":"llm","provider":{"kind":"openai-tenant","name":"main"},"source":"manual"}}`},
 		{name: "dashscope tenant", resource: `{"apiVersion":"unsupported","kind":"DashScopeTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},
 		{name: "gemini tenant", resource: `{"apiVersion":"unsupported","kind":"GeminiTenant","metadata":{"name":"tenant"},"spec":{"credential_name":"credential"}}`},

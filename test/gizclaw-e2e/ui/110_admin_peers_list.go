@@ -14,7 +14,7 @@ func adminPeersListStories() []Story {
 			page.ExpectText("Peers")
 			page.ExpectText("Peer Inventory")
 			page.ExpectText(page.Seed.DevicePublicKey)
-			page.ExpectText("gear")
+			page.ExpectText("peer")
 			page.ExpectText("Active")
 
 			page.Fill(`input[placeholder="Filter current page by key, role, or status"]`, "missing")

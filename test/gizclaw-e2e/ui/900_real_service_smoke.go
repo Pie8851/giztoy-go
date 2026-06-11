@@ -17,7 +17,7 @@ func realServiceSmokeStories() []Story {
 			page.ClickRole("button", "Start Video Call")
 			page.ClickRole("button", "Logs")
 			page.ExpectText("rpc.response")
-			page.ExpectText("peer.ping")
+			page.ExpectText("all.ping")
 			page.ClickRole("button", "Close RPC logs")
 			page.ClickRole("button", "Get Info")
 			page.ClickRole("button", "Logs")

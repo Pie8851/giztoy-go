@@ -30,7 +30,7 @@ func TestTrieWildcard(t *testing.T) {
 		t.Fatalf("SetValue failed: %v", err)
 	}
 
-	val, ok := tr.GetValue("device/gear-001/state")
+	val, ok := tr.GetValue("device/peer-001/state")
 	if !ok || val != "single_wildcard" {
 		t.Errorf("Single wildcard match failed: got %v, %v", val, ok)
 	}
@@ -148,7 +148,7 @@ func generatePaths(count int) []string {
 		a := i % 10
 		b := (i / 10) % 10
 		c := (i / 100) % 10
-		paths[i] = fmt.Sprintf("device/gear-%03d/sensor/%d/data/%d", i, a, b*10+c)
+		paths[i] = fmt.Sprintf("device/peer-%03d/sensor/%d/data/%d", i, a, b*10+c)
 	}
 	return paths
 }
@@ -191,7 +191,7 @@ func BenchmarkTrieGetWildcard(b *testing.B) {
 	tr := New[string]()
 	patterns := []string{
 		"device/+/sensor/+/data/+",
-		"device/gear-001/+/+/data/+",
+		"device/peer-001/+/+/data/+",
 		"device/#",
 		"device/+/#",
 		"logs/#",
@@ -201,9 +201,9 @@ func BenchmarkTrieGetWildcard(b *testing.B) {
 	}
 
 	testPaths := []string{
-		"device/gear-001/sensor/0/data/1",
-		"device/gear-999/sensor/5/data/99",
-		"device/gear-001/state/online",
+		"device/peer-001/sensor/0/data/1",
+		"device/peer-999/sensor/5/data/99",
+		"device/peer-001/state/online",
 		"logs/app/debug/line1",
 		"logs/system/error",
 	}
@@ -231,8 +231,8 @@ func BenchmarkTrieMatchPath(b *testing.B) {
 	tr.SetValue("logs/#", -3)
 
 	testPaths := []string{
-		"device/gear-500/sensor/5/data/50",
-		"device/gear-9999/sensor/0/data/0",
+		"device/peer-500/sensor/5/data/50",
+		"device/peer-9999/sensor/0/data/0",
 		"device/unknown/state",
 		"logs/anything/here",
 	}

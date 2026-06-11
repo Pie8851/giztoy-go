@@ -20,7 +20,7 @@ import (
 
 	adminui "github.com/GizClaw/gizclaw-go/cmd/ui/admin"
 	playui "github.com/GizClaw/gizclaw-go/cmd/ui/play"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -38,7 +38,7 @@ func listenAndServeUI(
 	ctxName, addr, title string,
 	uiFS fs.FS,
 	out io.Writer,
-	beforeServe func(context.Context, *gizclaw.Client) error,
+	beforeServe func(context.Context, *gizcli.Client) error,
 	registerRoutes func(*http.ServeMux),
 ) error {
 	if strings.TrimSpace(addr) == "" {
@@ -264,7 +264,7 @@ func (r *bufferedHTTPResponse) writeTo(w http.ResponseWriter) {
 	_, _ = r.body.WriteTo(w)
 }
 
-func ensurePlayReady(ctx context.Context, c *gizclaw.Client) error {
+func ensurePlayReady(ctx context.Context, c *gizcli.Client) error {
 	_, err := GetServerInfo(ctx, c)
 	return err
 }
@@ -296,24 +296,10 @@ func registerAdminUIRoutes(mux *http.ServeMux) {
 	redirectWorkflows := func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ai/workflows", http.StatusFound)
 	}
-	redirectPeers := func(w http.ResponseWriter, r *http.Request) {
-		target := strings.TrimPrefix(r.URL.EscapedPath(), "/gears")
-		if target == "" {
-			target = "/peers"
-		} else {
-			target = "/peers" + target
-		}
-		if r.URL.RawQuery != "" {
-			target += "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, target, http.StatusFound)
-	}
 	mux.HandleFunc("/workspace-templates", redirectWorkflows)
 	mux.HandleFunc("/workspace-templates/", redirectWorkflows)
 	mux.HandleFunc("/ai/workspace-templates", redirectWorkflows)
 	mux.HandleFunc("/ai/workspace-templates/", redirectWorkflows)
-	mux.HandleFunc("/gears", redirectPeers)
-	mux.HandleFunc("/gears/", redirectPeers)
 }
 
 func handlePlayWebRTCOffer(w http.ResponseWriter, r *http.Request, ctxName string) {

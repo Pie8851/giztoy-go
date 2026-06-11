@@ -9,7 +9,7 @@ import (
 )
 
 func TestIndexDedupeHelpers(t *testing.T) {
-	imeis := dedupeIMEIs([]apitypes.GearIMEI{
+	imeis := dedupeIMEIs([]apitypes.PeerIMEI{
 		{Tac: "2", Serial: "b"},
 		{Tac: "1", Serial: "a"},
 		{Tac: "1", Serial: "a"},
@@ -19,7 +19,7 @@ func TestIndexDedupeHelpers(t *testing.T) {
 		t.Fatalf("dedupeIMEIs = %+v", imeis)
 	}
 
-	labels := dedupeLabels([]apitypes.GearLabel{
+	labels := dedupeLabels([]apitypes.PeerLabel{
 		{Key: "b", Value: "2"},
 		{Key: "a", Value: "1"},
 		{Key: "a", Value: "1"},
@@ -33,23 +33,23 @@ func TestIndexDedupeHelpers(t *testing.T) {
 func TestIndexEntriesAndKeys(t *testing.T) {
 	sn := "sn-index"
 	publicKey := giznet.PublicKey{1}
-	gear := apitypes.Gear{
+	peer := apitypes.Peer{
 		PublicKey: publicKey.String(),
-		Role:      apitypes.GearRoleServer,
-		Status:    apitypes.GearStatusActive,
+		Role:      apitypes.PeerRoleServer,
+		Status:    apitypes.PeerRegistrationStatusActive,
 		CreatedAt: time.Unix(1, 0),
 		UpdatedAt: time.Unix(2, 0),
 		Device: apitypes.DeviceInfo{
 			Sn: &sn,
 			Hardware: &apitypes.HardwareInfo{
-				Imeis:  &[]apitypes.GearIMEI{{Tac: "123", Serial: "456"}},
-				Labels: &[]apitypes.GearLabel{{Key: "site", Value: "lab"}},
+				Imeis:  &[]apitypes.PeerIMEI{{Tac: "123", Serial: "456"}},
+				Labels: &[]apitypes.PeerLabel{{Key: "site", Value: "lab"}},
 			},
 		},
 	}
 
-	entries := indexEntries(gear)
-	keys := indexKeys(gear)
+	entries := indexEntries(peer)
+	keys := indexKeys(peer)
 	if len(entries) != 5 {
 		t.Fatalf("entries len = %d", len(entries))
 	}

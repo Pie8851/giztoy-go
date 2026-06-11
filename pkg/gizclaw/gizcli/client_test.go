@@ -1,0 +1,304 @@
+package gizcli
+
+import (
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/giznet"
+)
+
+func TestClientDialValidation(t *testing.T) {
+	t.Run("nil client", func(t *testing.T) {
+		var client *Client
+		if err := client.Dial(giznet.PublicKey{}, "127.0.0.1:1"); err == nil || !strings.Contains(err.Error(), "nil client") {
+			t.Fatalf("Dial(nil) err = %v", err)
+		}
+	})
+
+	t.Run("nil key pair", func(t *testing.T) {
+		client := &Client{}
+		if err := client.Dial(giznet.PublicKey{}, "127.0.0.1:1"); err == nil || !strings.Contains(err.Error(), "nil key pair") {
+			t.Fatalf("Dial(nil key pair) err = %v", err)
+		}
+	})
+
+	t.Run("empty server addr", func(t *testing.T) {
+		keyPair, err := giznet.GenerateKeyPair()
+		if err != nil {
+			t.Fatalf("GenerateKeyPair error = %v", err)
+		}
+		client := &Client{KeyPair: keyPair}
+		if err := client.Dial(giznet.PublicKey{}, ""); err == nil || !strings.Contains(err.Error(), "empty server addr") {
+			t.Fatalf("Dial(empty addr) err = %v", err)
+		}
+	})
+
+	t.Run("already started", func(t *testing.T) {
+		keyPair, err := giznet.GenerateKeyPair()
+		if err != nil {
+			t.Fatalf("GenerateKeyPair error = %v", err)
+		}
+		client := &Client{KeyPair: keyPair, listener: &giznet.Listener{}}
+		if err := client.Dial(giznet.PublicKey{}, "127.0.0.1:1"); err == nil || !strings.Contains(err.Error(), "already started") {
+			t.Fatalf("Dial(already started) err = %v", err)
+		}
+	})
+
+	t.Run("invalid cipher mode", func(t *testing.T) {
+		keyPair, err := giznet.GenerateKeyPair()
+		if err != nil {
+			t.Fatalf("GenerateKeyPair error = %v", err)
+		}
+		client := &Client{KeyPair: keyPair, CipherMode: giznet.CipherMode("bad")}
+		if err := client.Dial(giznet.PublicKey{1}, "127.0.0.1:1"); err == nil || !strings.Contains(err.Error(), "unsupported cipher mode") {
+			t.Fatalf("Dial(invalid cipher mode) err = %v", err)
+		}
+	})
+}
+
+func TestClientProxyHandlerValidation(t *testing.T) {
+	t.Run("nil client", func(t *testing.T) {
+		var client *Client
+		server := httptest.NewServer(client.ProxyHandler())
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/api/admin/peers")
+		if err != nil {
+			t.Fatalf("GET /api/admin/peers error = %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("GET /api/admin/peers status = %d body=%s", resp.StatusCode, string(body))
+		}
+	})
+
+	t.Run("disconnected client", func(t *testing.T) {
+		client := &Client{}
+		server := httptest.NewServer(client.ProxyHandler())
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/api/public/server-info")
+		if err != nil {
+			t.Fatalf("GET /api/public/server-info error = %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("GET /api/public/server-info status = %d body=%s", resp.StatusCode, string(body))
+		}
+	})
+}
+
+func TestClientAccessorsAndConversions(t *testing.T) {
+	keyPair, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair error = %v", err)
+	}
+
+	client := &Client{KeyPair: keyPair, serverPK: keyPair.Public}
+
+	if got := client.ServerPublicKey(); got != keyPair.Public {
+		t.Fatalf("ServerPublicKey() = %v, want %v", got, keyPair.Public)
+	}
+
+	if rpcClient := client.rpcClient(); rpcClient == nil || rpcClient.peer != client {
+		t.Fatalf("rpcClient() = %+v, want peer client bound", rpcClient)
+	}
+
+	ctx := t.Context()
+	if _, err := client.Ping(ctx, "ping"); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("Ping() err = %v", err)
+	}
+	if _, err := client.ServerRunSay(ctx, "say", rpcapi.ServerRunSayRequest{Text: "hello"}); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("ServerRunSay() err = %v", err)
+	}
+
+	name := "main"
+	device := apitypes.DeviceInfo{
+		Sn: func() *string {
+			v := "sn-1"
+			return &v
+		}(),
+		Hardware: &apitypes.HardwareInfo{
+			Manufacturer: func() *string { v := "Acme"; return &v }(),
+			Model:        func() *string { v := "M1"; return &v }(),
+			Imeis: &[]apitypes.PeerIMEI{{
+				Name:   &name,
+				Tac:    "12345678",
+				Serial: "0000001",
+			}},
+			Labels: &[]apitypes.PeerLabel{{
+				Key:   "batch",
+				Value: "cn-east",
+			}},
+		},
+	}
+
+	info := peerDeviceToPeerRefreshInfo(device)
+	if info.Manufacturer == nil || *info.Manufacturer != "Acme" {
+		t.Fatalf("peerDeviceToPeerRefreshInfo() = %+v", info)
+	}
+
+	identifiers := peerDeviceToPeerRefreshIdentifiers(device)
+	if identifiers.Sn == nil || *identifiers.Sn != "sn-1" {
+		t.Fatalf("peerDeviceToPeerRefreshIdentifiers().Sn = %+v", identifiers.Sn)
+	}
+	if identifiers.Imeis == nil || len(*identifiers.Imeis) != 1 || (*identifiers.Imeis)[0].Tac != "12345678" {
+		t.Fatalf("peerDeviceToPeerRefreshIdentifiers().Imeis = %+v", identifiers.Imeis)
+	}
+	if identifiers.Labels == nil || len(*identifiers.Labels) != 1 || (*identifiers.Labels)[0].Value != "cn-east" {
+		t.Fatalf("peerDeviceToPeerRefreshIdentifiers().Labels = %+v", identifiers.Labels)
+	}
+
+	imei := peerToPeerPeerIMEI(apitypes.PeerIMEI{Name: &name, Tac: "87654321", Serial: "0000009"})
+	if imei.Name == nil || *imei.Name != "main" || imei.Tac != "87654321" || imei.Serial != "0000009" {
+		t.Fatalf("peerToPeerPeerIMEI() = %+v", imei)
+	}
+
+	label := peerToPeerPeerLabel(apitypes.PeerLabel{Key: "batch", Value: "cn-west"})
+	if label.Key != "batch" || label.Value != "cn-west" {
+		t.Fatalf("peerToPeerPeerLabel() = %+v", label)
+	}
+}
+
+func TestClientLifecycleWithoutConnection(t *testing.T) {
+	var nilClient *Client
+	if err := nilClient.Serve(); err == nil || !strings.Contains(err.Error(), "nil client") {
+		t.Fatalf("nil Serve() error = %v", err)
+	}
+	if err := (&Client{}).Serve(); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("disconnected Serve() error = %v", err)
+	}
+
+	keyPair, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair error = %v", err)
+	}
+	client := &Client{}
+	client.init(nil, nil, keyPair.Public)
+	if client.ServerPublicKey() != keyPair.Public {
+		t.Fatalf("ServerPublicKey() = %v, want %v", client.ServerPublicKey(), keyPair.Public)
+	}
+	if client.rpcClient() == nil {
+		t.Fatal("rpcClient() = nil")
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if client.PeerConn() != nil {
+		t.Fatal("PeerConn() after Close() != nil")
+	}
+	if client.ServerPublicKey() != (giznet.PublicKey{}) {
+		t.Fatalf("ServerPublicKey() after Close() = %v, want zero", client.ServerPublicKey())
+	}
+
+	if httpClient := client.HTTPClient(ServiceRPC); httpClient == nil {
+		t.Fatal("HTTPClient() = nil")
+	}
+	if adminClient, err := client.ServerAdminClient(); err != nil || adminClient == nil {
+		t.Fatalf("ServerAdminClient() = %v, %v", adminClient, err)
+	}
+	if publicClient, err := client.ServerPublicClient(); err != nil || publicClient == nil {
+		t.Fatalf("ServerPublicClient() = %v, %v", publicClient, err)
+	}
+}
+
+func TestClientSecurityPolicyAllowsExpectedPeerAndService(t *testing.T) {
+	if !(clientSecurityPolicy{}).AllowPeer(giznet.PublicKey{}) {
+		t.Fatal("AllowPeer() = false, want true")
+	}
+	if !(clientSecurityPolicy{}).AllowService(giznet.PublicKey{}, ServiceRPC) {
+		t.Fatal("AllowService(ServiceRPC) = false, want true")
+	}
+}
+
+func TestClientRPCHandle(t *testing.T) {
+	t.Run("dispatch missing params", func(t *testing.T) {
+		client := &rpcClient{}
+		resp, err := client.dispatch(context.Background(), &rpcapi.RPCRequest{
+			Id:     "missing",
+			Method: rpcapi.RPCMethodAllPing,
+		})
+		if err != nil {
+			t.Fatalf("dispatch() error = %v", err)
+		}
+		if resp == nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeInvalidParams {
+			t.Fatalf("dispatch() response = %+v", resp)
+		}
+	})
+
+	t.Run("dispatch unsupported method", func(t *testing.T) {
+		client := &rpcClient{}
+		resp, err := client.dispatch(context.Background(), &rpcapi.RPCRequest{
+			Id:     "unknown",
+			Method: "rpc.unknown",
+		})
+		if err != nil {
+			t.Fatalf("dispatch() error = %v", err)
+		}
+		if resp == nil || resp.Error == nil || !strings.Contains(resp.Error.Message, "unsupported method") {
+			t.Fatalf("dispatch() response = %+v", resp)
+		}
+	})
+
+	t.Run("serve rpc stream ping", func(t *testing.T) {
+		serverSide, clientSide := net.Pipe()
+		defer serverSide.Close()
+		defer clientSide.Close()
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- (&rpcClient{}).Handle(serverSide)
+		}()
+
+		params, err := newRPCPingRequestParams(rpcapi.PingRequest{ClientSendTime: time.Now().UnixMilli()})
+		if err != nil {
+			t.Fatalf("newRPCPingRequestParams() error = %v", err)
+		}
+		if err := rpcapi.WriteRequest(clientSide, &rpcapi.RPCRequest{
+			V:      rpcapi.RPCVersionV1,
+			Id:     "ping",
+			Method: rpcapi.RPCMethodAllPing,
+			Params: params,
+		}); err != nil {
+			t.Fatalf("WriteRequest() error = %v", err)
+		}
+		if err := rpcapi.WriteEOS(clientSide); err != nil {
+			t.Fatalf("WriteEOS() error = %v", err)
+		}
+
+		resp, err := rpcapi.ReadResponse(clientSide)
+		if err != nil {
+			t.Fatalf("ReadResponse() error = %v", err)
+		}
+		if err := rpcapi.ReadEOS(clientSide); err != nil {
+			t.Fatalf("ReadEOS() error = %v", err)
+		}
+		if resp.Error != nil {
+			t.Fatalf("Handle() response error = %+v", resp.Error)
+		}
+		if resp.Result == nil {
+			t.Fatalf("Handle() response result = %+v", resp.Result)
+		}
+		result, err := resp.Result.AsPingResponse()
+		if err != nil {
+			t.Fatalf("Handle() response result decode error = %v", err)
+		}
+		if result.ServerTime <= 0 {
+			t.Fatalf("Handle() response result = %+v", result)
+		}
+		if err := <-errCh; err != nil {
+			t.Fatalf("Handle() error = %v", err)
+		}
+	})
+}

@@ -16,7 +16,7 @@ func TestMissingContextUserStory(t *testing.T) {
 		t.Fatalf("unexpected context list output:\n%s", list.Stdout)
 	}
 
-	ping := h.RunCLI("peer", "ping")
+	ping := h.RunCLI("connect", "ping")
 	if ping.Err == nil {
 		t.Fatalf("ping without a context should fail:\nstdout:\n%s\nstderr:\n%s", ping.Stdout, ping.Stderr)
 	}

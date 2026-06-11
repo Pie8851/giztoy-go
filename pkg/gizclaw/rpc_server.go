@@ -7,13 +7,9 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/serverpublic"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peergenx"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
-
-type rpcServerInfoService interface {
-	GetServerInfo(context.Context, serverpublic.GetServerInfoRequestObject) (serverpublic.GetServerInfoResponseObject, error)
-}
 
 type rpcPeerService interface {
 	GetSelfInfo(context.Context, giznet.PublicKey) (apitypes.DeviceInfo, error)
@@ -28,15 +24,26 @@ type rpcPeerRunService interface {
 	SetRunAgent(context.Context, giznet.PublicKey, apitypes.AgentSelection) (apitypes.PeerRunAgent, error)
 }
 
-type rpcGearResourceService interface {
+type rpcPeerRunRuntime interface {
+	Reload(context.Context) (apitypes.PeerRunStatus, error)
+	Status(context.Context) (apitypes.PeerRunStatus, error)
+	Stop(context.Context) (apitypes.PeerRunStatus, error)
+}
+
+type rpcServerResourceService interface {
 	Dispatch(context.Context, *rpcapi.RPCRequest) (*rpcapi.RPCResponse, bool, error)
+}
+
+type rpcServerGenXService interface {
+	Say(context.Context, peergenx.SayRequest) (peergenx.SayResponse, error)
 }
 
 type rpcServer struct {
 	peer            rpcPeerService
 	peerRun         rpcPeerRunService
-	gearResources   rpcGearResourceService
-	serverInfo      rpcServerInfoService
+	peerRunRuntime  rpcPeerRunRuntime
+	serverResources rpcServerResourceService
+	serverGenX      rpcServerGenXService
 	callerPublicKey giznet.PublicKey
 }
 
@@ -49,7 +56,7 @@ func (s *rpcServer) dispatchStream(ctx context.Context, stream *rpcStream, req *
 		return false, nil
 	}
 	switch req.Method {
-	case rpcapi.RPCMethodPeerSpeedTestRun:
+	case rpcapi.RPCMethodAllSpeedTestRun:
 		return true, s.handleSpeedTest(ctx, stream, req)
 	default:
 		return false, nil
@@ -61,34 +68,38 @@ func (s *rpcServer) dispatch(ctx context.Context, req *rpcapi.RPCRequest) (*rpca
 		return rpcapi.Error{Code: rpcapi.RPCErrorCodeInvalidRequest, Message: "nil request"}.RPCResponse(), nil
 	}
 	switch req.Method {
-	case rpcapi.RPCMethodPeerPing:
+	case rpcapi.RPCMethodAllPing:
 		return handleRPCPing(ctx, req)
 	case rpcapi.RPCMethodServerInfoGet:
-		return s.handleGetServerInfo(ctx, req)
-	case rpcapi.RPCMethodPeerInfoGet:
 		return s.handleGetInfo(ctx, req)
-	case rpcapi.RPCMethodPeerInfoPut:
+	case rpcapi.RPCMethodServerInfoPut:
 		return s.handlePutInfo(ctx, req)
-	case rpcapi.RPCMethodPeerRuntimeGet:
+	case rpcapi.RPCMethodServerRuntimeGet:
 		return s.handleGetRuntime(ctx, req)
-	case rpcapi.RPCMethodPeerStatusGet:
+	case rpcapi.RPCMethodServerStatusGet:
 		return s.handleGetStatus(ctx, req)
-	case rpcapi.RPCMethodPeerStatusPut:
+	case rpcapi.RPCMethodServerStatusPut:
 		return s.handlePutStatus(ctx, req)
-	case rpcapi.RPCMethodPeerRunAgentGet:
+	case rpcapi.RPCMethodServerRunAgentGet:
 		return s.handleGetRunAgent(ctx, req)
-	case rpcapi.RPCMethodPeerRunAgentSet:
+	case rpcapi.RPCMethodServerRunAgentSet:
 		return s.handleSetRunAgent(ctx, req)
-	case rpcapi.RPCMethodPeerRunReload, rpcapi.RPCMethodPeerRunStatus, rpcapi.RPCMethodPeerRunStop:
-		return rpcNotImplemented(req.Id, req.Method), nil
+	case rpcapi.RPCMethodServerRunReload:
+		return s.handleReloadRun(ctx, req)
+	case rpcapi.RPCMethodServerRunStatus:
+		return s.handleGetRunStatus(ctx, req)
+	case rpcapi.RPCMethodServerRunStop:
+		return s.handleStopRun(ctx, req)
+	case rpcapi.RPCMethodServerRunSay:
+		return s.handleServerRunSay(ctx, req)
 	default:
-		if s.gearResources != nil {
-			resp, handled, err := s.gearResources.Dispatch(ctx, req)
+		if s.serverResources != nil {
+			resp, handled, err := s.serverResources.Dispatch(ctx, req)
 			if handled || err != nil {
 				return resp, err
 			}
 		}
-		if isPlannedGearMethod(req.Method) {
+		if isPlannedServerMethod(req.Method) {
 			return rpcNotImplemented(req.Id, req.Method), nil
 		}
 		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeMethodNotFound, Message: fmt.Sprintf("unknown method: %s", req.Method)}.RPCResponse(), nil

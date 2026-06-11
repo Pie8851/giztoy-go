@@ -2,7 +2,7 @@
 
 Tracking issue: https://github.com/GizClaw/gizclaw-go/issues/22
 
-This package is reserved for gear-scoped pet state and pet actions.
+This package is reserved for peer-scoped pet state and pet actions.
 
 Planned scope:
 

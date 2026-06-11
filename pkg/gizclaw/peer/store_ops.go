@@ -14,25 +14,25 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
 )
 
-// EnsureConnectedGear creates a default active gear record for a connected peer
+// EnsureConnectedPeer creates a default active peer record for a connected peer
 // when the peer has not been registered yet. Existing records are preserved.
-func (s *Server) EnsureConnectedGear(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Gear, error) {
+func (s *Server) EnsureConnectedPeer(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Peer, error) {
 	if publicKey.IsZero() {
-		return apitypes.Gear{}, fmt.Errorf("gear: empty public key")
+		return apitypes.Peer{}, fmt.Errorf("peer: empty public key")
 	}
 	existing, err := s.get(ctx, publicKey)
 	if err == nil {
 		return existing, nil
 	}
 	if !errors.Is(err, ErrPeerNotFound) {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 
 	autoRegistered := true
-	created, err := s.create(ctx, apitypes.Gear{
+	created, err := s.create(ctx, apitypes.Peer{
 		PublicKey:      publicKey.String(),
-		Role:           apitypes.GearRoleGear,
-		Status:         apitypes.GearStatusActive,
+		Role:           apitypes.PeerRoleClient,
+		Status:         apitypes.PeerRegistrationStatusActive,
 		Device:         apitypes.DeviceInfo{},
 		Configuration:  apitypes.Configuration{},
 		AutoRegistered: &autoRegistered,
@@ -43,119 +43,119 @@ func (s *Server) EnsureConnectedGear(ctx context.Context, publicKey giznet.Publi
 	return created, err
 }
 
-func isAutoConnectedGear(gear apitypes.Gear) bool {
-	return gear.AutoRegistered != nil &&
-		*gear.AutoRegistered &&
-		gear.ApprovedAt == nil &&
-		gear.Role == apitypes.GearRoleGear &&
-		gear.Status == apitypes.GearStatusActive
+func isAutoConnectedPeer(peer apitypes.Peer) bool {
+	return peer.AutoRegistered != nil &&
+		*peer.AutoRegistered &&
+		peer.ApprovedAt == nil &&
+		peer.Role == apitypes.PeerRoleClient &&
+		peer.Status == apitypes.PeerRegistrationStatusActive
 }
 
-func (s *Server) putInfo(ctx context.Context, publicKey giznet.PublicKey, info apitypes.DeviceInfo) (apitypes.Gear, error) {
-	gear, err := s.get(ctx, publicKey)
+func (s *Server) putInfo(ctx context.Context, publicKey giznet.PublicKey, info apitypes.DeviceInfo) (apitypes.Peer, error) {
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	gear.Device = info
-	return s.put(ctx, gear)
+	peer.Device = info
+	return s.put(ctx, peer)
 }
 
-// LoadGear returns the stored gear record for a public key.
-func (s *Server) LoadGear(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Gear, error) {
+// LoadPeer returns the stored peer record for a public key.
+func (s *Server) LoadPeer(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Peer, error) {
 	return s.get(ctx, publicKey)
 }
 
-// SaveGear stores a full gear record and returns the persisted value.
-func (s *Server) SaveGear(ctx context.Context, gear apitypes.Gear) (apitypes.Gear, error) {
-	return s.put(ctx, gear)
+// SavePeer stores a full peer record and returns the persisted value.
+func (s *Server) SavePeer(ctx context.Context, peer apitypes.Peer) (apitypes.Peer, error) {
+	return s.put(ctx, peer)
 }
 
-func (s *Server) putConfig(ctx context.Context, publicKey giznet.PublicKey, cfg apitypes.Configuration) (apitypes.Gear, error) {
+func (s *Server) putConfig(ctx context.Context, publicKey giznet.PublicKey, cfg apitypes.Configuration) (apitypes.Peer, error) {
 	if err := validateConfiguration(cfg); err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	gear.Configuration = cfg
-	return s.put(ctx, gear)
+	peer.Configuration = cfg
+	return s.put(ctx, peer)
 }
 
-func (s *Server) approve(ctx context.Context, publicKey giznet.PublicKey, role apitypes.GearRole) (apitypes.Gear, error) {
-	if role == apitypes.GearRoleUnspecified || !role.Valid() {
-		return apitypes.Gear{}, fmt.Errorf("gear: invalid role %q", role)
+func (s *Server) approve(ctx context.Context, publicKey giznet.PublicKey, role apitypes.PeerRole) (apitypes.Peer, error) {
+	if role == apitypes.PeerRoleUnspecified || !role.Valid() {
+		return apitypes.Peer{}, fmt.Errorf("peer: invalid role %q", role)
 	}
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 	approvedAt := time.Now()
-	gear.Role = role
-	gear.Status = apitypes.GearStatusActive
-	gear.ApprovedAt = &approvedAt
-	return s.put(ctx, gear)
+	peer.Role = role
+	peer.Status = apitypes.PeerRegistrationStatusActive
+	peer.ApprovedAt = &approvedAt
+	return s.put(ctx, peer)
 }
 
-func (s *Server) block(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Gear, error) {
-	gear, err := s.get(ctx, publicKey)
+func (s *Server) block(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Peer, error) {
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	gear.Status = apitypes.GearStatusBlocked
-	return s.put(ctx, gear)
+	peer.Status = apitypes.PeerRegistrationStatusBlocked
+	return s.put(ctx, peer)
 }
 
-func (s *Server) delete(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Gear, error) {
-	gear, err := s.get(ctx, publicKey)
+func (s *Server) delete(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Peer, error) {
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 	store, err := s.store()
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	deletes := append([]kv.Key{gearKey(gear.PublicKey)}, indexKeys(gear)...)
+	deletes := append([]kv.Key{peerKey(peer.PublicKey)}, indexKeys(peer)...)
 	if err := store.BatchDelete(ctx, deletes); err != nil {
-		return apitypes.Gear{}, fmt.Errorf("gear: delete %s: %w", gear.PublicKey, err)
+		return apitypes.Peer{}, fmt.Errorf("peer: delete %s: %w", peer.PublicKey, err)
 	}
-	return gear, nil
+	return peer, nil
 }
 
-func (s *Server) get(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Gear, error) {
+func (s *Server) get(ctx context.Context, publicKey giznet.PublicKey) (apitypes.Peer, error) {
 	store, err := s.store()
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 	publicKeyText := publicKey.String()
-	gear, err := s.getByPublicKeyText(ctx, store, publicKeyText)
+	peer, err := s.getByPublicKeyText(ctx, store, publicKeyText)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	return gear, nil
+	return peer, nil
 }
 
-func (s *Server) getByPublicKeyText(ctx context.Context, store kv.Store, publicKeyText string) (apitypes.Gear, error) {
-	data, err := store.Get(ctx, gearKey(publicKeyText))
+func (s *Server) getByPublicKeyText(ctx context.Context, store kv.Store, publicKeyText string) (apitypes.Peer, error) {
+	data, err := store.Get(ctx, peerKey(publicKeyText))
 	if err != nil {
 		if errors.Is(err, kv.ErrNotFound) {
-			return apitypes.Gear{}, ErrPeerNotFound
+			return apitypes.Peer{}, ErrPeerNotFound
 		}
-		return apitypes.Gear{}, fmt.Errorf("gear: get %s: %w", publicKeyText, err)
+		return apitypes.Peer{}, fmt.Errorf("peer: get %s: %w", publicKeyText, err)
 	}
-	gear, err := decodeGear(data)
+	peer, err := decodePeer(data)
 	if err != nil {
-		return apitypes.Gear{}, fmt.Errorf("gear: decode %s: %w", publicKeyText, err)
+		return apitypes.Peer{}, fmt.Errorf("peer: decode %s: %w", publicKeyText, err)
 	}
-	return gear, nil
+	return peer, nil
 }
 
-func decodeGear(data []byte) (apitypes.Gear, error) {
-	var gear apitypes.Gear
-	if err := json.Unmarshal(data, &gear); err != nil {
-		return apitypes.Gear{}, err
+func decodePeer(data []byte) (apitypes.Peer, error) {
+	var peer apitypes.Peer
+	if err := json.Unmarshal(data, &peer); err != nil {
+		return apitypes.Peer{}, err
 	}
-	return gear, nil
+	return peer, nil
 }
 
 func (s *Server) exists(ctx context.Context, publicKey giznet.PublicKey) (bool, error) {
@@ -169,40 +169,40 @@ func (s *Server) exists(ctx context.Context, publicKey giznet.PublicKey) (bool, 
 	return false, err
 }
 
-func (s *Server) create(ctx context.Context, gear apitypes.Gear) (apitypes.Gear, error) {
-	if err := validateGear(gear); err != nil {
-		return apitypes.Gear{}, err
+func (s *Server) create(ctx context.Context, peer apitypes.Peer) (apitypes.Peer, error) {
+	if err := validatePeer(peer); err != nil {
+		return apitypes.Peer{}, err
 	}
-	publicKey, err := publicKeyFromText(gear.PublicKey)
+	publicKey, err := publicKeyFromText(peer.PublicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, err := s.get(ctx, publicKey); err == nil {
-		return apitypes.Gear{}, ErrPeerAlreadyExists
+		return apitypes.Peer{}, ErrPeerAlreadyExists
 	} else if !errors.Is(err, ErrPeerNotFound) {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 
 	now := time.Now()
-	gear.CreatedAt = now
-	gear.UpdatedAt = now
-	if err := s.writeGearLocked(ctx, gear, nil); err != nil {
-		return apitypes.Gear{}, err
+	peer.CreatedAt = now
+	peer.UpdatedAt = now
+	if err := s.writePeerLocked(ctx, peer, nil); err != nil {
+		return apitypes.Peer{}, err
 	}
 	return s.get(ctx, publicKey)
 }
 
-func (s *Server) put(ctx context.Context, gear apitypes.Gear) (apitypes.Gear, error) {
-	if err := validateGear(gear); err != nil {
-		return apitypes.Gear{}, err
+func (s *Server) put(ctx context.Context, peer apitypes.Peer) (apitypes.Peer, error) {
+	if err := validatePeer(peer); err != nil {
+		return apitypes.Peer{}, err
 	}
-	publicKey, err := publicKeyFromText(gear.PublicKey)
+	publicKey, err := publicKeyFromText(peer.PublicKey)
 	if err != nil {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
 
 	s.mu.Lock()
@@ -210,37 +210,37 @@ func (s *Server) put(ctx context.Context, gear apitypes.Gear) (apitypes.Gear, er
 
 	old, err := s.get(ctx, publicKey)
 	if err != nil && !errors.Is(err, ErrPeerNotFound) {
-		return apitypes.Gear{}, err
+		return apitypes.Peer{}, err
 	}
-	if gear.CreatedAt.IsZero() {
+	if peer.CreatedAt.IsZero() {
 		if errors.Is(err, ErrPeerNotFound) {
-			gear.CreatedAt = time.Now()
+			peer.CreatedAt = time.Now()
 		} else {
-			gear.CreatedAt = old.CreatedAt
+			peer.CreatedAt = old.CreatedAt
 		}
 	}
-	gear.UpdatedAt = time.Now()
-	if err := s.writeGearLocked(ctx, gear, optionalGear(old, err)); err != nil {
-		return apitypes.Gear{}, err
+	peer.UpdatedAt = time.Now()
+	if err := s.writePeerLocked(ctx, peer, optionalPeer(old, err)); err != nil {
+		return apitypes.Peer{}, err
 	}
 	return s.get(ctx, publicKey)
 }
 
-func (s *Server) list(ctx context.Context) ([]apitypes.Gear, error) {
+func (s *Server) list(ctx context.Context) ([]apitypes.Peer, error) {
 	store, err := s.store()
 	if err != nil {
 		return nil, err
 	}
-	items := make([]apitypes.Gear, 0)
-	for entry, err := range store.List(ctx, gearsPrefix()) {
+	items := make([]apitypes.Peer, 0)
+	for entry, err := range store.List(ctx, peersPrefix()) {
 		if err != nil {
-			return nil, fmt.Errorf("gear: list: %w", err)
+			return nil, fmt.Errorf("peer: list: %w", err)
 		}
-		var gear apitypes.Gear
-		if err := json.Unmarshal(entry.Value, &gear); err != nil {
-			return nil, fmt.Errorf("gear: decode list %s: %w", entry.Key.String(), err)
+		var peer apitypes.Peer
+		if err := json.Unmarshal(entry.Value, &peer); err != nil {
+			return nil, fmt.Errorf("peer: decode list %s: %w", entry.Key.String(), err)
 		}
-		items = append(items, gear)
+		items = append(items, peer)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
@@ -251,7 +251,7 @@ func (s *Server) list(ctx context.Context) ([]apitypes.Gear, error) {
 	return items, nil
 }
 
-func (s *Server) listPage(ctx context.Context, cursor string, limit int) ([]apitypes.Gear, bool, *string, error) {
+func (s *Server) listPage(ctx context.Context, cursor string, limit int) ([]apitypes.Peer, bool, *string, error) {
 	items, err := s.list(ctx)
 	if err != nil {
 		return nil, false, nil, err
@@ -259,8 +259,8 @@ func (s *Server) listPage(ctx context.Context, cursor string, limit int) ([]apit
 	start := 0
 	if cursor != "" {
 		start = len(items)
-		for index, gear := range items {
-			if gear.PublicKey == cursor {
+		for index, peer := range items {
+			if peer.PublicKey == cursor {
 				start = index + 1
 				break
 			}
@@ -289,34 +289,34 @@ func (s *Server) resolveByIMEI(ctx context.Context, tac, serial string) (giznet.
 	return s.resolveSingle(ctx, imeiKey(tac, serial), ErrPeerNotFound)
 }
 
-func (s *Server) writeGearLocked(ctx context.Context, gear apitypes.Gear, previous *apitypes.Gear) error {
+func (s *Server) writePeerLocked(ctx context.Context, peer apitypes.Peer, previous *apitypes.Peer) error {
 	store, err := s.store()
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(gear)
+	data, err := json.Marshal(peer)
 	if err != nil {
-		return fmt.Errorf("gear: encode %s: %w", gear.PublicKey, err)
+		return fmt.Errorf("peer: encode %s: %w", peer.PublicKey, err)
 	}
 
 	var deletes []kv.Key
 	if previous != nil {
-		if previous.PublicKey != gear.PublicKey {
-			deletes = append(deletes, gearKey(previous.PublicKey))
+		if previous.PublicKey != peer.PublicKey {
+			deletes = append(deletes, peerKey(previous.PublicKey))
 		}
 		deletes = append(deletes, indexKeys(*previous)...)
 	}
 
-	entries := []kv.Entry{{Key: gearKey(gear.PublicKey), Value: data}}
-	entries = append(entries, indexEntries(gear)...)
+	entries := []kv.Entry{{Key: peerKey(peer.PublicKey), Value: data}}
+	entries = append(entries, indexEntries(peer)...)
 
 	if len(deletes) > 0 {
 		if err := store.BatchDelete(ctx, deletes); err != nil {
-			return fmt.Errorf("gear: delete stale indexes %s: %w", gear.PublicKey, err)
+			return fmt.Errorf("peer: delete stale indexes %s: %w", peer.PublicKey, err)
 		}
 	}
 	if err := store.BatchSet(ctx, entries); err != nil {
-		return fmt.Errorf("gear: write %s: %w", gear.PublicKey, err)
+		return fmt.Errorf("peer: write %s: %w", peer.PublicKey, err)
 	}
 	return nil
 }
@@ -342,7 +342,7 @@ func (s *Server) resolveSingle(ctx context.Context, key kv.Key, notFound error) 
 
 func (s *Server) store() (kv.Store, error) {
 	if s.Store == nil {
-		return nil, errors.New("gear: store not configured")
+		return nil, errors.New("peer: store not configured")
 	}
 	return s.Store, nil
 }
@@ -357,10 +357,10 @@ func (s *Server) peerRuntime(ctx context.Context, publicKey giznet.PublicKey) ap
 	return s.PeerManager.PeerRuntime(ctx, publicKey)
 }
 
-func optionalGear(gear apitypes.Gear, err error) *apitypes.Gear {
+func optionalPeer(peer apitypes.Peer, err error) *apitypes.Peer {
 	if err != nil {
 		return nil
 	}
-	cp := gear
+	cp := peer
 	return &cp
 }

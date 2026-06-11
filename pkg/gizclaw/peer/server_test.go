@@ -27,16 +27,16 @@ func (m stubPeerManager) RefreshPeer(context.Context, giznet.PublicKey) (adminse
 	return m.refreshResult, m.refreshOnline, m.refreshErr
 }
 
-func saveTestGear(t *testing.T, server *Server, publicKey giznet.PublicKey, device apitypes.DeviceInfo) {
+func saveTestPeer(t *testing.T, server *Server, publicKey giznet.PublicKey, device apitypes.DeviceInfo) {
 	t.Helper()
-	if _, err := server.SaveGear(context.Background(), apitypes.Gear{
+	if _, err := server.SavePeer(context.Background(), apitypes.Peer{
 		PublicKey:     publicKey.String(),
-		Role:          apitypes.GearRoleGear,
-		Status:        apitypes.GearStatusActive,
+		Role:          apitypes.PeerRoleClient,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Device:        device,
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear(%s) error: %v", publicKey, err)
+		t.Fatalf("SavePeer(%s) error: %v", publicKey, err)
 	}
 }
 
@@ -48,17 +48,17 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 	peerKey := giznet.PublicKey{1}
 	peerPublicKey := peerKey.String()
 	ctx := context.Background()
-	sn := "sn-gear"
+	sn := "sn-peer"
 	tac := "12345678"
 	serial := "87654321"
 	labelKey := "region"
 	labelValue := "cn"
 
-	saveTestGear(t, server, peerKey, apitypes.DeviceInfo{
+	saveTestPeer(t, server, peerKey, apitypes.DeviceInfo{
 		Sn: &sn,
 		Hardware: &apitypes.HardwareInfo{
-			Imeis:  &[]apitypes.GearIMEI{{Tac: tac, Serial: serial}},
-			Labels: &[]apitypes.GearLabel{{Key: labelKey, Value: labelValue}},
+			Imeis:  &[]apitypes.PeerIMEI{{Tac: tac, Serial: serial}},
+			Labels: &[]apitypes.PeerLabel{{Key: labelKey, Value: labelValue}},
 		},
 	})
 
@@ -137,8 +137,8 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 			Name: &updatedName,
 			Sn:   &sn,
 			Hardware: &apitypes.HardwareInfo{
-				Imeis:  &[]apitypes.GearIMEI{{Tac: tac, Serial: serial}},
-				Labels: &[]apitypes.GearLabel{{Key: labelKey, Value: labelValue}},
+				Imeis:  &[]apitypes.PeerIMEI{{Tac: tac, Serial: serial}},
+				Labels: &[]apitypes.PeerLabel{{Key: labelKey, Value: labelValue}},
 			},
 		},
 	})
@@ -182,7 +182,7 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 
 	approveResp, err := server.ApprovePeer(ctx, adminservice.ApprovePeerRequestObject{
 		PublicKey: string(peerPublicKey),
-		Body:      &adminservice.ApprovePeerJSONRequestBody{Role: apitypes.GearRoleGear},
+		Body:      &adminservice.ApprovePeerJSONRequestBody{Role: apitypes.PeerRoleClient},
 	})
 	if err != nil {
 		t.Fatalf("ApprovePeer error: %v", err)
@@ -191,7 +191,7 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 	if !ok {
 		t.Fatalf("ApprovePeer response type = %T", approveResp)
 	}
-	if approved.Role != apitypes.GearRoleGear || approved.Status != apitypes.GearStatusActive {
+	if approved.Role != apitypes.PeerRoleClient || approved.Status != apitypes.PeerRegistrationStatusActive {
 		t.Fatalf("ApprovePeer = %+v", approved)
 	}
 
@@ -205,7 +205,7 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 	if !ok {
 		t.Fatalf("BlockPeer response type = %T", blockResp)
 	}
-	if blocked.Status != apitypes.GearStatusBlocked {
+	if blocked.Status != apitypes.PeerRegistrationStatusBlocked {
 		t.Fatalf("BlockPeer = %+v", blocked)
 	}
 
@@ -219,7 +219,7 @@ func TestServerAdminPeerHandlers(t *testing.T) {
 	if !ok {
 		t.Fatalf("DeletePeer response type = %T", deleteResp)
 	}
-	if deleted.Role != apitypes.GearRoleGear || deleted.Status != apitypes.GearStatusBlocked || deleted.ApprovedAt == nil {
+	if deleted.Role != apitypes.PeerRoleClient || deleted.Status != apitypes.PeerRegistrationStatusBlocked || deleted.ApprovedAt == nil {
 		t.Fatalf("DeletePeer = %+v", deleted)
 	}
 	getDeletedResp, err := server.GetPeer(ctx, adminservice.GetPeerRequestObject{PublicKey: string(peerPublicKey)})
@@ -236,22 +236,22 @@ func TestServerListPeersPagination(t *testing.T) {
 		Store: mustBadgerInMemory(t, nil),
 	}
 
-	gearA := giznet.PublicKey{1}
-	gearB := giznet.PublicKey{2}
-	gearC := giznet.PublicKey{3}
-	gearAText := gearA.String()
+	peerA := giznet.PublicKey{1}
+	peerB := giznet.PublicKey{2}
+	peerC := giznet.PublicKey{3}
+	peerAText := peerA.String()
 
-	registerGear := func(publicKey giznet.PublicKey, labelValue string) {
-		saveTestGear(t, server, publicKey, apitypes.DeviceInfo{
+	registerPeer := func(publicKey giznet.PublicKey, labelValue string) {
+		saveTestPeer(t, server, publicKey, apitypes.DeviceInfo{
 			Hardware: &apitypes.HardwareInfo{
-				Labels: &[]apitypes.GearLabel{{Key: "region", Value: labelValue}},
+				Labels: &[]apitypes.PeerLabel{{Key: "region", Value: labelValue}},
 			},
 		})
 	}
 
-	registerGear(gearA, "cn")
-	registerGear(gearB, "cn")
-	registerGear(gearC, "us")
+	registerPeer(peerA, "cn")
+	registerPeer(peerB, "cn")
+	registerPeer(peerC, "us")
 
 	limit := int32(1)
 	resp, err := server.ListPeers(context.Background(), adminservice.ListPeersRequestObject{
@@ -266,10 +266,10 @@ func TestServerListPeersPagination(t *testing.T) {
 	if !ok {
 		t.Fatalf("ListPeers response type = %T", resp)
 	}
-	if !listed.HasNext || listed.NextCursor == nil || *listed.NextCursor != gearAText {
+	if !listed.HasNext || listed.NextCursor == nil || *listed.NextCursor != peerAText {
 		t.Fatalf("ListPeers pagination metadata = %+v", listed)
 	}
-	if len(listed.Items) != 1 || listed.Items[0].PublicKey != gearAText {
+	if len(listed.Items) != 1 || listed.Items[0].PublicKey != peerAText {
 		t.Fatalf("ListPeers paged items = %+v", listed.Items)
 	}
 
@@ -280,20 +280,20 @@ func TestServerListPeersPaginationPreservesCreationOrder(t *testing.T) {
 		Store: mustBadgerInMemory(t, nil),
 	}
 
-	gearA := giznet.PublicKey{1}
-	gearB := giznet.PublicKey{2}
-	gearC := giznet.PublicKey{3}
-	gearAText := gearA.String()
-	gearBText := gearB.String()
-	gearCText := gearC.String()
+	peerA := giznet.PublicKey{1}
+	peerB := giznet.PublicKey{2}
+	peerC := giznet.PublicKey{3}
+	peerAText := peerA.String()
+	peerBText := peerB.String()
+	peerCText := peerC.String()
 
-	registerGear := func(publicKey giznet.PublicKey) {
-		saveTestGear(t, server, publicKey, apitypes.DeviceInfo{})
+	registerPeer := func(publicKey giznet.PublicKey) {
+		saveTestPeer(t, server, publicKey, apitypes.DeviceInfo{})
 	}
 
-	registerGear(gearB)
-	registerGear(gearA)
-	registerGear(gearC)
+	registerPeer(peerB)
+	registerPeer(peerA)
+	registerPeer(peerC)
 
 	limit := int32(2)
 	resp, err := server.ListPeers(context.Background(), adminservice.ListPeersRequestObject{
@@ -306,10 +306,10 @@ func TestServerListPeersPaginationPreservesCreationOrder(t *testing.T) {
 	if !ok {
 		t.Fatalf("ListPeers first response type = %T", resp)
 	}
-	if len(firstPage.Items) != 2 || firstPage.Items[0].PublicKey != gearBText || firstPage.Items[1].PublicKey != gearAText {
+	if len(firstPage.Items) != 2 || firstPage.Items[0].PublicKey != peerBText || firstPage.Items[1].PublicKey != peerAText {
 		t.Fatalf("ListPeers first page = %+v", firstPage.Items)
 	}
-	if !firstPage.HasNext || firstPage.NextCursor == nil || *firstPage.NextCursor != gearAText {
+	if !firstPage.HasNext || firstPage.NextCursor == nil || *firstPage.NextCursor != peerAText {
 		t.Fatalf("ListPeers first page metadata = %+v", firstPage)
 	}
 
@@ -326,7 +326,7 @@ func TestServerListPeersPaginationPreservesCreationOrder(t *testing.T) {
 	if !ok {
 		t.Fatalf("ListPeers second response type = %T", resp)
 	}
-	if len(secondPage.Items) != 1 || secondPage.Items[0].PublicKey != gearCText {
+	if len(secondPage.Items) != 1 || secondPage.Items[0].PublicKey != peerCText {
 		t.Fatalf("ListPeers second page = %+v", secondPage.Items)
 	}
 }
@@ -336,7 +336,7 @@ func TestServerListPeersLimitClampsToConfiguredBounds(t *testing.T) {
 		Store: mustBadgerInMemory(t, nil),
 	}
 	for _, publicKey := range []giznet.PublicKey{{1}, {2}, {3}} {
-		saveTestGear(t, server, publicKey, apitypes.DeviceInfo{})
+		saveTestPeer(t, server, publicKey, apitypes.DeviceInfo{})
 	}
 
 	zero := int32(0)
@@ -384,10 +384,10 @@ func TestServerRuntimeHandlers(t *testing.T) {
 				Online:     true,
 			},
 			refreshResult: adminservice.RefreshResult{
-				Gear: apitypes.Gear{
+				Peer: apitypes.Peer{
 					PublicKey: peerKey.String(),
-					Role:      apitypes.GearRoleServer,
-					Status:    apitypes.GearStatusActive,
+					Role:      apitypes.PeerRoleServer,
+					Status:    apitypes.PeerRegistrationStatusActive,
 				},
 				UpdatedFields: &[]string{"device.name"},
 			},
@@ -395,20 +395,20 @@ func TestServerRuntimeHandlers(t *testing.T) {
 		},
 	}
 
-	saveTestGear(t, server, peerKey, apitypes.DeviceInfo{})
+	saveTestPeer(t, server, peerKey, apitypes.DeviceInfo{})
 
-	getGearRuntimeResp, err := server.GetPeerRuntime(context.Background(), adminservice.GetPeerRuntimeRequestObject{
+	getPeerRuntimeResp, err := server.GetPeerRuntime(context.Background(), adminservice.GetPeerRuntimeRequestObject{
 		PublicKey: string(peerPublicKey),
 	})
 	if err != nil {
 		t.Fatalf("GetPeerRuntime error: %v", err)
 	}
-	gearRuntime, ok := getGearRuntimeResp.(adminservice.GetPeerRuntime200JSONResponse)
+	peerRuntime, ok := getPeerRuntimeResp.(adminservice.GetPeerRuntime200JSONResponse)
 	if !ok {
-		t.Fatalf("GetPeerRuntime response type = %T", getGearRuntimeResp)
+		t.Fatalf("GetPeerRuntime response type = %T", getPeerRuntimeResp)
 	}
-	if !gearRuntime.Online || gearRuntime.LastAddr == nil || *gearRuntime.LastAddr != runtimeAddr {
-		t.Fatalf("GetPeerRuntime = %+v", gearRuntime)
+	if !peerRuntime.Online || peerRuntime.LastAddr == nil || *peerRuntime.LastAddr != runtimeAddr {
+		t.Fatalf("GetPeerRuntime = %+v", peerRuntime)
 	}
 
 	publicRuntime := server.GetSelfRuntime(context.Background(), peerKey)
@@ -426,7 +426,7 @@ func TestServerRuntimeHandlers(t *testing.T) {
 	if !ok {
 		t.Fatalf("RefreshPeer response type = %T", refreshResp)
 	}
-	if refreshed.Gear.PublicKey != peerPublicKey || refreshed.UpdatedFields == nil || len(*refreshed.UpdatedFields) != 1 {
+	if refreshed.Peer.PublicKey != peerPublicKey || refreshed.UpdatedFields == nil || len(*refreshed.UpdatedFields) != 1 {
 		t.Fatalf("RefreshPeer = %+v", refreshed)
 	}
 }
@@ -440,16 +440,16 @@ func TestServerPublicHandlers(t *testing.T) {
 		ServerPublicKey: giznet.PublicKey{1},
 	}
 
-	name := "gear-a"
+	name := "peer-a"
 	sn := "sn-1"
 	labelKey := "region"
 	labelValue := "cn"
 
-	saveTestGear(t, server, peerKey, apitypes.DeviceInfo{
+	saveTestPeer(t, server, peerKey, apitypes.DeviceInfo{
 		Name: &name,
 		Sn:   &sn,
 		Hardware: &apitypes.HardwareInfo{
-			Labels: &[]apitypes.GearLabel{{Key: labelKey, Value: labelValue}},
+			Labels: &[]apitypes.PeerLabel{{Key: labelKey, Value: labelValue}},
 		},
 	})
 
@@ -494,7 +494,7 @@ func TestServerPublicHandlersPutInfoConfigAndRuntime(t *testing.T) {
 	}
 
 	sn := "sn-old"
-	saveTestGear(t, server, peerKey, apitypes.DeviceInfo{Sn: &sn})
+	saveTestPeer(t, server, peerKey, apitypes.DeviceInfo{Sn: &sn})
 
 	view := "under-12"
 	_, err := server.PutPeerConfig(context.Background(), adminservice.PutPeerConfigRequestObject{

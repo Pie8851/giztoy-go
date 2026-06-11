@@ -2,12 +2,18 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/storage"
 	"github.com/GizClaw/gizclaw-go/cmd/internal/stores"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/giznet"
+	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
 )
 
 func TestNewMigratorRunsACLMigration(t *testing.T) {
@@ -74,6 +80,94 @@ acl:
 	defer migrator.Close()
 	if _, err := migrator.ACL.DB.ExecContext(context.Background(), `INSERT INTO acl_views (name, created_at, updated_at) VALUES ('workspace', 'now', 'now')`); err != nil {
 		t.Fatalf("insert acl view after workspace migration: %v", err)
+	}
+}
+
+func TestMigrateWorkspaceMigratesLegacyPeerRole(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, workspaceConfigFile), []byte(`
+listen: "127.0.0.1:0"
+storage:
+  peer-db:
+    kind: keyvalue
+    badger:
+      dir: data/peer.badger
+  acl-db:
+    kind: sql
+    sqlite:
+      dir: data/acl.sqlite
+stores:
+  peers:
+    kind: keyvalue
+    storage: peer-db
+  acl:
+    kind: sql
+    storage: acl-db
+peers:
+  store: peers
+acl:
+  store: acl
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := prepareWorkspaceMigrationConfig(root)
+	if err != nil {
+		t.Fatalf("prepareWorkspaceMigrationConfig() error = %v", err)
+	}
+	ss, err := newStoreRegistry(cfg)
+	if err != nil {
+		t.Fatalf("newStoreRegistry() error = %v", err)
+	}
+	peerStore, err := ss.KV(cfg.Peers.Store)
+	if err != nil {
+		t.Fatalf("KV(peers) error = %v", err)
+	}
+	publicKey := giznet.PublicKey{1}
+	legacy := apitypes.Peer{
+		PublicKey:     publicKey.String(),
+		Role:          apitypes.PeerRole("gear"),
+		Status:        apitypes.PeerRegistrationStatusActive,
+		Device:        apitypes.DeviceInfo{},
+		Configuration: apitypes.Configuration{},
+		CreatedAt:     time.Unix(1, 0).UTC(),
+		UpdatedAt:     time.Unix(1, 0).UTC(),
+	}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy peer: %v", err)
+	}
+	if err := peerStore.BatchSet(context.Background(), []kv.Entry{
+		{Key: kv.Key{"by-pubkey", legacy.PublicKey}, Value: data},
+		{Key: kv.Key{"by-role", "gear", legacy.PublicKey}, Value: []byte{1}},
+	}); err != nil {
+		t.Fatalf("seed legacy peer: %v", err)
+	}
+	if err := ss.Close(); err != nil {
+		t.Fatalf("close seed stores: %v", err)
+	}
+
+	if err := MigrateWorkspace(context.Background(), root); err != nil {
+		t.Fatalf("MigrateWorkspace() error = %v", err)
+	}
+
+	migrator, err := NewMigrator(cfg)
+	if err != nil {
+		t.Fatalf("NewMigrator() after migration error = %v", err)
+	}
+	defer migrator.Close()
+	migrated, err := migrator.Peers.LoadPeer(context.Background(), publicKey)
+	if err != nil {
+		t.Fatalf("LoadPeer() error = %v", err)
+	}
+	if migrated.Role != apitypes.PeerRoleClient {
+		t.Fatalf("Role = %q, want %q", migrated.Role, apitypes.PeerRoleClient)
+	}
+	if _, err := migrator.Peers.Store.Get(context.Background(), kv.Key{"by-role", "gear", legacy.PublicKey}); !errors.Is(err, kv.ErrNotFound) {
+		t.Fatalf("legacy role index err = %v, want %v", err, kv.ErrNotFound)
+	}
+	if _, err := migrator.Peers.Store.Get(context.Background(), kv.Key{"by-role", "client", legacy.PublicKey}); err != nil {
+		t.Fatalf("client role index missing: %v", err)
 	}
 }
 

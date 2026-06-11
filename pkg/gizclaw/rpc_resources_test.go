@@ -9,7 +9,7 @@ import (
 )
 
 func TestRPCClientResourceMethods(t *testing.T) {
-	server := &rpcServer{gearResources: &fakeRPCGearResourceService{t: t}}
+	server := &rpcServer{serverResources: &fakeRPCServerResourceService{t: t}}
 	client := &rpcClient{}
 
 	workspaceList := callRPCPair(t, server, func(conn net.Conn) (*rpcapi.WorkspaceListResponse, error) {
@@ -138,11 +138,11 @@ func TestRPCClientResourceMethods(t *testing.T) {
 	}
 }
 
-type fakeRPCGearResourceService struct {
+type fakeRPCServerResourceService struct {
 	t *testing.T
 }
 
-func (f *fakeRPCGearResourceService) Dispatch(_ context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, bool, error) {
+func (f *fakeRPCServerResourceService) Dispatch(_ context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, bool, error) {
 	f.t.Helper()
 
 	if req == nil {
@@ -156,117 +156,117 @@ func (f *fakeRPCGearResourceService) Dispatch(_ context.Context, req *rpcapi.RPC
 	}
 
 	switch req.Method {
-	case rpcapi.RPCMethodWorkspaceList:
+	case rpcapi.RPCMethodServerWorkspaceList:
 		if _, err := req.Params.AsWorkspaceListRequest(); err != nil {
 			f.t.Fatalf("workspace.list params: %v", err)
 		}
 		return resourceResponse(req.Id, rpcapi.WorkspaceListResponse{Items: []rpcapi.Workspace{resourceWorkspace("workspace-a")}}, (*rpcapi.RPCResponse_Result).FromWorkspaceListResponse), true, nil
-	case rpcapi.RPCMethodWorkspaceGet:
+	case rpcapi.RPCMethodServerWorkspaceGet:
 		params, err := req.Params.AsWorkspaceGetRequest()
 		if err != nil || params.Name != "workspace-a" {
 			f.t.Fatalf("workspace.get params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkspace("workspace-a"), (*rpcapi.RPCResponse_Result).FromWorkspaceGetResponse), true, nil
-	case rpcapi.RPCMethodWorkspaceCreate:
+	case rpcapi.RPCMethodServerWorkspaceCreate:
 		params, err := req.Params.AsWorkspaceCreateRequest()
 		if err != nil || params.Name != "workspace-a" || params.WorkflowName != "flow-a" {
 			f.t.Fatalf("workspace.create params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkspace("workspace-a"), (*rpcapi.RPCResponse_Result).FromWorkspaceCreateResponse), true, nil
-	case rpcapi.RPCMethodWorkspacePut:
+	case rpcapi.RPCMethodServerWorkspacePut:
 		params, err := req.Params.AsWorkspacePutRequest()
 		if err != nil || params.Name != "workspace-a" || params.Body.WorkflowName != "flow-a" {
 			f.t.Fatalf("workspace.put params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkspace("workspace-a"), (*rpcapi.RPCResponse_Result).FromWorkspacePutResponse), true, nil
-	case rpcapi.RPCMethodWorkspaceDelete:
+	case rpcapi.RPCMethodServerWorkspaceDelete:
 		params, err := req.Params.AsWorkspaceDeleteRequest()
 		if err != nil || params.Name != "workspace-a" {
 			f.t.Fatalf("workspace.delete params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkspace("workspace-a"), (*rpcapi.RPCResponse_Result).FromWorkspaceDeleteResponse), true, nil
-	case rpcapi.RPCMethodWorkflowList:
+	case rpcapi.RPCMethodServerWorkflowList:
 		if _, err := req.Params.AsWorkflowListRequest(); err != nil {
 			f.t.Fatalf("workflow.list params: %v", err)
 		}
 		return resourceResponse(req.Id, rpcapi.WorkflowListResponse{Items: []rpcapi.WorkflowDocument{resourceWorkflowDoc("flow-a")}}, (*rpcapi.RPCResponse_Result).FromWorkflowListResponse), true, nil
-	case rpcapi.RPCMethodWorkflowGet:
+	case rpcapi.RPCMethodServerWorkflowGet:
 		params, err := req.Params.AsWorkflowGetRequest()
 		if err != nil || params.Name != "flow-a" {
 			f.t.Fatalf("workflow.get params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkflowDoc("flow-a"), (*rpcapi.RPCResponse_Result).FromWorkflowGetResponse), true, nil
-	case rpcapi.RPCMethodWorkflowCreate:
+	case rpcapi.RPCMethodServerWorkflowCreate:
 		params, err := req.Params.AsWorkflowCreateRequest()
 		if err != nil || params.Metadata.Name != "flow-a" {
 			f.t.Fatalf("workflow.create params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkflowDoc("flow-a"), (*rpcapi.RPCResponse_Result).FromWorkflowCreateResponse), true, nil
-	case rpcapi.RPCMethodWorkflowPut:
+	case rpcapi.RPCMethodServerWorkflowPut:
 		params, err := req.Params.AsWorkflowPutRequest()
 		if err != nil || params.Name != "flow-a" || params.Body.Metadata.Name != "flow-a" {
 			f.t.Fatalf("workflow.put params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkflowDoc("flow-a"), (*rpcapi.RPCResponse_Result).FromWorkflowPutResponse), true, nil
-	case rpcapi.RPCMethodWorkflowDelete:
+	case rpcapi.RPCMethodServerWorkflowDelete:
 		params, err := req.Params.AsWorkflowDeleteRequest()
 		if err != nil || params.Name != "flow-a" {
 			f.t.Fatalf("workflow.delete params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceWorkflowDoc("flow-a"), (*rpcapi.RPCResponse_Result).FromWorkflowDeleteResponse), true, nil
-	case rpcapi.RPCMethodModelList:
+	case rpcapi.RPCMethodServerModelList:
 		if _, err := req.Params.AsModelListRequest(); err != nil {
 			f.t.Fatalf("model.list params: %v", err)
 		}
 		return resourceResponse(req.Id, rpcapi.ModelListResponse{Items: []rpcapi.Model{resourceModel("model-a")}}, (*rpcapi.RPCResponse_Result).FromModelListResponse), true, nil
-	case rpcapi.RPCMethodModelGet:
+	case rpcapi.RPCMethodServerModelGet:
 		params, err := req.Params.AsModelGetRequest()
 		if err != nil || params.Id != "model-a" {
 			f.t.Fatalf("model.get params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceModel("model-a"), (*rpcapi.RPCResponse_Result).FromModelGetResponse), true, nil
-	case rpcapi.RPCMethodModelCreate:
+	case rpcapi.RPCMethodServerModelCreate:
 		params, err := req.Params.AsModelCreateRequest()
 		if err != nil || params.Id != "model-a" {
 			f.t.Fatalf("model.create params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceModel("model-a"), (*rpcapi.RPCResponse_Result).FromModelCreateResponse), true, nil
-	case rpcapi.RPCMethodModelPut:
+	case rpcapi.RPCMethodServerModelPut:
 		params, err := req.Params.AsModelPutRequest()
 		if err != nil || params.Id != "model-a" || params.Body.Id != "model-a" {
 			f.t.Fatalf("model.put params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceModel("model-a"), (*rpcapi.RPCResponse_Result).FromModelPutResponse), true, nil
-	case rpcapi.RPCMethodModelDelete:
+	case rpcapi.RPCMethodServerModelDelete:
 		params, err := req.Params.AsModelDeleteRequest()
 		if err != nil || params.Id != "model-a" {
 			f.t.Fatalf("model.delete params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceModel("model-a"), (*rpcapi.RPCResponse_Result).FromModelDeleteResponse), true, nil
-	case rpcapi.RPCMethodCredentialList:
+	case rpcapi.RPCMethodServerCredentialList:
 		if _, err := req.Params.AsCredentialListRequest(); err != nil {
 			f.t.Fatalf("credential.list params: %v", err)
 		}
 		return resourceResponse(req.Id, rpcapi.CredentialListResponse{Items: []rpcapi.Credential{resourceCredential("credential-a")}}, (*rpcapi.RPCResponse_Result).FromCredentialListResponse), true, nil
-	case rpcapi.RPCMethodCredentialGet:
+	case rpcapi.RPCMethodServerCredentialGet:
 		params, err := req.Params.AsCredentialGetRequest()
 		if err != nil || params.Name != "credential-a" {
 			f.t.Fatalf("credential.get params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceCredential("credential-a"), (*rpcapi.RPCResponse_Result).FromCredentialGetResponse), true, nil
-	case rpcapi.RPCMethodCredentialCreate:
+	case rpcapi.RPCMethodServerCredentialCreate:
 		params, err := req.Params.AsCredentialCreateRequest()
 		if err != nil || params.Name != "credential-a" {
 			f.t.Fatalf("credential.create params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceCredential("credential-a"), (*rpcapi.RPCResponse_Result).FromCredentialCreateResponse), true, nil
-	case rpcapi.RPCMethodCredentialPut:
+	case rpcapi.RPCMethodServerCredentialPut:
 		params, err := req.Params.AsCredentialPutRequest()
 		if err != nil || params.Name != "credential-a" || params.Body.Name != "credential-a" {
 			f.t.Fatalf("credential.put params = %+v, %v", params, err)
 		}
 		return resourceResponse(req.Id, resourceCredential("credential-a"), (*rpcapi.RPCResponse_Result).FromCredentialPutResponse), true, nil
-	case rpcapi.RPCMethodCredentialDelete:
+	case rpcapi.RPCMethodServerCredentialDelete:
 		params, err := req.Params.AsCredentialDeleteRequest()
 		if err != nil || params.Name != "credential-a" {
 			f.t.Fatalf("credential.delete params = %+v, %v", params, err)

@@ -431,51 +431,6 @@ func (e FlowcraftWorkflowKind) Valid() bool {
 	}
 }
 
-// Defines values for GearRole.
-const (
-	GearRoleAdmin       GearRole = "admin"
-	GearRoleGear        GearRole = "gear"
-	GearRoleServer      GearRole = "server"
-	GearRoleUnspecified GearRole = "unspecified"
-)
-
-// Valid indicates whether the value is a known member of the GearRole enum.
-func (e GearRole) Valid() bool {
-	switch e {
-	case GearRoleAdmin:
-		return true
-	case GearRoleGear:
-		return true
-	case GearRoleServer:
-		return true
-	case GearRoleUnspecified:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GearStatus.
-const (
-	GearStatusActive      GearStatus = "active"
-	GearStatusBlocked     GearStatus = "blocked"
-	GearStatusUnspecified GearStatus = "unspecified"
-)
-
-// Valid indicates whether the value is a known member of the GearStatus enum.
-func (e GearStatus) Valid() bool {
-	switch e {
-	case GearStatusActive:
-		return true
-	case GearStatusBlocked:
-		return true
-	case GearStatusUnspecified:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for GeminiTenantResourceKind.
 const (
 	GeminiTenantResourceKindGeminiTenant GeminiTenantResourceKind = "GeminiTenant"
@@ -644,6 +599,51 @@ const (
 func (e PeerConfigResourceKind) Valid() bool {
 	switch e {
 	case PeerConfigResourceKindPeerConfig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerRegistrationStatus.
+const (
+	PeerRegistrationStatusActive      PeerRegistrationStatus = "active"
+	PeerRegistrationStatusBlocked     PeerRegistrationStatus = "blocked"
+	PeerRegistrationStatusUnspecified PeerRegistrationStatus = "unspecified"
+)
+
+// Valid indicates whether the value is a known member of the PeerRegistrationStatus enum.
+func (e PeerRegistrationStatus) Valid() bool {
+	switch e {
+	case PeerRegistrationStatusActive:
+		return true
+	case PeerRegistrationStatusBlocked:
+		return true
+	case PeerRegistrationStatusUnspecified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PeerRole.
+const (
+	PeerRoleAdmin       PeerRole = "admin"
+	PeerRoleClient      PeerRole = "client"
+	PeerRoleServer      PeerRole = "server"
+	PeerRoleUnspecified PeerRole = "unspecified"
+)
+
+// Valid indicates whether the value is a known member of the PeerRole enum.
+func (e PeerRole) Valid() bool {
+	switch e {
+	case PeerRoleAdmin:
+		return true
+	case PeerRoleClient:
+		return true
+	case PeerRoleServer:
+		return true
+	case PeerRoleUnspecified:
 		return true
 	default:
 		return false
@@ -1060,22 +1060,9 @@ type ApplyResult struct {
 	Name    string       `json:"name"`
 }
 
-// AudioSayRequest defines model for AudioSayRequest.
-type AudioSayRequest struct {
-	CredentialName *string `json:"credential_name,omitempty"`
-	ModelId        *string `json:"model_id,omitempty"`
-	Text           string  `json:"text"`
-	VoiceId        *string `json:"voice_id,omitempty"`
-}
-
-// AudioSayResponse defines model for AudioSayResponse.
-type AudioSayResponse struct {
-	Accepted bool `json:"accepted"`
-}
-
 // Configuration defines model for Configuration.
 type Configuration struct {
-	// View Current content view name selected for this gear.
+	// View Current content view name selected for this peer.
 	View *string `json:"view,omitempty"`
 }
 
@@ -1271,38 +1258,6 @@ type FlowcraftWorkflowKind string
 // FlowcraftWorkflowSpec defines model for FlowcraftWorkflowSpec.
 type FlowcraftWorkflowSpec map[string]interface{}
 
-// Gear defines model for Gear.
-type Gear struct {
-	ApprovedAt     *time.Time    `json:"approved_at,omitempty"`
-	AutoRegistered *bool         `json:"auto_registered,omitempty"`
-	Configuration  Configuration `json:"configuration"`
-	CreatedAt      time.Time     `json:"created_at"`
-	Device         DeviceInfo    `json:"device"`
-	PublicKey      string        `json:"public_key"`
-	Role           GearRole      `json:"role"`
-	Status         GearStatus    `json:"status"`
-	UpdatedAt      time.Time     `json:"updated_at"`
-}
-
-// GearIMEI defines model for GearIMEI.
-type GearIMEI struct {
-	Name   *string `json:"name,omitempty"`
-	Serial string  `json:"serial"`
-	Tac    string  `json:"tac"`
-}
-
-// GearLabel defines model for GearLabel.
-type GearLabel struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// GearRole defines model for GearRole.
-type GearRole string
-
-// GearStatus defines model for GearStatus.
-type GearStatus string
-
 // GeminiTenant defines model for GeminiTenant.
 type GeminiTenant struct {
 	BaseUrl        *string   `json:"base_url,omitempty"`
@@ -1350,8 +1305,8 @@ type GeminiTenantVoiceProviderData struct {
 // HardwareInfo defines model for HardwareInfo.
 type HardwareInfo struct {
 	HardwareRevision *string      `json:"hardware_revision,omitempty"`
-	Imeis            *[]GearIMEI  `json:"imeis,omitempty"`
-	Labels           *[]GearLabel `json:"labels,omitempty"`
+	Imeis            *[]PeerIMEI  `json:"imeis,omitempty"`
+	Labels           *[]PeerLabel `json:"labels,omitempty"`
 	Manufacturer     *string      `json:"manufacturer,omitempty"`
 	Model            *string      `json:"model,omitempty"`
 }
@@ -1554,6 +1509,19 @@ type OpenAITenantVoiceProviderData struct {
 	VoiceId *string                 `json:"voice_id,omitempty"`
 }
 
+// Peer defines model for Peer.
+type Peer struct {
+	ApprovedAt     *time.Time             `json:"approved_at,omitempty"`
+	AutoRegistered *bool                  `json:"auto_registered,omitempty"`
+	Configuration  Configuration          `json:"configuration"`
+	CreatedAt      time.Time              `json:"created_at"`
+	Device         DeviceInfo             `json:"device"`
+	PublicKey      string                 `json:"public_key"`
+	Role           PeerRole               `json:"role"`
+	Status         PeerRegistrationStatus `json:"status"`
+	UpdatedAt      time.Time              `json:"updated_at"`
+}
+
 // PeerConfigResource defines model for PeerConfigResource.
 type PeerConfigResource struct {
 	// ApiVersion API version for declarative GizClaw resources.
@@ -1565,6 +1533,25 @@ type PeerConfigResource struct {
 
 // PeerConfigResourceKind defines model for PeerConfigResource.Kind.
 type PeerConfigResourceKind string
+
+// PeerIMEI defines model for PeerIMEI.
+type PeerIMEI struct {
+	Name   *string `json:"name,omitempty"`
+	Serial string  `json:"serial"`
+	Tac    string  `json:"tac"`
+}
+
+// PeerLabel defines model for PeerLabel.
+type PeerLabel struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// PeerRegistrationStatus defines model for PeerRegistrationStatus.
+type PeerRegistrationStatus string
+
+// PeerRole defines model for PeerRole.
+type PeerRole string
 
 // PeerRunAgent defines model for PeerRunAgent.
 type PeerRunAgent struct {
@@ -1607,8 +1594,8 @@ type ProviderKind string
 
 // RefreshIdentifiers defines model for RefreshIdentifiers.
 type RefreshIdentifiers struct {
-	Imeis  *[]GearIMEI  `json:"imeis,omitempty"`
-	Labels *[]GearLabel `json:"labels,omitempty"`
+	Imeis  *[]PeerIMEI  `json:"imeis,omitempty"`
+	Labels *[]PeerLabel `json:"labels,omitempty"`
 	Sn     *string      `json:"sn,omitempty"`
 }
 
@@ -1622,14 +1609,14 @@ type RefreshInfo struct {
 
 // Registration defines model for Registration.
 type Registration struct {
-	ApprovedAt     *time.Time  `json:"approved_at,omitempty"`
-	AutoRegistered *bool       `json:"auto_registered,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	Device         *DeviceInfo `json:"device,omitempty"`
-	PublicKey      string      `json:"public_key"`
-	Role           GearRole    `json:"role"`
-	Status         GearStatus  `json:"status"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+	ApprovedAt     *time.Time             `json:"approved_at,omitempty"`
+	AutoRegistered *bool                  `json:"auto_registered,omitempty"`
+	CreatedAt      time.Time              `json:"created_at"`
+	Device         *DeviceInfo            `json:"device,omitempty"`
+	PublicKey      string                 `json:"public_key"`
+	Role           PeerRole               `json:"role"`
+	Status         PeerRegistrationStatus `json:"status"`
+	UpdatedAt      time.Time              `json:"updated_at"`
 }
 
 // Resource defines model for Resource.

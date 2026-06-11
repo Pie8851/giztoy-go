@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/acl"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/agenthost"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/credential"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/firmware"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/model"
@@ -101,7 +102,7 @@ func (s *Server) Serve() error {
 		if svc == nil {
 			svc = &PeerService{}
 		}
-		host := &GearConn{
+		host := &PeerConn{
 			Conn:    conn,
 			Service: svc,
 		}
@@ -225,10 +226,16 @@ func (s *Server) init() error {
 		aclServer = &acl.Server{DB: s.ACLDB}
 	}
 	manager.ACL = aclServer
+	manager.AgentHost = agenthost.New(agenthost.ServiceResolver{
+		Workspaces: workspaceServer,
+		Workflows:  workflowServer,
+	})
 	manager.Workspaces = workspaceServer
 	manager.Workflows = workflowServer
 	manager.Models = modelServer
 	manager.Credentials = credentialServer
+	manager.Voices = voiceServer
+	manager.ProviderTenants = providerTenantsServer
 	resourceManager := resourcemanager.New(resourcemanager.Services{
 		ACL:             aclServer,
 		Credentials:     credentialServer,

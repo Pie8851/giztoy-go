@@ -2,8 +2,9 @@
 
 This document describes business-level services, not transport service IDs.
 
-Peer Service and Device Service are peer-provided services. Public Service,
-Gear Service, and Admin Service are server-provided services.
+All Service is provided by every RPC peer. Client Service is provided by the
+client peer. Server Service and Admin Service are provided by the GizClaw
+server.
 
 ## Doc Style
 
@@ -13,52 +14,49 @@ Gear Service, and Admin Service are server-provided services.
 - Custom HTTP verbs are listed under their resource path as subtree items: `@verb`.
 
 ```text
-Peer Service
-└── peer.ping
+All Service
+└── all.ping
 
-Device Service
-├── device.info.get
-└── device.identifiers.get
+Client Service
+├── client.info.get
+└── client.identifiers.get
 
-Public Service
-├── server.info.get
+Server Service
+├── server.info.{get,put}
+├── server.runtime.get
+├── server.status.{get,put}
+├── server.run.say
 ├── /server-info GET
-└── /login POST
-
-Gear Service
-├── peer.info.{get,put}
-├── peer.runtime.get
-├── peer.status.{get,put}
-├── audio.say
-├── workspace.{list,get,create,put,delete}
-├── workflow.{list,get,create,put,delete}
-├── model.{list,get,create,put,delete}
-├── credential.{list,get,create,put,delete}
-├── peer.run.agent.{get,set}
-├── peer.run.{reload,status,stop}
-├── pet.{list,get,create,put,delete}
-├── pet.feed
-├── pet.play
-├── pet.level-up
-├── wallet.get
-├── wallet.transactions.list
-├── contact.{list,get,create,put,delete}
-├── contact.block
-├── contact.unblock
-├── friend.requests.{list,create}
-├── friend.requests.accept
-├── friend.requests.reject
-├── friend.{list,delete}
-├── group.{list,get,create,put,delete}
-├── group.members.{list,add,delete}
-├── group.messages.{list,send}
-├── call.{list,get,create}
-├── call.answer
-├── call.reject
-├── call.end
-├── game.results.create
-├── reward.{list,get,create}
-└── reward.claim
+├── /login POST
+├── server.workspace.{list,get,create,put,delete}
+├── server.workflow.{list,get,create,put,delete}
+├── server.model.{list,get,create,put,delete}
+├── server.credential.{list,get,create,put,delete}
+├── server.run.agent.{get,set}
+├── server.run.{reload,status,stop}
+├── server.pet.{list,get,create,put,delete}
+├── server.pet.feed
+├── server.pet.play
+├── server.pet.level-up
+├── server.wallet.get
+├── server.wallet.transactions.list
+├── server.contact.{list,get,create,put,delete}
+├── server.contact.block
+├── server.contact.unblock
+├── server.friend.requests.{list,create}
+├── server.friend.requests.accept
+├── server.friend.requests.reject
+├── server.friend.{list,delete}
+├── server.group.{list,get,create,put,delete}
+├── server.group.members.{list,add,delete}
+├── server.group.messages.{list,send}
+├── server.call.{list,get,create}
+├── server.call.answer
+├── server.call.reject
+├── server.call.end
+├── server.game.results.create
+├── server.reward.{list,get,create}
+└── server.reward.claim
 
 Admin Service
 ├── /@apply POST

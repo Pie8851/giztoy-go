@@ -7,19 +7,19 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
-func validateGear(gear apitypes.Gear) error {
-	if key, err := publicKeyFromText(gear.PublicKey); err != nil {
+func validatePeer(peer apitypes.Peer) error {
+	if key, err := publicKeyFromText(peer.PublicKey); err != nil {
 		return err
 	} else if key.IsZero() {
-		return fmt.Errorf("gear: empty public key")
+		return fmt.Errorf("peer: empty public key")
 	}
-	if !gear.Role.Valid() {
-		return fmt.Errorf("gear: invalid role %q", gear.Role)
+	if !peer.Role.Valid() {
+		return fmt.Errorf("peer: invalid role %q", peer.Role)
 	}
-	if !gear.Status.Valid() {
-		return fmt.Errorf("gear: invalid status %q", gear.Status)
+	if !peer.Status.Valid() {
+		return fmt.Errorf("peer: invalid status %q", peer.Status)
 	}
-	return validateConfiguration(gear.Configuration)
+	return validateConfiguration(peer.Configuration)
 }
 
 func validateConfiguration(apitypes.Configuration) error {
@@ -29,7 +29,7 @@ func validateConfiguration(apitypes.Configuration) error {
 func publicKeyFromText(publicKey string) (giznet.PublicKey, error) {
 	var key giznet.PublicKey
 	if err := key.UnmarshalText([]byte(publicKey)); err != nil {
-		return giznet.PublicKey{}, fmt.Errorf("gear: invalid public key: %w", err)
+		return giznet.PublicKey{}, fmt.Errorf("peer: invalid public key: %w", err)
 	}
 	return key, nil
 }

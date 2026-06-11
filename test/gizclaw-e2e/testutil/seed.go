@@ -47,7 +47,7 @@ func LoadRegistrationSeed(name string) (RegistrationSeed, error) {
 
 func LoadDeviceConfigSeed() (apitypes.Configuration, error) {
 	var config apitypes.Configuration
-	if err := readSeedJSON("gizclaw_seed_data/gear_config/device.json", &config); err != nil {
+	if err := readSeedJSON("gizclaw_seed_data/peer_config/device.json", &config); err != nil {
 		return apitypes.Configuration{}, err
 	}
 	return config, nil

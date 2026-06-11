@@ -19,7 +19,7 @@ func TestAdminConfigFlowUserStory(t *testing.T) {
 	h.RegisterContext("device-a", "--sn", "device-sn").MustSucceed(t)
 	devicePubKey := h.ContextPublicKey("device-a")
 
-	configPath := filepath.Join(h.SandboxDir, "gear-config.json")
+	configPath := filepath.Join(h.SandboxDir, "peer-config.json")
 	if err := os.WriteFile(configPath, []byte(`{"view":"under-12"}`), 0o644); err != nil {
 		t.Fatalf("write peer config: %v", err)
 	}

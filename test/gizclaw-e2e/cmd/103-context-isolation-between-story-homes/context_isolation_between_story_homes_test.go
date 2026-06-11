@@ -29,10 +29,10 @@ func TestContextIsolationBetweenStoryHomesUserStory(t *testing.T) {
 		t.Fatalf("unexpected second home list:\n%s", secondList.Stdout)
 	}
 
-	if _, err := first.RunCLIUntilSuccess("peer", "ping", "--context", "alpha"); err != nil {
+	if _, err := first.RunCLIUntilSuccess("connect", "ping", "--context", "alpha"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := second.RunCLIUntilSuccess("peer", "ping", "--context", "beta"); err != nil {
+	if _, err := second.RunCLIUntilSuccess("connect", "ping", "--context", "beta"); err != nil {
 		t.Fatal(err)
 	}
 }

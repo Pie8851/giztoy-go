@@ -57,19 +57,19 @@ interface RpcCommand {
 const RPC_COMMANDS: RpcCommand[] = [
   {
     label: "Ping",
-    method: "peer.ping",
+    method: "all.ping",
     description: "Check the RPC stream and round-trip timing.",
     params: () => ({ client_send_time: Date.now() }),
   },
   {
     label: "Get Info",
-    method: "peer.info.get",
+    method: "server.info.get",
     description: "Read device identity and hardware metadata.",
     params: () => ({}),
   },
   {
     label: "Get Runtime",
-    method: "peer.runtime.get",
+    method: "server.runtime.get",
     description: "Read online state and transport counters.",
     params: () => ({}),
   },

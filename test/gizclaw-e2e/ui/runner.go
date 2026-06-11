@@ -16,10 +16,10 @@ import (
 
 	adminui "github.com/GizClaw/gizclaw-go/cmd/ui/admin"
 	playui "github.com/GizClaw/gizclaw-go/cmd/ui/play"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/pion/webrtc/v4"
 	"github.com/playwright-community/playwright-go"
 
@@ -111,6 +111,14 @@ func (s *Suite) RunStory(t testing.TB, run func(testing.TB, *Page)) {
 		t.Fatalf("create page: %v", err)
 	}
 	defer page.Close()
+	page.OnConsole(func(message playwright.ConsoleMessage) {
+		if message.Type() == "error" {
+			t.Logf("browser console error: %s", message.Text())
+		}
+	})
+	page.OnPageError(func(err error) {
+		t.Logf("browser page error: %v", err)
+	})
 
 	run(t, &Page{t: t, page: page, Seed: s.seed})
 }
@@ -233,7 +241,7 @@ func startSeededUI(t testing.TB) Seed {
 	if err != nil {
 		t.Fatalf("load admin registration seed: %v", err)
 	}
-	putGearInfo(t, adminClient, h.ContextPublicKey("admin"), adminSeed.Device)
+	putPeerInfo(t, adminClient, h.ContextPublicKey("admin"), adminSeed.Device)
 
 	adminAPI, err := adminClient.ServerAdminClient()
 	if err != nil {
@@ -254,9 +262,9 @@ func startSeededUI(t testing.TB) Seed {
 	if err != nil {
 		t.Fatalf("load device registration seed: %v", err)
 	}
-	putGearInfo(t, deviceClient, h.ContextPublicKey("device-a"), deviceSeed.Device)
-	putGearInfo(t, actionDeviceClient, h.ContextPublicKey("device-actions-a"), deviceSeed.Device)
-	putGearInfo(t, deleteDeviceClient, h.ContextPublicKey("device-delete-a"), deviceSeed.Device)
+	putPeerInfo(t, deviceClient, h.ContextPublicKey("device-a"), deviceSeed.Device)
+	putPeerInfo(t, actionDeviceClient, h.ContextPublicKey("device-actions-a"), deviceSeed.Device)
+	putPeerInfo(t, deleteDeviceClient, h.ContextPublicKey("device-delete-a"), deviceSeed.Device)
 
 	seedCtx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
 	defer cancel()
@@ -270,7 +278,7 @@ func startSeededUI(t testing.TB) Seed {
 		h.ContextPublicKey("device-a"),
 		h.ContextPublicKey("device-delete-a"),
 	} {
-		approveGear(t, seedCtx, adminAPI, publicKey)
+		approvePeerSeed(t, seedCtx, adminAPI, publicKey)
 	}
 	for _, publicKey := range []string{
 		h.ContextPublicKey("device-a"),
@@ -292,16 +300,16 @@ func startSeededUI(t testing.TB) Seed {
 	}
 }
 
-func putGearInfo(t testing.TB, client *gizclaw.Client, publicKey string, info apitypes.DeviceInfo) {
+func putPeerInfo(t testing.TB, client *gizcli.Client, publicKey string, info apitypes.DeviceInfo) {
 	t.Helper()
 
-	req, err := convertUIAPIType[rpcapi.PeerPutInfoRequest](info)
+	req, err := convertUIAPIType[rpcapi.ServerPutInfoRequest](info)
 	if err != nil {
-		t.Fatalf("convert gear info %q: %v", publicKey, err)
+		t.Fatalf("convert peer info %q: %v", publicKey, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
 	defer cancel()
-	resp, err := client.PutPeerInfo(ctx, "peer.info.put", req)
+	resp, err := client.PutServerInfo(ctx, "server.info.put", req)
 	if err != nil {
 		t.Fatalf("put info %q: %v", publicKey, err)
 	}
@@ -323,10 +331,10 @@ func convertUIAPIType[T any](value any) (T, error) {
 	return out, nil
 }
 
-func approveGear(t testing.TB, ctx context.Context, api *adminservice.ClientWithResponses, publicKey string) {
+func approvePeerSeed(t testing.TB, ctx context.Context, api *adminservice.ClientWithResponses, publicKey string) {
 	t.Helper()
 
-	resp, err := api.ApprovePeerWithResponse(ctx, publicKey, adminservice.ApproveRequest{Role: apitypes.GearRoleGear})
+	resp, err := api.ApprovePeerWithResponse(ctx, publicKey, adminservice.ApproveRequest{Role: apitypes.PeerRoleClient})
 	if err != nil {
 		t.Fatalf("approve %q: %v", publicKey, err)
 	}
@@ -336,7 +344,7 @@ func approveGear(t testing.TB, ctx context.Context, api *adminservice.ClientWith
 	t.Fatalf("approve %q got status %d: %s", publicKey, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
 }
 
-func startTestUI(t testing.TB, name string, client *gizclaw.Client, uiFS fs.FS) string {
+func startTestUI(t testing.TB, name string, client *gizcli.Client, uiFS fs.FS) string {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -382,7 +390,7 @@ type testPlayWebRTCAnswerResponse struct {
 	Type string `json:"type"`
 }
 
-func registerTestPlayWebRTCRoute(mux *http.ServeMux, client *gizclaw.Client) {
+func registerTestPlayWebRTCRoute(mux *http.ServeMux, client *gizcli.Client) {
 	mux.HandleFunc("/webrtc/offer", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -393,7 +401,7 @@ func registerTestPlayWebRTCRoute(mux *http.ServeMux, client *gizclaw.Client) {
 	})
 }
 
-func handleTestPlayWebRTCOffer(w http.ResponseWriter, r *http.Request, client *gizclaw.Client) {
+func handleTestPlayWebRTCOffer(w http.ResponseWriter, r *http.Request, client *gizcli.Client) {
 	var req testPlayWebRTCOfferRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		http.Error(w, "invalid offer json", http.StatusBadRequest)

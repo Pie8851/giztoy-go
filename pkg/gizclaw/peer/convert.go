@@ -19,7 +19,7 @@ func convertViaJSON[T any](in any) (T, error) {
 	return out, nil
 }
 
-func toAdminRegistrationList(items []apitypes.Gear, hasNext bool, nextCursor *string) adminservice.RegistrationList {
+func toAdminRegistrationList(items []apitypes.Peer, hasNext bool, nextCursor *string) adminservice.RegistrationList {
 	out := make([]apitypes.Registration, 0, len(items))
 	for _, item := range items {
 		out = append(out, toAdminRegistration(item))
@@ -31,16 +31,16 @@ func toAdminRegistrationList(items []apitypes.Gear, hasNext bool, nextCursor *st
 	}
 }
 
-func toAdminRegistration(gear apitypes.Gear) apitypes.Registration {
+func toAdminRegistration(peer apitypes.Peer) apitypes.Registration {
 	return apitypes.Registration{
-		ApprovedAt:     gear.ApprovedAt,
-		AutoRegistered: gear.AutoRegistered,
-		CreatedAt:      gear.CreatedAt,
-		Device:         &gear.Device,
-		PublicKey:      gear.PublicKey,
-		Role:           apitypes.GearRole(gear.Role),
-		Status:         apitypes.GearStatus(gear.Status),
-		UpdatedAt:      gear.UpdatedAt,
+		ApprovedAt:     peer.ApprovedAt,
+		AutoRegistered: peer.AutoRegistered,
+		CreatedAt:      peer.CreatedAt,
+		Device:         &peer.Device,
+		PublicKey:      peer.PublicKey,
+		Role:           apitypes.PeerRole(peer.Role),
+		Status:         apitypes.PeerRegistrationStatus(peer.Status),
+		UpdatedAt:      peer.UpdatedAt,
 	}
 }
 
@@ -54,7 +54,7 @@ func toAdminRuntime(in apitypes.Runtime) apitypes.Runtime {
 	}
 }
 
-func toGearDeviceInfo(in apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
+func toPeerDeviceInfo(in apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
 	return convertViaJSON[apitypes.DeviceInfo](in)
 }
 

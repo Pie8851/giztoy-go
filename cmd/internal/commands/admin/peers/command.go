@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/client"
 	"github.com/GizClaw/gizclaw-go/cmd/internal/commands/admin/cmdutil"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ type peerConfigClient interface {
 }
 
 type peerConfigBridge struct {
-	c *gizclaw.Client
+	c *gizcli.Client
 }
 
 func (g *peerConfigBridge) GetPeerConfig(ctx context.Context, publicKey string) (apitypes.Configuration, error) {
@@ -150,7 +150,7 @@ func newCmd(use, short string) *cobra.Command {
 					return err
 				}
 				defer c.Close()
-				item, err := approvePeer(context.Background(), c, args[0], apitypes.GearRole(args[1]))
+				item, err := approvePeer(context.Background(), c, args[0], apitypes.PeerRole(args[1]))
 				if err != nil {
 					return err
 				}

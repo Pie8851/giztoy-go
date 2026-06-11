@@ -18,7 +18,7 @@ func TestClientPublicRetryableReadsUserStory(t *testing.T) {
 	for i := range 4 {
 		c := h.ConnectClientFromContext("device-a")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		info, err := c.GetPeerInfo(ctx, "peer.info.get")
+		info, err := c.GetServerInfo(ctx, "server.info.get")
 		cancel()
 		_ = c.Close()
 		if err != nil {
@@ -27,7 +27,7 @@ func TestClientPublicRetryableReadsUserStory(t *testing.T) {
 		if info == nil || info.Sn == nil || *info.Sn != "device-a-sn" {
 			t.Fatalf("expected device info response on iteration %d, got %+v", i, info)
 		}
-		if _, err := h.RunCLIUntilSuccess("peer", "ping", "--context", "device-a"); err != nil {
+		if _, err := h.RunCLIUntilSuccess("connect", "ping", "--context", "device-a"); err != nil {
 			t.Fatal(err)
 		}
 	}

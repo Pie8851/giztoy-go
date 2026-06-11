@@ -32,17 +32,17 @@ func TestHTTPErrorHelpersAndVisitors(t *testing.T) {
 		}
 	}
 
-	checkStatus("get-gear-config", func(c *fiber.Ctx) error {
-		return getGearConfig500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetPeerConfigResponse(c)
+	checkStatus("get-peer-config", func(c *fiber.Ctx) error {
+		return getPeerConfig500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetPeerConfigResponse(c)
 	})
-	checkStatus("put-gear-config", func(c *fiber.Ctx) error {
-		return putGearConfig500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitPutPeerConfigResponse(c)
+	checkStatus("put-peer-config", func(c *fiber.Ctx) error {
+		return putPeerConfig500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitPutPeerConfigResponse(c)
 	})
-	checkStatus("get-gear-info", func(c *fiber.Ctx) error {
-		return getGearInfo500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetPeerInfoResponse(c)
+	checkStatus("get-peer-info", func(c *fiber.Ctx) error {
+		return getPeerInfo500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitGetPeerInfoResponse(c)
 	})
-	checkStatus("refresh-gear", func(c *fiber.Ctx) error {
-		return refreshGear500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitRefreshPeerResponse(c)
+	checkStatus("refresh-peer", func(c *fiber.Ctx) error {
+		return refreshPeer500JSONResponse(apitypes.NewErrorResponse("ERR", "boom")).VisitRefreshPeerResponse(c)
 	})
 	var (
 		_ apitypes.ErrorResponse

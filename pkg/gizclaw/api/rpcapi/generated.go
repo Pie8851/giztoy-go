@@ -158,6 +158,7 @@ func (e PeerRunStatusState) Valid() bool {
 const (
 	RPCErrorCodeBadRequest     RPCErrorCode = 400
 	RPCErrorCodeConflict       RPCErrorCode = 409
+	RPCErrorCodeForbidden      RPCErrorCode = 403
 	RPCErrorCodeInternalError  RPCErrorCode = -32603
 	RPCErrorCodeInvalidParams  RPCErrorCode = -32602
 	RPCErrorCodeInvalidRequest RPCErrorCode = -32600
@@ -171,6 +172,8 @@ func (e RPCErrorCode) Valid() bool {
 	case RPCErrorCodeBadRequest:
 		return true
 	case RPCErrorCodeConflict:
+		return true
+	case RPCErrorCodeForbidden:
 		return true
 	case RPCErrorCodeInternalError:
 		return true
@@ -189,250 +192,247 @@ func (e RPCErrorCode) Valid() bool {
 
 // Defines values for RPCMethod.
 const (
-	RPCMethodAudioSay               RPCMethod = "audio.say"
-	RPCMethodCallAnswer             RPCMethod = "call.answer"
-	RPCMethodCallCreate             RPCMethod = "call.create"
-	RPCMethodCallEnd                RPCMethod = "call.end"
-	RPCMethodCallGet                RPCMethod = "call.get"
-	RPCMethodCallList               RPCMethod = "call.list"
-	RPCMethodCallReject             RPCMethod = "call.reject"
-	RPCMethodContactBlock           RPCMethod = "contact.block"
-	RPCMethodContactCreate          RPCMethod = "contact.create"
-	RPCMethodContactDelete          RPCMethod = "contact.delete"
-	RPCMethodContactGet             RPCMethod = "contact.get"
-	RPCMethodContactList            RPCMethod = "contact.list"
-	RPCMethodContactPut             RPCMethod = "contact.put"
-	RPCMethodContactUnblock         RPCMethod = "contact.unblock"
-	RPCMethodCredentialCreate       RPCMethod = "credential.create"
-	RPCMethodCredentialDelete       RPCMethod = "credential.delete"
-	RPCMethodCredentialGet          RPCMethod = "credential.get"
-	RPCMethodCredentialList         RPCMethod = "credential.list"
-	RPCMethodCredentialPut          RPCMethod = "credential.put"
-	RPCMethodDeviceIdentifiersGet   RPCMethod = "device.identifiers.get"
-	RPCMethodDeviceInfoGet          RPCMethod = "device.info.get"
-	RPCMethodFriendDelete           RPCMethod = "friend.delete"
-	RPCMethodFriendList             RPCMethod = "friend.list"
-	RPCMethodFriendRequestsAccept   RPCMethod = "friend.requests.accept"
-	RPCMethodFriendRequestsCreate   RPCMethod = "friend.requests.create"
-	RPCMethodFriendRequestsList     RPCMethod = "friend.requests.list"
-	RPCMethodFriendRequestsReject   RPCMethod = "friend.requests.reject"
-	RPCMethodGameResultsCreate      RPCMethod = "game.results.create"
-	RPCMethodGroupCreate            RPCMethod = "group.create"
-	RPCMethodGroupDelete            RPCMethod = "group.delete"
-	RPCMethodGroupGet               RPCMethod = "group.get"
-	RPCMethodGroupList              RPCMethod = "group.list"
-	RPCMethodGroupMembersAdd        RPCMethod = "group.members.add"
-	RPCMethodGroupMembersDelete     RPCMethod = "group.members.delete"
-	RPCMethodGroupMembersList       RPCMethod = "group.members.list"
-	RPCMethodGroupMessagesList      RPCMethod = "group.messages.list"
-	RPCMethodGroupMessagesSend      RPCMethod = "group.messages.send"
-	RPCMethodGroupPut               RPCMethod = "group.put"
-	RPCMethodModelCreate            RPCMethod = "model.create"
-	RPCMethodModelDelete            RPCMethod = "model.delete"
-	RPCMethodModelGet               RPCMethod = "model.get"
-	RPCMethodModelList              RPCMethod = "model.list"
-	RPCMethodModelPut               RPCMethod = "model.put"
-	RPCMethodPeerInfoGet            RPCMethod = "peer.info.get"
-	RPCMethodPeerInfoPut            RPCMethod = "peer.info.put"
-	RPCMethodPeerPing               RPCMethod = "peer.ping"
-	RPCMethodPeerRunAgentGet        RPCMethod = "peer.run.agent.get"
-	RPCMethodPeerRunAgentSet        RPCMethod = "peer.run.agent.set"
-	RPCMethodPeerRunReload          RPCMethod = "peer.run.reload"
-	RPCMethodPeerRunStatus          RPCMethod = "peer.run.status"
-	RPCMethodPeerRunStop            RPCMethod = "peer.run.stop"
-	RPCMethodPeerRuntimeGet         RPCMethod = "peer.runtime.get"
-	RPCMethodPeerSpeedTestRun       RPCMethod = "peer.speed_test.run"
-	RPCMethodPeerStatusGet          RPCMethod = "peer.status.get"
-	RPCMethodPeerStatusPut          RPCMethod = "peer.status.put"
-	RPCMethodPetCreate              RPCMethod = "pet.create"
-	RPCMethodPetDelete              RPCMethod = "pet.delete"
-	RPCMethodPetFeed                RPCMethod = "pet.feed"
-	RPCMethodPetGet                 RPCMethod = "pet.get"
-	RPCMethodPetLevelUp             RPCMethod = "pet.level-up"
-	RPCMethodPetList                RPCMethod = "pet.list"
-	RPCMethodPetPlay                RPCMethod = "pet.play"
-	RPCMethodPetPut                 RPCMethod = "pet.put"
-	RPCMethodRewardClaim            RPCMethod = "reward.claim"
-	RPCMethodRewardCreate           RPCMethod = "reward.create"
-	RPCMethodRewardGet              RPCMethod = "reward.get"
-	RPCMethodRewardList             RPCMethod = "reward.list"
-	RPCMethodServerInfoGet          RPCMethod = "server.info.get"
-	RPCMethodWalletGet              RPCMethod = "wallet.get"
-	RPCMethodWalletTransactionsList RPCMethod = "wallet.transactions.list"
-	RPCMethodWorkflowCreate         RPCMethod = "workflow.create"
-	RPCMethodWorkflowDelete         RPCMethod = "workflow.delete"
-	RPCMethodWorkflowGet            RPCMethod = "workflow.get"
-	RPCMethodWorkflowList           RPCMethod = "workflow.list"
-	RPCMethodWorkflowPut            RPCMethod = "workflow.put"
-	RPCMethodWorkspaceCreate        RPCMethod = "workspace.create"
-	RPCMethodWorkspaceDelete        RPCMethod = "workspace.delete"
-	RPCMethodWorkspaceGet           RPCMethod = "workspace.get"
-	RPCMethodWorkspaceList          RPCMethod = "workspace.list"
-	RPCMethodWorkspacePut           RPCMethod = "workspace.put"
+	RPCMethodAllPing                      RPCMethod = "all.ping"
+	RPCMethodAllSpeedTestRun              RPCMethod = "all.speed_test.run"
+	RPCMethodClientIdentifiersGet         RPCMethod = "client.identifiers.get"
+	RPCMethodClientInfoGet                RPCMethod = "client.info.get"
+	RPCMethodServerCallAnswer             RPCMethod = "server.call.answer"
+	RPCMethodServerCallCreate             RPCMethod = "server.call.create"
+	RPCMethodServerCallEnd                RPCMethod = "server.call.end"
+	RPCMethodServerCallGet                RPCMethod = "server.call.get"
+	RPCMethodServerCallList               RPCMethod = "server.call.list"
+	RPCMethodServerCallReject             RPCMethod = "server.call.reject"
+	RPCMethodServerContactBlock           RPCMethod = "server.contact.block"
+	RPCMethodServerContactCreate          RPCMethod = "server.contact.create"
+	RPCMethodServerContactDelete          RPCMethod = "server.contact.delete"
+	RPCMethodServerContactGet             RPCMethod = "server.contact.get"
+	RPCMethodServerContactList            RPCMethod = "server.contact.list"
+	RPCMethodServerContactPut             RPCMethod = "server.contact.put"
+	RPCMethodServerContactUnblock         RPCMethod = "server.contact.unblock"
+	RPCMethodServerCredentialCreate       RPCMethod = "server.credential.create"
+	RPCMethodServerCredentialDelete       RPCMethod = "server.credential.delete"
+	RPCMethodServerCredentialGet          RPCMethod = "server.credential.get"
+	RPCMethodServerCredentialList         RPCMethod = "server.credential.list"
+	RPCMethodServerCredentialPut          RPCMethod = "server.credential.put"
+	RPCMethodServerFriendDelete           RPCMethod = "server.friend.delete"
+	RPCMethodServerFriendList             RPCMethod = "server.friend.list"
+	RPCMethodServerFriendRequestsAccept   RPCMethod = "server.friend.requests.accept"
+	RPCMethodServerFriendRequestsCreate   RPCMethod = "server.friend.requests.create"
+	RPCMethodServerFriendRequestsList     RPCMethod = "server.friend.requests.list"
+	RPCMethodServerFriendRequestsReject   RPCMethod = "server.friend.requests.reject"
+	RPCMethodServerGameResultsCreate      RPCMethod = "server.game.results.create"
+	RPCMethodServerGroupCreate            RPCMethod = "server.group.create"
+	RPCMethodServerGroupDelete            RPCMethod = "server.group.delete"
+	RPCMethodServerGroupGet               RPCMethod = "server.group.get"
+	RPCMethodServerGroupList              RPCMethod = "server.group.list"
+	RPCMethodServerGroupMembersAdd        RPCMethod = "server.group.members.add"
+	RPCMethodServerGroupMembersDelete     RPCMethod = "server.group.members.delete"
+	RPCMethodServerGroupMembersList       RPCMethod = "server.group.members.list"
+	RPCMethodServerGroupMessagesList      RPCMethod = "server.group.messages.list"
+	RPCMethodServerGroupMessagesSend      RPCMethod = "server.group.messages.send"
+	RPCMethodServerGroupPut               RPCMethod = "server.group.put"
+	RPCMethodServerInfoGet                RPCMethod = "server.info.get"
+	RPCMethodServerInfoPut                RPCMethod = "server.info.put"
+	RPCMethodServerModelCreate            RPCMethod = "server.model.create"
+	RPCMethodServerModelDelete            RPCMethod = "server.model.delete"
+	RPCMethodServerModelGet               RPCMethod = "server.model.get"
+	RPCMethodServerModelList              RPCMethod = "server.model.list"
+	RPCMethodServerModelPut               RPCMethod = "server.model.put"
+	RPCMethodServerPetCreate              RPCMethod = "server.pet.create"
+	RPCMethodServerPetDelete              RPCMethod = "server.pet.delete"
+	RPCMethodServerPetFeed                RPCMethod = "server.pet.feed"
+	RPCMethodServerPetGet                 RPCMethod = "server.pet.get"
+	RPCMethodServerPetLevelUp             RPCMethod = "server.pet.level-up"
+	RPCMethodServerPetList                RPCMethod = "server.pet.list"
+	RPCMethodServerPetPlay                RPCMethod = "server.pet.play"
+	RPCMethodServerPetPut                 RPCMethod = "server.pet.put"
+	RPCMethodServerRewardClaim            RPCMethod = "server.reward.claim"
+	RPCMethodServerRewardCreate           RPCMethod = "server.reward.create"
+	RPCMethodServerRewardGet              RPCMethod = "server.reward.get"
+	RPCMethodServerRewardList             RPCMethod = "server.reward.list"
+	RPCMethodServerRunAgentGet            RPCMethod = "server.run.agent.get"
+	RPCMethodServerRunAgentSet            RPCMethod = "server.run.agent.set"
+	RPCMethodServerRunReload              RPCMethod = "server.run.reload"
+	RPCMethodServerRunSay                 RPCMethod = "server.run.say"
+	RPCMethodServerRunStatus              RPCMethod = "server.run.status"
+	RPCMethodServerRunStop                RPCMethod = "server.run.stop"
+	RPCMethodServerRuntimeGet             RPCMethod = "server.runtime.get"
+	RPCMethodServerStatusGet              RPCMethod = "server.status.get"
+	RPCMethodServerStatusPut              RPCMethod = "server.status.put"
+	RPCMethodServerWalletGet              RPCMethod = "server.wallet.get"
+	RPCMethodServerWalletTransactionsList RPCMethod = "server.wallet.transactions.list"
+	RPCMethodServerWorkflowCreate         RPCMethod = "server.workflow.create"
+	RPCMethodServerWorkflowDelete         RPCMethod = "server.workflow.delete"
+	RPCMethodServerWorkflowGet            RPCMethod = "server.workflow.get"
+	RPCMethodServerWorkflowList           RPCMethod = "server.workflow.list"
+	RPCMethodServerWorkflowPut            RPCMethod = "server.workflow.put"
+	RPCMethodServerWorkspaceCreate        RPCMethod = "server.workspace.create"
+	RPCMethodServerWorkspaceDelete        RPCMethod = "server.workspace.delete"
+	RPCMethodServerWorkspaceGet           RPCMethod = "server.workspace.get"
+	RPCMethodServerWorkspaceList          RPCMethod = "server.workspace.list"
+	RPCMethodServerWorkspacePut           RPCMethod = "server.workspace.put"
 )
 
 // Valid indicates whether the value is a known member of the RPCMethod enum.
 func (e RPCMethod) Valid() bool {
 	switch e {
-	case RPCMethodAudioSay:
+	case RPCMethodAllPing:
 		return true
-	case RPCMethodCallAnswer:
+	case RPCMethodAllSpeedTestRun:
 		return true
-	case RPCMethodCallCreate:
+	case RPCMethodClientIdentifiersGet:
 		return true
-	case RPCMethodCallEnd:
+	case RPCMethodClientInfoGet:
 		return true
-	case RPCMethodCallGet:
+	case RPCMethodServerCallAnswer:
 		return true
-	case RPCMethodCallList:
+	case RPCMethodServerCallCreate:
 		return true
-	case RPCMethodCallReject:
+	case RPCMethodServerCallEnd:
 		return true
-	case RPCMethodContactBlock:
+	case RPCMethodServerCallGet:
 		return true
-	case RPCMethodContactCreate:
+	case RPCMethodServerCallList:
 		return true
-	case RPCMethodContactDelete:
+	case RPCMethodServerCallReject:
 		return true
-	case RPCMethodContactGet:
+	case RPCMethodServerContactBlock:
 		return true
-	case RPCMethodContactList:
+	case RPCMethodServerContactCreate:
 		return true
-	case RPCMethodContactPut:
+	case RPCMethodServerContactDelete:
 		return true
-	case RPCMethodContactUnblock:
+	case RPCMethodServerContactGet:
 		return true
-	case RPCMethodCredentialCreate:
+	case RPCMethodServerContactList:
 		return true
-	case RPCMethodCredentialDelete:
+	case RPCMethodServerContactPut:
 		return true
-	case RPCMethodCredentialGet:
+	case RPCMethodServerContactUnblock:
 		return true
-	case RPCMethodCredentialList:
+	case RPCMethodServerCredentialCreate:
 		return true
-	case RPCMethodCredentialPut:
+	case RPCMethodServerCredentialDelete:
 		return true
-	case RPCMethodDeviceIdentifiersGet:
+	case RPCMethodServerCredentialGet:
 		return true
-	case RPCMethodDeviceInfoGet:
+	case RPCMethodServerCredentialList:
 		return true
-	case RPCMethodFriendDelete:
+	case RPCMethodServerCredentialPut:
 		return true
-	case RPCMethodFriendList:
+	case RPCMethodServerFriendDelete:
 		return true
-	case RPCMethodFriendRequestsAccept:
+	case RPCMethodServerFriendList:
 		return true
-	case RPCMethodFriendRequestsCreate:
+	case RPCMethodServerFriendRequestsAccept:
 		return true
-	case RPCMethodFriendRequestsList:
+	case RPCMethodServerFriendRequestsCreate:
 		return true
-	case RPCMethodFriendRequestsReject:
+	case RPCMethodServerFriendRequestsList:
 		return true
-	case RPCMethodGameResultsCreate:
+	case RPCMethodServerFriendRequestsReject:
 		return true
-	case RPCMethodGroupCreate:
+	case RPCMethodServerGameResultsCreate:
 		return true
-	case RPCMethodGroupDelete:
+	case RPCMethodServerGroupCreate:
 		return true
-	case RPCMethodGroupGet:
+	case RPCMethodServerGroupDelete:
 		return true
-	case RPCMethodGroupList:
+	case RPCMethodServerGroupGet:
 		return true
-	case RPCMethodGroupMembersAdd:
+	case RPCMethodServerGroupList:
 		return true
-	case RPCMethodGroupMembersDelete:
+	case RPCMethodServerGroupMembersAdd:
 		return true
-	case RPCMethodGroupMembersList:
+	case RPCMethodServerGroupMembersDelete:
 		return true
-	case RPCMethodGroupMessagesList:
+	case RPCMethodServerGroupMembersList:
 		return true
-	case RPCMethodGroupMessagesSend:
+	case RPCMethodServerGroupMessagesList:
 		return true
-	case RPCMethodGroupPut:
+	case RPCMethodServerGroupMessagesSend:
 		return true
-	case RPCMethodModelCreate:
-		return true
-	case RPCMethodModelDelete:
-		return true
-	case RPCMethodModelGet:
-		return true
-	case RPCMethodModelList:
-		return true
-	case RPCMethodModelPut:
-		return true
-	case RPCMethodPeerInfoGet:
-		return true
-	case RPCMethodPeerInfoPut:
-		return true
-	case RPCMethodPeerPing:
-		return true
-	case RPCMethodPeerRunAgentGet:
-		return true
-	case RPCMethodPeerRunAgentSet:
-		return true
-	case RPCMethodPeerRunReload:
-		return true
-	case RPCMethodPeerRunStatus:
-		return true
-	case RPCMethodPeerRunStop:
-		return true
-	case RPCMethodPeerRuntimeGet:
-		return true
-	case RPCMethodPeerSpeedTestRun:
-		return true
-	case RPCMethodPeerStatusGet:
-		return true
-	case RPCMethodPeerStatusPut:
-		return true
-	case RPCMethodPetCreate:
-		return true
-	case RPCMethodPetDelete:
-		return true
-	case RPCMethodPetFeed:
-		return true
-	case RPCMethodPetGet:
-		return true
-	case RPCMethodPetLevelUp:
-		return true
-	case RPCMethodPetList:
-		return true
-	case RPCMethodPetPlay:
-		return true
-	case RPCMethodPetPut:
-		return true
-	case RPCMethodRewardClaim:
-		return true
-	case RPCMethodRewardCreate:
-		return true
-	case RPCMethodRewardGet:
-		return true
-	case RPCMethodRewardList:
+	case RPCMethodServerGroupPut:
 		return true
 	case RPCMethodServerInfoGet:
 		return true
-	case RPCMethodWalletGet:
+	case RPCMethodServerInfoPut:
 		return true
-	case RPCMethodWalletTransactionsList:
+	case RPCMethodServerModelCreate:
 		return true
-	case RPCMethodWorkflowCreate:
+	case RPCMethodServerModelDelete:
 		return true
-	case RPCMethodWorkflowDelete:
+	case RPCMethodServerModelGet:
 		return true
-	case RPCMethodWorkflowGet:
+	case RPCMethodServerModelList:
 		return true
-	case RPCMethodWorkflowList:
+	case RPCMethodServerModelPut:
 		return true
-	case RPCMethodWorkflowPut:
+	case RPCMethodServerPetCreate:
 		return true
-	case RPCMethodWorkspaceCreate:
+	case RPCMethodServerPetDelete:
 		return true
-	case RPCMethodWorkspaceDelete:
+	case RPCMethodServerPetFeed:
 		return true
-	case RPCMethodWorkspaceGet:
+	case RPCMethodServerPetGet:
 		return true
-	case RPCMethodWorkspaceList:
+	case RPCMethodServerPetLevelUp:
 		return true
-	case RPCMethodWorkspacePut:
+	case RPCMethodServerPetList:
+		return true
+	case RPCMethodServerPetPlay:
+		return true
+	case RPCMethodServerPetPut:
+		return true
+	case RPCMethodServerRewardClaim:
+		return true
+	case RPCMethodServerRewardCreate:
+		return true
+	case RPCMethodServerRewardGet:
+		return true
+	case RPCMethodServerRewardList:
+		return true
+	case RPCMethodServerRunAgentGet:
+		return true
+	case RPCMethodServerRunAgentSet:
+		return true
+	case RPCMethodServerRunReload:
+		return true
+	case RPCMethodServerRunSay:
+		return true
+	case RPCMethodServerRunStatus:
+		return true
+	case RPCMethodServerRunStop:
+		return true
+	case RPCMethodServerRuntimeGet:
+		return true
+	case RPCMethodServerStatusGet:
+		return true
+	case RPCMethodServerStatusPut:
+		return true
+	case RPCMethodServerWalletGet:
+		return true
+	case RPCMethodServerWalletTransactionsList:
+		return true
+	case RPCMethodServerWorkflowCreate:
+		return true
+	case RPCMethodServerWorkflowDelete:
+		return true
+	case RPCMethodServerWorkflowGet:
+		return true
+	case RPCMethodServerWorkflowList:
+		return true
+	case RPCMethodServerWorkflowPut:
+		return true
+	case RPCMethodServerWorkspaceCreate:
+		return true
+	case RPCMethodServerWorkspaceDelete:
+		return true
+	case RPCMethodServerWorkspaceGet:
+		return true
+	case RPCMethodServerWorkspaceList:
+		return true
+	case RPCMethodServerWorkspacePut:
 		return true
 	default:
 		return false
@@ -472,19 +472,6 @@ func (e WorkflowAPIVersion) Valid() bool {
 // AgentSelection defines model for AgentSelection.
 type AgentSelection struct {
 	WorkspaceName string `json:"workspace_name"`
-}
-
-// AudioSayRequest defines model for AudioSayRequest.
-type AudioSayRequest struct {
-	CredentialName *string `json:"credential_name,omitempty"`
-	ModelId        *string `json:"model_id,omitempty"`
-	Text           string  `json:"text"`
-	VoiceId        *string `json:"voice_id,omitempty"`
-}
-
-// AudioSayResponse defines model for AudioSayResponse.
-type AudioSayResponse struct {
-	Accepted bool `json:"accepted"`
 }
 
 // CallAnswerRequest defines model for CallAnswerRequest.
@@ -547,6 +534,18 @@ type CallRejectRequest struct {
 
 // CallRejectResponse defines model for CallRejectResponse.
 type CallRejectResponse = CallObject
+
+// ClientGetIdentifiersRequest defines model for ClientGetIdentifiersRequest.
+type ClientGetIdentifiersRequest = map[string]interface{}
+
+// ClientGetIdentifiersResponse defines model for ClientGetIdentifiersResponse.
+type ClientGetIdentifiersResponse = RefreshIdentifiers
+
+// ClientGetInfoRequest defines model for ClientGetInfoRequest.
+type ClientGetInfoRequest = map[string]interface{}
+
+// ClientGetInfoResponse defines model for ClientGetInfoResponse.
+type ClientGetInfoResponse = RefreshInfo
 
 // ContactBlockRequest defines model for ContactBlockRequest.
 type ContactBlockRequest struct {
@@ -690,18 +689,6 @@ type DashScopeTenantModelProviderData struct {
 // DashScopeTenantModelProviderDataApiMode defines model for DashScopeTenantModelProviderData.ApiMode.
 type DashScopeTenantModelProviderDataApiMode string
 
-// DeviceGetIdentifiersRequest defines model for DeviceGetIdentifiersRequest.
-type DeviceGetIdentifiersRequest = map[string]interface{}
-
-// DeviceGetIdentifiersResponse defines model for DeviceGetIdentifiersResponse.
-type DeviceGetIdentifiersResponse = RefreshIdentifiers
-
-// DeviceGetInfoRequest defines model for DeviceGetInfoRequest.
-type DeviceGetInfoRequest = map[string]interface{}
-
-// DeviceGetInfoResponse defines model for DeviceGetInfoResponse.
-type DeviceGetInfoResponse = RefreshInfo
-
 // DeviceInfo defines model for DeviceInfo.
 type DeviceInfo struct {
 	Hardware *HardwareInfo `json:"hardware,omitempty"`
@@ -811,19 +798,6 @@ type GameResultObject struct {
 	CreatedAt *time.Time              `json:"created_at,omitempty"`
 	Id        *string                 `json:"id,omitempty"`
 	UpdatedAt *time.Time              `json:"updated_at,omitempty"`
-}
-
-// GearIMEI defines model for GearIMEI.
-type GearIMEI struct {
-	Name   *string `json:"name,omitempty"`
-	Serial string  `json:"serial"`
-	Tac    string  `json:"tac"`
-}
-
-// GearLabel defines model for GearLabel.
-type GearLabel struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
 }
 
 // GeminiTenantModelProviderData defines model for GeminiTenantModelProviderData.
@@ -954,8 +928,8 @@ type GroupPutResponse = GroupObject
 // HardwareInfo defines model for HardwareInfo.
 type HardwareInfo struct {
 	HardwareRevision *string      `json:"hardware_revision,omitempty"`
-	Imeis            *[]GearIMEI  `json:"imeis,omitempty"`
-	Labels           *[]GearLabel `json:"labels,omitempty"`
+	Imeis            *[]PeerIMEI  `json:"imeis,omitempty"`
+	Labels           *[]PeerLabel `json:"labels,omitempty"`
 	Manufacturer     *string      `json:"manufacturer,omitempty"`
 	Model            *string      `json:"model,omitempty"`
 }
@@ -1081,53 +1055,18 @@ type OpenAITenantModelProviderData struct {
 	UseSystemRole        *bool     `json:"use_system_role,omitempty"`
 }
 
-// PeerGetInfoRequest defines model for PeerGetInfoRequest.
-type PeerGetInfoRequest = map[string]interface{}
+// PeerIMEI defines model for PeerIMEI.
+type PeerIMEI struct {
+	Name   *string `json:"name,omitempty"`
+	Serial string  `json:"serial"`
+	Tac    string  `json:"tac"`
+}
 
-// PeerGetInfoResponse defines model for PeerGetInfoResponse.
-type PeerGetInfoResponse = DeviceInfo
-
-// PeerGetRunAgentRequest defines model for PeerGetRunAgentRequest.
-type PeerGetRunAgentRequest = map[string]interface{}
-
-// PeerGetRunAgentResponse defines model for PeerGetRunAgentResponse.
-type PeerGetRunAgentResponse = PeerRunAgent
-
-// PeerGetRunStatusRequest defines model for PeerGetRunStatusRequest.
-type PeerGetRunStatusRequest = map[string]interface{}
-
-// PeerGetRunStatusResponse defines model for PeerGetRunStatusResponse.
-type PeerGetRunStatusResponse = PeerRunStatus
-
-// PeerGetRuntimeRequest defines model for PeerGetRuntimeRequest.
-type PeerGetRuntimeRequest = map[string]interface{}
-
-// PeerGetRuntimeResponse defines model for PeerGetRuntimeResponse.
-type PeerGetRuntimeResponse = Runtime
-
-// PeerGetStatusRequest defines model for PeerGetStatusRequest.
-type PeerGetStatusRequest = map[string]interface{}
-
-// PeerGetStatusResponse defines model for PeerGetStatusResponse.
-type PeerGetStatusResponse = PeerStatus
-
-// PeerPutInfoRequest defines model for PeerPutInfoRequest.
-type PeerPutInfoRequest = DeviceInfo
-
-// PeerPutInfoResponse defines model for PeerPutInfoResponse.
-type PeerPutInfoResponse = DeviceInfo
-
-// PeerPutStatusRequest defines model for PeerPutStatusRequest.
-type PeerPutStatusRequest = PeerStatus
-
-// PeerPutStatusResponse defines model for PeerPutStatusResponse.
-type PeerPutStatusResponse = PeerStatus
-
-// PeerReloadRunRequest defines model for PeerReloadRunRequest.
-type PeerReloadRunRequest = map[string]interface{}
-
-// PeerReloadRunResponse defines model for PeerReloadRunResponse.
-type PeerReloadRunResponse = PeerRunStatus
+// PeerLabel defines model for PeerLabel.
+type PeerLabel struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
 
 // PeerRunAgent defines model for PeerRunAgent.
 type PeerRunAgent struct {
@@ -1147,12 +1086,6 @@ type PeerRunStatus struct {
 // PeerRunStatusState defines model for PeerRunStatusState.
 type PeerRunStatusState string
 
-// PeerSetRunAgentRequest defines model for PeerSetRunAgentRequest.
-type PeerSetRunAgentRequest = AgentSelection
-
-// PeerSetRunAgentResponse defines model for PeerSetRunAgentResponse.
-type PeerSetRunAgentResponse = PeerRunAgent
-
 // PeerStatus defines model for PeerStatus.
 type PeerStatus struct {
 	BatteryPercent *int                    `json:"battery_percent,omitempty"`
@@ -1163,12 +1096,6 @@ type PeerStatus struct {
 	ReportedAt     *time.Time              `json:"reported_at,omitempty"`
 	Volume         *int                    `json:"volume,omitempty"`
 }
-
-// PeerStopRunRequest defines model for PeerStopRunRequest.
-type PeerStopRunRequest = map[string]interface{}
-
-// PeerStopRunResponse defines model for PeerStopRunResponse.
-type PeerStopRunResponse = PeerRunStatus
 
 // PetCreateRequest defines model for PetCreateRequest.
 type PetCreateRequest struct {
@@ -1301,8 +1228,8 @@ type RPCVersion int
 
 // RefreshIdentifiers defines model for RefreshIdentifiers.
 type RefreshIdentifiers struct {
-	Imeis  *[]GearIMEI  `json:"imeis,omitempty"`
-	Labels *[]GearLabel `json:"labels,omitempty"`
+	Imeis  *[]PeerIMEI  `json:"imeis,omitempty"`
+	Labels *[]PeerLabel `json:"labels,omitempty"`
 	Sn     *string      `json:"sn,omitempty"`
 }
 
@@ -1372,14 +1299,74 @@ type Runtime struct {
 type ServerGetInfoRequest = map[string]interface{}
 
 // ServerGetInfoResponse defines model for ServerGetInfoResponse.
-type ServerGetInfoResponse = ServerInfo
+type ServerGetInfoResponse = DeviceInfo
 
-// ServerInfo defines model for ServerInfo.
-type ServerInfo struct {
-	BuildCommit string `json:"build_commit"`
-	PublicKey   string `json:"public_key"`
-	ServerTime  int64  `json:"server_time"`
+// ServerGetRunAgentRequest defines model for ServerGetRunAgentRequest.
+type ServerGetRunAgentRequest = map[string]interface{}
+
+// ServerGetRunAgentResponse defines model for ServerGetRunAgentResponse.
+type ServerGetRunAgentResponse = PeerRunAgent
+
+// ServerGetRunStatusRequest defines model for ServerGetRunStatusRequest.
+type ServerGetRunStatusRequest = map[string]interface{}
+
+// ServerGetRunStatusResponse defines model for ServerGetRunStatusResponse.
+type ServerGetRunStatusResponse = PeerRunStatus
+
+// ServerGetRuntimeRequest defines model for ServerGetRuntimeRequest.
+type ServerGetRuntimeRequest = map[string]interface{}
+
+// ServerGetRuntimeResponse defines model for ServerGetRuntimeResponse.
+type ServerGetRuntimeResponse = Runtime
+
+// ServerGetStatusRequest defines model for ServerGetStatusRequest.
+type ServerGetStatusRequest = map[string]interface{}
+
+// ServerGetStatusResponse defines model for ServerGetStatusResponse.
+type ServerGetStatusResponse = PeerStatus
+
+// ServerPutInfoRequest defines model for ServerPutInfoRequest.
+type ServerPutInfoRequest = DeviceInfo
+
+// ServerPutInfoResponse defines model for ServerPutInfoResponse.
+type ServerPutInfoResponse = DeviceInfo
+
+// ServerPutStatusRequest defines model for ServerPutStatusRequest.
+type ServerPutStatusRequest = PeerStatus
+
+// ServerPutStatusResponse defines model for ServerPutStatusResponse.
+type ServerPutStatusResponse = PeerStatus
+
+// ServerReloadRunRequest defines model for ServerReloadRunRequest.
+type ServerReloadRunRequest = map[string]interface{}
+
+// ServerReloadRunResponse defines model for ServerReloadRunResponse.
+type ServerReloadRunResponse = PeerRunStatus
+
+// ServerRunSayRequest defines model for ServerRunSayRequest.
+type ServerRunSayRequest struct {
+	CredentialName *string `json:"credential_name,omitempty"`
+	ModelId        *string `json:"model_id,omitempty"`
+	Text           string  `json:"text"`
+	VoiceId        *string `json:"voice_id,omitempty"`
 }
+
+// ServerRunSayResponse defines model for ServerRunSayResponse.
+type ServerRunSayResponse struct {
+	Accepted bool `json:"accepted"`
+}
+
+// ServerSetRunAgentRequest defines model for ServerSetRunAgentRequest.
+type ServerSetRunAgentRequest = AgentSelection
+
+// ServerSetRunAgentResponse defines model for ServerSetRunAgentResponse.
+type ServerSetRunAgentResponse = PeerRunAgent
+
+// ServerStopRunRequest defines model for ServerStopRunRequest.
+type ServerStopRunRequest = map[string]interface{}
+
+// ServerStopRunResponse defines model for ServerStopRunResponse.
+type ServerStopRunResponse = PeerRunStatus
 
 // SpeedTestRequest defines model for SpeedTestRequest.
 type SpeedTestRequest struct {
@@ -1589,22 +1576,22 @@ func (t *RPCRequest_Params) MergeSpeedTestRequest(v SpeedTestRequest) error {
 	return err
 }
 
-// AsDeviceGetInfoRequest returns the union data inside the RPCRequest_Params as a DeviceGetInfoRequest
-func (t RPCRequest_Params) AsDeviceGetInfoRequest() (DeviceGetInfoRequest, error) {
-	var body DeviceGetInfoRequest
+// AsClientGetInfoRequest returns the union data inside the RPCRequest_Params as a ClientGetInfoRequest
+func (t RPCRequest_Params) AsClientGetInfoRequest() (ClientGetInfoRequest, error) {
+	var body ClientGetInfoRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromDeviceGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided DeviceGetInfoRequest
-func (t *RPCRequest_Params) FromDeviceGetInfoRequest(v DeviceGetInfoRequest) error {
+// FromClientGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided ClientGetInfoRequest
+func (t *RPCRequest_Params) FromClientGetInfoRequest(v ClientGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeDeviceGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided DeviceGetInfoRequest
-func (t *RPCRequest_Params) MergeDeviceGetInfoRequest(v DeviceGetInfoRequest) error {
+// MergeClientGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ClientGetInfoRequest
+func (t *RPCRequest_Params) MergeClientGetInfoRequest(v ClientGetInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1615,22 +1602,22 @@ func (t *RPCRequest_Params) MergeDeviceGetInfoRequest(v DeviceGetInfoRequest) er
 	return err
 }
 
-// AsDeviceGetIdentifiersRequest returns the union data inside the RPCRequest_Params as a DeviceGetIdentifiersRequest
-func (t RPCRequest_Params) AsDeviceGetIdentifiersRequest() (DeviceGetIdentifiersRequest, error) {
-	var body DeviceGetIdentifiersRequest
+// AsClientGetIdentifiersRequest returns the union data inside the RPCRequest_Params as a ClientGetIdentifiersRequest
+func (t RPCRequest_Params) AsClientGetIdentifiersRequest() (ClientGetIdentifiersRequest, error) {
+	var body ClientGetIdentifiersRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromDeviceGetIdentifiersRequest overwrites any union data inside the RPCRequest_Params as the provided DeviceGetIdentifiersRequest
-func (t *RPCRequest_Params) FromDeviceGetIdentifiersRequest(v DeviceGetIdentifiersRequest) error {
+// FromClientGetIdentifiersRequest overwrites any union data inside the RPCRequest_Params as the provided ClientGetIdentifiersRequest
+func (t *RPCRequest_Params) FromClientGetIdentifiersRequest(v ClientGetIdentifiersRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeDeviceGetIdentifiersRequest performs a merge with any union data inside the RPCRequest_Params, using the provided DeviceGetIdentifiersRequest
-func (t *RPCRequest_Params) MergeDeviceGetIdentifiersRequest(v DeviceGetIdentifiersRequest) error {
+// MergeClientGetIdentifiersRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ClientGetIdentifiersRequest
+func (t *RPCRequest_Params) MergeClientGetIdentifiersRequest(v ClientGetIdentifiersRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1667,22 +1654,22 @@ func (t *RPCRequest_Params) MergeServerGetInfoRequest(v ServerGetInfoRequest) er
 	return err
 }
 
-// AsPeerGetInfoRequest returns the union data inside the RPCRequest_Params as a PeerGetInfoRequest
-func (t RPCRequest_Params) AsPeerGetInfoRequest() (PeerGetInfoRequest, error) {
-	var body PeerGetInfoRequest
+// AsServerPutInfoRequest returns the union data inside the RPCRequest_Params as a ServerPutInfoRequest
+func (t RPCRequest_Params) AsServerPutInfoRequest() (ServerPutInfoRequest, error) {
+	var body ServerPutInfoRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetInfoRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetInfoRequest
-func (t *RPCRequest_Params) FromPeerGetInfoRequest(v PeerGetInfoRequest) error {
+// FromServerPutInfoRequest overwrites any union data inside the RPCRequest_Params as the provided ServerPutInfoRequest
+func (t *RPCRequest_Params) FromServerPutInfoRequest(v ServerPutInfoRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetInfoRequest
-func (t *RPCRequest_Params) MergePeerGetInfoRequest(v PeerGetInfoRequest) error {
+// MergeServerPutInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerPutInfoRequest
+func (t *RPCRequest_Params) MergeServerPutInfoRequest(v ServerPutInfoRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1693,22 +1680,22 @@ func (t *RPCRequest_Params) MergePeerGetInfoRequest(v PeerGetInfoRequest) error 
 	return err
 }
 
-// AsPeerPutInfoRequest returns the union data inside the RPCRequest_Params as a PeerPutInfoRequest
-func (t RPCRequest_Params) AsPeerPutInfoRequest() (PeerPutInfoRequest, error) {
-	var body PeerPutInfoRequest
+// AsServerGetRuntimeRequest returns the union data inside the RPCRequest_Params as a ServerGetRuntimeRequest
+func (t RPCRequest_Params) AsServerGetRuntimeRequest() (ServerGetRuntimeRequest, error) {
+	var body ServerGetRuntimeRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerPutInfoRequest overwrites any union data inside the RPCRequest_Params as the provided PeerPutInfoRequest
-func (t *RPCRequest_Params) FromPeerPutInfoRequest(v PeerPutInfoRequest) error {
+// FromServerGetRuntimeRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetRuntimeRequest
+func (t *RPCRequest_Params) FromServerGetRuntimeRequest(v ServerGetRuntimeRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerPutInfoRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerPutInfoRequest
-func (t *RPCRequest_Params) MergePeerPutInfoRequest(v PeerPutInfoRequest) error {
+// MergeServerGetRuntimeRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetRuntimeRequest
+func (t *RPCRequest_Params) MergeServerGetRuntimeRequest(v ServerGetRuntimeRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1719,22 +1706,22 @@ func (t *RPCRequest_Params) MergePeerPutInfoRequest(v PeerPutInfoRequest) error 
 	return err
 }
 
-// AsPeerGetRuntimeRequest returns the union data inside the RPCRequest_Params as a PeerGetRuntimeRequest
-func (t RPCRequest_Params) AsPeerGetRuntimeRequest() (PeerGetRuntimeRequest, error) {
-	var body PeerGetRuntimeRequest
+// AsServerGetStatusRequest returns the union data inside the RPCRequest_Params as a ServerGetStatusRequest
+func (t RPCRequest_Params) AsServerGetStatusRequest() (ServerGetStatusRequest, error) {
+	var body ServerGetStatusRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRuntimeRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetRuntimeRequest
-func (t *RPCRequest_Params) FromPeerGetRuntimeRequest(v PeerGetRuntimeRequest) error {
+// FromServerGetStatusRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetStatusRequest
+func (t *RPCRequest_Params) FromServerGetStatusRequest(v ServerGetStatusRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRuntimeRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetRuntimeRequest
-func (t *RPCRequest_Params) MergePeerGetRuntimeRequest(v PeerGetRuntimeRequest) error {
+// MergeServerGetStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetStatusRequest
+func (t *RPCRequest_Params) MergeServerGetStatusRequest(v ServerGetStatusRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1745,22 +1732,22 @@ func (t *RPCRequest_Params) MergePeerGetRuntimeRequest(v PeerGetRuntimeRequest) 
 	return err
 }
 
-// AsPeerGetStatusRequest returns the union data inside the RPCRequest_Params as a PeerGetStatusRequest
-func (t RPCRequest_Params) AsPeerGetStatusRequest() (PeerGetStatusRequest, error) {
-	var body PeerGetStatusRequest
+// AsServerPutStatusRequest returns the union data inside the RPCRequest_Params as a ServerPutStatusRequest
+func (t RPCRequest_Params) AsServerPutStatusRequest() (ServerPutStatusRequest, error) {
+	var body ServerPutStatusRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetStatusRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetStatusRequest
-func (t *RPCRequest_Params) FromPeerGetStatusRequest(v PeerGetStatusRequest) error {
+// FromServerPutStatusRequest overwrites any union data inside the RPCRequest_Params as the provided ServerPutStatusRequest
+func (t *RPCRequest_Params) FromServerPutStatusRequest(v ServerPutStatusRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetStatusRequest
-func (t *RPCRequest_Params) MergePeerGetStatusRequest(v PeerGetStatusRequest) error {
+// MergeServerPutStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerPutStatusRequest
+func (t *RPCRequest_Params) MergeServerPutStatusRequest(v ServerPutStatusRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1771,22 +1758,22 @@ func (t *RPCRequest_Params) MergePeerGetStatusRequest(v PeerGetStatusRequest) er
 	return err
 }
 
-// AsPeerPutStatusRequest returns the union data inside the RPCRequest_Params as a PeerPutStatusRequest
-func (t RPCRequest_Params) AsPeerPutStatusRequest() (PeerPutStatusRequest, error) {
-	var body PeerPutStatusRequest
+// AsServerGetRunAgentRequest returns the union data inside the RPCRequest_Params as a ServerGetRunAgentRequest
+func (t RPCRequest_Params) AsServerGetRunAgentRequest() (ServerGetRunAgentRequest, error) {
+	var body ServerGetRunAgentRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerPutStatusRequest overwrites any union data inside the RPCRequest_Params as the provided PeerPutStatusRequest
-func (t *RPCRequest_Params) FromPeerPutStatusRequest(v PeerPutStatusRequest) error {
+// FromServerGetRunAgentRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetRunAgentRequest
+func (t *RPCRequest_Params) FromServerGetRunAgentRequest(v ServerGetRunAgentRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerPutStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerPutStatusRequest
-func (t *RPCRequest_Params) MergePeerPutStatusRequest(v PeerPutStatusRequest) error {
+// MergeServerGetRunAgentRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetRunAgentRequest
+func (t *RPCRequest_Params) MergeServerGetRunAgentRequest(v ServerGetRunAgentRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1797,22 +1784,22 @@ func (t *RPCRequest_Params) MergePeerPutStatusRequest(v PeerPutStatusRequest) er
 	return err
 }
 
-// AsPeerGetRunAgentRequest returns the union data inside the RPCRequest_Params as a PeerGetRunAgentRequest
-func (t RPCRequest_Params) AsPeerGetRunAgentRequest() (PeerGetRunAgentRequest, error) {
-	var body PeerGetRunAgentRequest
+// AsServerSetRunAgentRequest returns the union data inside the RPCRequest_Params as a ServerSetRunAgentRequest
+func (t RPCRequest_Params) AsServerSetRunAgentRequest() (ServerSetRunAgentRequest, error) {
+	var body ServerSetRunAgentRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRunAgentRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetRunAgentRequest
-func (t *RPCRequest_Params) FromPeerGetRunAgentRequest(v PeerGetRunAgentRequest) error {
+// FromServerSetRunAgentRequest overwrites any union data inside the RPCRequest_Params as the provided ServerSetRunAgentRequest
+func (t *RPCRequest_Params) FromServerSetRunAgentRequest(v ServerSetRunAgentRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRunAgentRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetRunAgentRequest
-func (t *RPCRequest_Params) MergePeerGetRunAgentRequest(v PeerGetRunAgentRequest) error {
+// MergeServerSetRunAgentRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerSetRunAgentRequest
+func (t *RPCRequest_Params) MergeServerSetRunAgentRequest(v ServerSetRunAgentRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1823,22 +1810,22 @@ func (t *RPCRequest_Params) MergePeerGetRunAgentRequest(v PeerGetRunAgentRequest
 	return err
 }
 
-// AsPeerSetRunAgentRequest returns the union data inside the RPCRequest_Params as a PeerSetRunAgentRequest
-func (t RPCRequest_Params) AsPeerSetRunAgentRequest() (PeerSetRunAgentRequest, error) {
-	var body PeerSetRunAgentRequest
+// AsServerReloadRunRequest returns the union data inside the RPCRequest_Params as a ServerReloadRunRequest
+func (t RPCRequest_Params) AsServerReloadRunRequest() (ServerReloadRunRequest, error) {
+	var body ServerReloadRunRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerSetRunAgentRequest overwrites any union data inside the RPCRequest_Params as the provided PeerSetRunAgentRequest
-func (t *RPCRequest_Params) FromPeerSetRunAgentRequest(v PeerSetRunAgentRequest) error {
+// FromServerReloadRunRequest overwrites any union data inside the RPCRequest_Params as the provided ServerReloadRunRequest
+func (t *RPCRequest_Params) FromServerReloadRunRequest(v ServerReloadRunRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerSetRunAgentRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerSetRunAgentRequest
-func (t *RPCRequest_Params) MergePeerSetRunAgentRequest(v PeerSetRunAgentRequest) error {
+// MergeServerReloadRunRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerReloadRunRequest
+func (t *RPCRequest_Params) MergeServerReloadRunRequest(v ServerReloadRunRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1849,22 +1836,22 @@ func (t *RPCRequest_Params) MergePeerSetRunAgentRequest(v PeerSetRunAgentRequest
 	return err
 }
 
-// AsPeerReloadRunRequest returns the union data inside the RPCRequest_Params as a PeerReloadRunRequest
-func (t RPCRequest_Params) AsPeerReloadRunRequest() (PeerReloadRunRequest, error) {
-	var body PeerReloadRunRequest
+// AsServerGetRunStatusRequest returns the union data inside the RPCRequest_Params as a ServerGetRunStatusRequest
+func (t RPCRequest_Params) AsServerGetRunStatusRequest() (ServerGetRunStatusRequest, error) {
+	var body ServerGetRunStatusRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerReloadRunRequest overwrites any union data inside the RPCRequest_Params as the provided PeerReloadRunRequest
-func (t *RPCRequest_Params) FromPeerReloadRunRequest(v PeerReloadRunRequest) error {
+// FromServerGetRunStatusRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetRunStatusRequest
+func (t *RPCRequest_Params) FromServerGetRunStatusRequest(v ServerGetRunStatusRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerReloadRunRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerReloadRunRequest
-func (t *RPCRequest_Params) MergePeerReloadRunRequest(v PeerReloadRunRequest) error {
+// MergeServerGetRunStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetRunStatusRequest
+func (t *RPCRequest_Params) MergeServerGetRunStatusRequest(v ServerGetRunStatusRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1875,22 +1862,22 @@ func (t *RPCRequest_Params) MergePeerReloadRunRequest(v PeerReloadRunRequest) er
 	return err
 }
 
-// AsPeerGetRunStatusRequest returns the union data inside the RPCRequest_Params as a PeerGetRunStatusRequest
-func (t RPCRequest_Params) AsPeerGetRunStatusRequest() (PeerGetRunStatusRequest, error) {
-	var body PeerGetRunStatusRequest
+// AsServerStopRunRequest returns the union data inside the RPCRequest_Params as a ServerStopRunRequest
+func (t RPCRequest_Params) AsServerStopRunRequest() (ServerStopRunRequest, error) {
+	var body ServerStopRunRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRunStatusRequest overwrites any union data inside the RPCRequest_Params as the provided PeerGetRunStatusRequest
-func (t *RPCRequest_Params) FromPeerGetRunStatusRequest(v PeerGetRunStatusRequest) error {
+// FromServerStopRunRequest overwrites any union data inside the RPCRequest_Params as the provided ServerStopRunRequest
+func (t *RPCRequest_Params) FromServerStopRunRequest(v ServerStopRunRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRunStatusRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerGetRunStatusRequest
-func (t *RPCRequest_Params) MergePeerGetRunStatusRequest(v PeerGetRunStatusRequest) error {
+// MergeServerStopRunRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerStopRunRequest
+func (t *RPCRequest_Params) MergeServerStopRunRequest(v ServerStopRunRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1901,48 +1888,22 @@ func (t *RPCRequest_Params) MergePeerGetRunStatusRequest(v PeerGetRunStatusReque
 	return err
 }
 
-// AsPeerStopRunRequest returns the union data inside the RPCRequest_Params as a PeerStopRunRequest
-func (t RPCRequest_Params) AsPeerStopRunRequest() (PeerStopRunRequest, error) {
-	var body PeerStopRunRequest
+// AsServerRunSayRequest returns the union data inside the RPCRequest_Params as a ServerRunSayRequest
+func (t RPCRequest_Params) AsServerRunSayRequest() (ServerRunSayRequest, error) {
+	var body ServerRunSayRequest
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerStopRunRequest overwrites any union data inside the RPCRequest_Params as the provided PeerStopRunRequest
-func (t *RPCRequest_Params) FromPeerStopRunRequest(v PeerStopRunRequest) error {
+// FromServerRunSayRequest overwrites any union data inside the RPCRequest_Params as the provided ServerRunSayRequest
+func (t *RPCRequest_Params) FromServerRunSayRequest(v ServerRunSayRequest) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerStopRunRequest performs a merge with any union data inside the RPCRequest_Params, using the provided PeerStopRunRequest
-func (t *RPCRequest_Params) MergePeerStopRunRequest(v PeerStopRunRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsAudioSayRequest returns the union data inside the RPCRequest_Params as a AudioSayRequest
-func (t RPCRequest_Params) AsAudioSayRequest() (AudioSayRequest, error) {
-	var body AudioSayRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAudioSayRequest overwrites any union data inside the RPCRequest_Params as the provided AudioSayRequest
-func (t *RPCRequest_Params) FromAudioSayRequest(v AudioSayRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeAudioSayRequest performs a merge with any union data inside the RPCRequest_Params, using the provided AudioSayRequest
-func (t *RPCRequest_Params) MergeAudioSayRequest(v AudioSayRequest) error {
+// MergeServerRunSayRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerRunSayRequest
+func (t *RPCRequest_Params) MergeServerRunSayRequest(v ServerRunSayRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3679,22 +3640,22 @@ func (t *RPCResponse_Result) MergeSpeedTestResponse(v SpeedTestResponse) error {
 	return err
 }
 
-// AsDeviceGetInfoResponse returns the union data inside the RPCResponse_Result as a DeviceGetInfoResponse
-func (t RPCResponse_Result) AsDeviceGetInfoResponse() (DeviceGetInfoResponse, error) {
-	var body DeviceGetInfoResponse
+// AsClientGetInfoResponse returns the union data inside the RPCResponse_Result as a ClientGetInfoResponse
+func (t RPCResponse_Result) AsClientGetInfoResponse() (ClientGetInfoResponse, error) {
+	var body ClientGetInfoResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromDeviceGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided DeviceGetInfoResponse
-func (t *RPCResponse_Result) FromDeviceGetInfoResponse(v DeviceGetInfoResponse) error {
+// FromClientGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided ClientGetInfoResponse
+func (t *RPCResponse_Result) FromClientGetInfoResponse(v ClientGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeDeviceGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided DeviceGetInfoResponse
-func (t *RPCResponse_Result) MergeDeviceGetInfoResponse(v DeviceGetInfoResponse) error {
+// MergeClientGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ClientGetInfoResponse
+func (t *RPCResponse_Result) MergeClientGetInfoResponse(v ClientGetInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3705,22 +3666,22 @@ func (t *RPCResponse_Result) MergeDeviceGetInfoResponse(v DeviceGetInfoResponse)
 	return err
 }
 
-// AsDeviceGetIdentifiersResponse returns the union data inside the RPCResponse_Result as a DeviceGetIdentifiersResponse
-func (t RPCResponse_Result) AsDeviceGetIdentifiersResponse() (DeviceGetIdentifiersResponse, error) {
-	var body DeviceGetIdentifiersResponse
+// AsClientGetIdentifiersResponse returns the union data inside the RPCResponse_Result as a ClientGetIdentifiersResponse
+func (t RPCResponse_Result) AsClientGetIdentifiersResponse() (ClientGetIdentifiersResponse, error) {
+	var body ClientGetIdentifiersResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromDeviceGetIdentifiersResponse overwrites any union data inside the RPCResponse_Result as the provided DeviceGetIdentifiersResponse
-func (t *RPCResponse_Result) FromDeviceGetIdentifiersResponse(v DeviceGetIdentifiersResponse) error {
+// FromClientGetIdentifiersResponse overwrites any union data inside the RPCResponse_Result as the provided ClientGetIdentifiersResponse
+func (t *RPCResponse_Result) FromClientGetIdentifiersResponse(v ClientGetIdentifiersResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergeDeviceGetIdentifiersResponse performs a merge with any union data inside the RPCResponse_Result, using the provided DeviceGetIdentifiersResponse
-func (t *RPCResponse_Result) MergeDeviceGetIdentifiersResponse(v DeviceGetIdentifiersResponse) error {
+// MergeClientGetIdentifiersResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ClientGetIdentifiersResponse
+func (t *RPCResponse_Result) MergeClientGetIdentifiersResponse(v ClientGetIdentifiersResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3757,22 +3718,22 @@ func (t *RPCResponse_Result) MergeServerGetInfoResponse(v ServerGetInfoResponse)
 	return err
 }
 
-// AsPeerGetInfoResponse returns the union data inside the RPCResponse_Result as a PeerGetInfoResponse
-func (t RPCResponse_Result) AsPeerGetInfoResponse() (PeerGetInfoResponse, error) {
-	var body PeerGetInfoResponse
+// AsServerPutInfoResponse returns the union data inside the RPCResponse_Result as a ServerPutInfoResponse
+func (t RPCResponse_Result) AsServerPutInfoResponse() (ServerPutInfoResponse, error) {
+	var body ServerPutInfoResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetInfoResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetInfoResponse
-func (t *RPCResponse_Result) FromPeerGetInfoResponse(v PeerGetInfoResponse) error {
+// FromServerPutInfoResponse overwrites any union data inside the RPCResponse_Result as the provided ServerPutInfoResponse
+func (t *RPCResponse_Result) FromServerPutInfoResponse(v ServerPutInfoResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetInfoResponse
-func (t *RPCResponse_Result) MergePeerGetInfoResponse(v PeerGetInfoResponse) error {
+// MergeServerPutInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerPutInfoResponse
+func (t *RPCResponse_Result) MergeServerPutInfoResponse(v ServerPutInfoResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3783,22 +3744,22 @@ func (t *RPCResponse_Result) MergePeerGetInfoResponse(v PeerGetInfoResponse) err
 	return err
 }
 
-// AsPeerPutInfoResponse returns the union data inside the RPCResponse_Result as a PeerPutInfoResponse
-func (t RPCResponse_Result) AsPeerPutInfoResponse() (PeerPutInfoResponse, error) {
-	var body PeerPutInfoResponse
+// AsServerGetRuntimeResponse returns the union data inside the RPCResponse_Result as a ServerGetRuntimeResponse
+func (t RPCResponse_Result) AsServerGetRuntimeResponse() (ServerGetRuntimeResponse, error) {
+	var body ServerGetRuntimeResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerPutInfoResponse overwrites any union data inside the RPCResponse_Result as the provided PeerPutInfoResponse
-func (t *RPCResponse_Result) FromPeerPutInfoResponse(v PeerPutInfoResponse) error {
+// FromServerGetRuntimeResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetRuntimeResponse
+func (t *RPCResponse_Result) FromServerGetRuntimeResponse(v ServerGetRuntimeResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerPutInfoResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerPutInfoResponse
-func (t *RPCResponse_Result) MergePeerPutInfoResponse(v PeerPutInfoResponse) error {
+// MergeServerGetRuntimeResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetRuntimeResponse
+func (t *RPCResponse_Result) MergeServerGetRuntimeResponse(v ServerGetRuntimeResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3809,22 +3770,22 @@ func (t *RPCResponse_Result) MergePeerPutInfoResponse(v PeerPutInfoResponse) err
 	return err
 }
 
-// AsPeerGetRuntimeResponse returns the union data inside the RPCResponse_Result as a PeerGetRuntimeResponse
-func (t RPCResponse_Result) AsPeerGetRuntimeResponse() (PeerGetRuntimeResponse, error) {
-	var body PeerGetRuntimeResponse
+// AsServerGetStatusResponse returns the union data inside the RPCResponse_Result as a ServerGetStatusResponse
+func (t RPCResponse_Result) AsServerGetStatusResponse() (ServerGetStatusResponse, error) {
+	var body ServerGetStatusResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRuntimeResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetRuntimeResponse
-func (t *RPCResponse_Result) FromPeerGetRuntimeResponse(v PeerGetRuntimeResponse) error {
+// FromServerGetStatusResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetStatusResponse
+func (t *RPCResponse_Result) FromServerGetStatusResponse(v ServerGetStatusResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRuntimeResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetRuntimeResponse
-func (t *RPCResponse_Result) MergePeerGetRuntimeResponse(v PeerGetRuntimeResponse) error {
+// MergeServerGetStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetStatusResponse
+func (t *RPCResponse_Result) MergeServerGetStatusResponse(v ServerGetStatusResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3835,22 +3796,22 @@ func (t *RPCResponse_Result) MergePeerGetRuntimeResponse(v PeerGetRuntimeRespons
 	return err
 }
 
-// AsPeerGetStatusResponse returns the union data inside the RPCResponse_Result as a PeerGetStatusResponse
-func (t RPCResponse_Result) AsPeerGetStatusResponse() (PeerGetStatusResponse, error) {
-	var body PeerGetStatusResponse
+// AsServerPutStatusResponse returns the union data inside the RPCResponse_Result as a ServerPutStatusResponse
+func (t RPCResponse_Result) AsServerPutStatusResponse() (ServerPutStatusResponse, error) {
+	var body ServerPutStatusResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetStatusResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetStatusResponse
-func (t *RPCResponse_Result) FromPeerGetStatusResponse(v PeerGetStatusResponse) error {
+// FromServerPutStatusResponse overwrites any union data inside the RPCResponse_Result as the provided ServerPutStatusResponse
+func (t *RPCResponse_Result) FromServerPutStatusResponse(v ServerPutStatusResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetStatusResponse
-func (t *RPCResponse_Result) MergePeerGetStatusResponse(v PeerGetStatusResponse) error {
+// MergeServerPutStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerPutStatusResponse
+func (t *RPCResponse_Result) MergeServerPutStatusResponse(v ServerPutStatusResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3861,22 +3822,22 @@ func (t *RPCResponse_Result) MergePeerGetStatusResponse(v PeerGetStatusResponse)
 	return err
 }
 
-// AsPeerPutStatusResponse returns the union data inside the RPCResponse_Result as a PeerPutStatusResponse
-func (t RPCResponse_Result) AsPeerPutStatusResponse() (PeerPutStatusResponse, error) {
-	var body PeerPutStatusResponse
+// AsServerGetRunAgentResponse returns the union data inside the RPCResponse_Result as a ServerGetRunAgentResponse
+func (t RPCResponse_Result) AsServerGetRunAgentResponse() (ServerGetRunAgentResponse, error) {
+	var body ServerGetRunAgentResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerPutStatusResponse overwrites any union data inside the RPCResponse_Result as the provided PeerPutStatusResponse
-func (t *RPCResponse_Result) FromPeerPutStatusResponse(v PeerPutStatusResponse) error {
+// FromServerGetRunAgentResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetRunAgentResponse
+func (t *RPCResponse_Result) FromServerGetRunAgentResponse(v ServerGetRunAgentResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerPutStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerPutStatusResponse
-func (t *RPCResponse_Result) MergePeerPutStatusResponse(v PeerPutStatusResponse) error {
+// MergeServerGetRunAgentResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetRunAgentResponse
+func (t *RPCResponse_Result) MergeServerGetRunAgentResponse(v ServerGetRunAgentResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3887,22 +3848,22 @@ func (t *RPCResponse_Result) MergePeerPutStatusResponse(v PeerPutStatusResponse)
 	return err
 }
 
-// AsPeerGetRunAgentResponse returns the union data inside the RPCResponse_Result as a PeerGetRunAgentResponse
-func (t RPCResponse_Result) AsPeerGetRunAgentResponse() (PeerGetRunAgentResponse, error) {
-	var body PeerGetRunAgentResponse
+// AsServerSetRunAgentResponse returns the union data inside the RPCResponse_Result as a ServerSetRunAgentResponse
+func (t RPCResponse_Result) AsServerSetRunAgentResponse() (ServerSetRunAgentResponse, error) {
+	var body ServerSetRunAgentResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRunAgentResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetRunAgentResponse
-func (t *RPCResponse_Result) FromPeerGetRunAgentResponse(v PeerGetRunAgentResponse) error {
+// FromServerSetRunAgentResponse overwrites any union data inside the RPCResponse_Result as the provided ServerSetRunAgentResponse
+func (t *RPCResponse_Result) FromServerSetRunAgentResponse(v ServerSetRunAgentResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRunAgentResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetRunAgentResponse
-func (t *RPCResponse_Result) MergePeerGetRunAgentResponse(v PeerGetRunAgentResponse) error {
+// MergeServerSetRunAgentResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerSetRunAgentResponse
+func (t *RPCResponse_Result) MergeServerSetRunAgentResponse(v ServerSetRunAgentResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3913,22 +3874,22 @@ func (t *RPCResponse_Result) MergePeerGetRunAgentResponse(v PeerGetRunAgentRespo
 	return err
 }
 
-// AsPeerSetRunAgentResponse returns the union data inside the RPCResponse_Result as a PeerSetRunAgentResponse
-func (t RPCResponse_Result) AsPeerSetRunAgentResponse() (PeerSetRunAgentResponse, error) {
-	var body PeerSetRunAgentResponse
+// AsServerReloadRunResponse returns the union data inside the RPCResponse_Result as a ServerReloadRunResponse
+func (t RPCResponse_Result) AsServerReloadRunResponse() (ServerReloadRunResponse, error) {
+	var body ServerReloadRunResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerSetRunAgentResponse overwrites any union data inside the RPCResponse_Result as the provided PeerSetRunAgentResponse
-func (t *RPCResponse_Result) FromPeerSetRunAgentResponse(v PeerSetRunAgentResponse) error {
+// FromServerReloadRunResponse overwrites any union data inside the RPCResponse_Result as the provided ServerReloadRunResponse
+func (t *RPCResponse_Result) FromServerReloadRunResponse(v ServerReloadRunResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerSetRunAgentResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerSetRunAgentResponse
-func (t *RPCResponse_Result) MergePeerSetRunAgentResponse(v PeerSetRunAgentResponse) error {
+// MergeServerReloadRunResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerReloadRunResponse
+func (t *RPCResponse_Result) MergeServerReloadRunResponse(v ServerReloadRunResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3939,22 +3900,22 @@ func (t *RPCResponse_Result) MergePeerSetRunAgentResponse(v PeerSetRunAgentRespo
 	return err
 }
 
-// AsPeerReloadRunResponse returns the union data inside the RPCResponse_Result as a PeerReloadRunResponse
-func (t RPCResponse_Result) AsPeerReloadRunResponse() (PeerReloadRunResponse, error) {
-	var body PeerReloadRunResponse
+// AsServerGetRunStatusResponse returns the union data inside the RPCResponse_Result as a ServerGetRunStatusResponse
+func (t RPCResponse_Result) AsServerGetRunStatusResponse() (ServerGetRunStatusResponse, error) {
+	var body ServerGetRunStatusResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerReloadRunResponse overwrites any union data inside the RPCResponse_Result as the provided PeerReloadRunResponse
-func (t *RPCResponse_Result) FromPeerReloadRunResponse(v PeerReloadRunResponse) error {
+// FromServerGetRunStatusResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetRunStatusResponse
+func (t *RPCResponse_Result) FromServerGetRunStatusResponse(v ServerGetRunStatusResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerReloadRunResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerReloadRunResponse
-func (t *RPCResponse_Result) MergePeerReloadRunResponse(v PeerReloadRunResponse) error {
+// MergeServerGetRunStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetRunStatusResponse
+func (t *RPCResponse_Result) MergeServerGetRunStatusResponse(v ServerGetRunStatusResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3965,22 +3926,22 @@ func (t *RPCResponse_Result) MergePeerReloadRunResponse(v PeerReloadRunResponse)
 	return err
 }
 
-// AsPeerGetRunStatusResponse returns the union data inside the RPCResponse_Result as a PeerGetRunStatusResponse
-func (t RPCResponse_Result) AsPeerGetRunStatusResponse() (PeerGetRunStatusResponse, error) {
-	var body PeerGetRunStatusResponse
+// AsServerStopRunResponse returns the union data inside the RPCResponse_Result as a ServerStopRunResponse
+func (t RPCResponse_Result) AsServerStopRunResponse() (ServerStopRunResponse, error) {
+	var body ServerStopRunResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerGetRunStatusResponse overwrites any union data inside the RPCResponse_Result as the provided PeerGetRunStatusResponse
-func (t *RPCResponse_Result) FromPeerGetRunStatusResponse(v PeerGetRunStatusResponse) error {
+// FromServerStopRunResponse overwrites any union data inside the RPCResponse_Result as the provided ServerStopRunResponse
+func (t *RPCResponse_Result) FromServerStopRunResponse(v ServerStopRunResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerGetRunStatusResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerGetRunStatusResponse
-func (t *RPCResponse_Result) MergePeerGetRunStatusResponse(v PeerGetRunStatusResponse) error {
+// MergeServerStopRunResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerStopRunResponse
+func (t *RPCResponse_Result) MergeServerStopRunResponse(v ServerStopRunResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3991,48 +3952,22 @@ func (t *RPCResponse_Result) MergePeerGetRunStatusResponse(v PeerGetRunStatusRes
 	return err
 }
 
-// AsPeerStopRunResponse returns the union data inside the RPCResponse_Result as a PeerStopRunResponse
-func (t RPCResponse_Result) AsPeerStopRunResponse() (PeerStopRunResponse, error) {
-	var body PeerStopRunResponse
+// AsServerRunSayResponse returns the union data inside the RPCResponse_Result as a ServerRunSayResponse
+func (t RPCResponse_Result) AsServerRunSayResponse() (ServerRunSayResponse, error) {
+	var body ServerRunSayResponse
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromPeerStopRunResponse overwrites any union data inside the RPCResponse_Result as the provided PeerStopRunResponse
-func (t *RPCResponse_Result) FromPeerStopRunResponse(v PeerStopRunResponse) error {
+// FromServerRunSayResponse overwrites any union data inside the RPCResponse_Result as the provided ServerRunSayResponse
+func (t *RPCResponse_Result) FromServerRunSayResponse(v ServerRunSayResponse) error {
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
 }
 
-// MergePeerStopRunResponse performs a merge with any union data inside the RPCResponse_Result, using the provided PeerStopRunResponse
-func (t *RPCResponse_Result) MergePeerStopRunResponse(v PeerStopRunResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsAudioSayResponse returns the union data inside the RPCResponse_Result as a AudioSayResponse
-func (t RPCResponse_Result) AsAudioSayResponse() (AudioSayResponse, error) {
-	var body AudioSayResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAudioSayResponse overwrites any union data inside the RPCResponse_Result as the provided AudioSayResponse
-func (t *RPCResponse_Result) FromAudioSayResponse(v AudioSayResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeAudioSayResponse performs a merge with any union data inside the RPCResponse_Result, using the provided AudioSayResponse
-func (t *RPCResponse_Result) MergeAudioSayResponse(v AudioSayResponse) error {
+// MergeServerRunSayResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerRunSayResponse
+func (t *RPCResponse_Result) MergeServerRunSayResponse(v ServerRunSayResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

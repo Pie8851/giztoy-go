@@ -28,244 +28,241 @@
           "params": {
             "oneOf": [
               {
-                "$ref": "./rpc/peer.json#/components/schemas/PingRequest"
+                "$ref": "./rpc/all.json#/components/schemas/PingRequest"
               },
               {
-                "$ref": "./rpc/peer.json#/components/schemas/SpeedTestRequest"
+                "$ref": "./rpc/all.json#/components/schemas/SpeedTestRequest"
               },
               {
-                "$ref": "./rpc/device.json#/components/schemas/DeviceGetInfoRequest"
+                "$ref": "./rpc/client.json#/components/schemas/ClientGetInfoRequest"
               },
               {
-                "$ref": "./rpc/device.json#/components/schemas/DeviceGetIdentifiersRequest"
+                "$ref": "./rpc/client.json#/components/schemas/ClientGetIdentifiersRequest"
               },
               {
-                "$ref": "./rpc/public.json#/components/schemas/ServerGetInfoRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetInfoRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetInfoRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerPutInfoRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerPutInfoRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRuntimeRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRuntimeRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetStatusRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetStatusRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerPutStatusRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerPutStatusRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunAgentRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRunAgentRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerSetRunAgentRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerSetRunAgentRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerReloadRunRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunStatusRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRunStatusRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerStopRunRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerStopRunRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ServerRunSayRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/AudioSayRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspacePutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspacePutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ModelListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ModelGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ModelCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ModelPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ModelDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetFeedRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetFeedRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetPlayRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetPlayRequest"
+                "$ref": "./rpc/server.json#/components/schemas/PetLevelUpRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetLevelUpRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WalletGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WalletGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/WalletTransactionsListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WalletTransactionsListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactBlockRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactBlockRequest"
+                "$ref": "./rpc/server.json#/components/schemas/ContactUnblockRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactUnblockRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestAcceptRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestAcceptRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestRejectRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestRejectRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/FriendDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupPutRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupPutRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberAddRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberAddRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberDeleteRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberDeleteRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMessageListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMessageListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMessageSendRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMessageSendRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallAnswerRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallAnswerRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallRejectRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallRejectRequest"
+                "$ref": "./rpc/server.json#/components/schemas/CallEndRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallEndRequest"
+                "$ref": "./rpc/server.json#/components/schemas/GameResultCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GameResultCreateRequest"
+                "$ref": "./rpc/server.json#/components/schemas/RewardListRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardListRequest"
+                "$ref": "./rpc/server.json#/components/schemas/RewardGetRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardGetRequest"
+                "$ref": "./rpc/server.json#/components/schemas/RewardCreateRequest"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardCreateRequest"
-              },
-              {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardClaimRequest"
+                "$ref": "./rpc/server.json#/components/schemas/RewardClaimRequest"
               }
             ]
           }
@@ -287,244 +284,241 @@
           "result": {
             "oneOf": [
               {
-                "$ref": "./rpc/peer.json#/components/schemas/PingResponse"
+                "$ref": "./rpc/all.json#/components/schemas/PingResponse"
               },
               {
-                "$ref": "./rpc/peer.json#/components/schemas/SpeedTestResponse"
+                "$ref": "./rpc/all.json#/components/schemas/SpeedTestResponse"
               },
               {
-                "$ref": "./rpc/device.json#/components/schemas/DeviceGetInfoResponse"
+                "$ref": "./rpc/client.json#/components/schemas/ClientGetInfoResponse"
               },
               {
-                "$ref": "./rpc/device.json#/components/schemas/DeviceGetIdentifiersResponse"
+                "$ref": "./rpc/client.json#/components/schemas/ClientGetIdentifiersResponse"
               },
               {
-                "$ref": "./rpc/public.json#/components/schemas/ServerGetInfoResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetInfoResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetInfoResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerPutInfoResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerPutInfoResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRuntimeResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRuntimeResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetStatusResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetStatusResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerPutStatusResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerPutStatusResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunAgentResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRunAgentResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerSetRunAgentResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerSetRunAgentResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerReloadRunResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunStatusResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerGetRunStatusResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerStopRunResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PeerStopRunResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ServerRunSayResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/AudioSayResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspacePutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspacePutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkspaceDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkspaceDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WorkflowDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WorkflowDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ModelListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ModelGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ModelCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ModelPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ModelDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ModelDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CredentialDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CredentialDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetFeedResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetFeedResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetPlayResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetPlayResponse"
+                "$ref": "./rpc/server.json#/components/schemas/PetLevelUpResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/PetLevelUpResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WalletGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WalletGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/WalletTransactionsListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/WalletTransactionsListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactBlockResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactBlockResponse"
+                "$ref": "./rpc/server.json#/components/schemas/ContactUnblockResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/ContactUnblockResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestAcceptResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestAcceptResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendRequestRejectResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendRequestRejectResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/FriendDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/FriendDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupPutResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupPutResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberAddResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberAddResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMemberDeleteResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMemberDeleteResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMessageListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMessageListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GroupMessageSendResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GroupMessageSendResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallAnswerResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallAnswerResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallRejectResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallRejectResponse"
+                "$ref": "./rpc/server.json#/components/schemas/CallEndResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/CallEndResponse"
+                "$ref": "./rpc/server.json#/components/schemas/GameResultCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/GameResultCreateResponse"
+                "$ref": "./rpc/server.json#/components/schemas/RewardListResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardListResponse"
+                "$ref": "./rpc/server.json#/components/schemas/RewardGetResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardGetResponse"
+                "$ref": "./rpc/server.json#/components/schemas/RewardCreateResponse"
               },
               {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardCreateResponse"
-              },
-              {
-                "$ref": "./rpc/gear.json#/components/schemas/RewardClaimResponse"
+                "$ref": "./rpc/server.json#/components/schemas/RewardClaimResponse"
               }
             ]
           },
@@ -536,86 +530,85 @@
       "RPCMethod": {
         "type": "string",
         "enum": [
-          "peer.ping",
-          "peer.speed_test.run",
-          "device.info.get",
-          "device.identifiers.get",
-          "peer.info.get",
-          "peer.info.put",
-          "peer.runtime.get",
+          "all.ping",
+          "all.speed_test.run",
+          "client.info.get",
+          "client.identifiers.get",
           "server.info.get",
-          "peer.status.get",
-          "peer.status.put",
-          "peer.run.agent.get",
-          "peer.run.agent.set",
-          "peer.run.reload",
-          "peer.run.status",
-          "peer.run.stop",
-          "audio.say",
-          "workspace.list",
-          "workspace.get",
-          "workspace.create",
-          "workspace.put",
-          "workspace.delete",
-          "workflow.list",
-          "workflow.get",
-          "workflow.create",
-          "workflow.put",
-          "workflow.delete",
-          "model.list",
-          "model.get",
-          "model.create",
-          "model.put",
-          "model.delete",
-          "credential.list",
-          "credential.get",
-          "credential.create",
-          "credential.put",
-          "credential.delete",
-          "pet.list",
-          "pet.get",
-          "pet.create",
-          "pet.put",
-          "pet.delete",
-          "pet.feed",
-          "pet.play",
-          "pet.level-up",
-          "wallet.get",
-          "wallet.transactions.list",
-          "contact.list",
-          "contact.get",
-          "contact.create",
-          "contact.put",
-          "contact.delete",
-          "contact.block",
-          "contact.unblock",
-          "friend.requests.list",
-          "friend.requests.create",
-          "friend.requests.accept",
-          "friend.requests.reject",
-          "friend.list",
-          "friend.delete",
-          "group.list",
-          "group.get",
-          "group.create",
-          "group.put",
-          "group.delete",
-          "group.members.list",
-          "group.members.add",
-          "group.members.delete",
-          "group.messages.list",
-          "group.messages.send",
-          "call.list",
-          "call.get",
-          "call.create",
-          "call.answer",
-          "call.reject",
-          "call.end",
-          "game.results.create",
-          "reward.list",
-          "reward.get",
-          "reward.create",
-          "reward.claim"
+          "server.info.put",
+          "server.runtime.get",
+          "server.status.get",
+          "server.status.put",
+          "server.run.agent.get",
+          "server.run.agent.set",
+          "server.run.reload",
+          "server.run.status",
+          "server.run.stop",
+          "server.run.say",
+          "server.workspace.list",
+          "server.workspace.get",
+          "server.workspace.create",
+          "server.workspace.put",
+          "server.workspace.delete",
+          "server.workflow.list",
+          "server.workflow.get",
+          "server.workflow.create",
+          "server.workflow.put",
+          "server.workflow.delete",
+          "server.model.list",
+          "server.model.get",
+          "server.model.create",
+          "server.model.put",
+          "server.model.delete",
+          "server.credential.list",
+          "server.credential.get",
+          "server.credential.create",
+          "server.credential.put",
+          "server.credential.delete",
+          "server.pet.list",
+          "server.pet.get",
+          "server.pet.create",
+          "server.pet.put",
+          "server.pet.delete",
+          "server.pet.feed",
+          "server.pet.play",
+          "server.pet.level-up",
+          "server.wallet.get",
+          "server.wallet.transactions.list",
+          "server.contact.list",
+          "server.contact.get",
+          "server.contact.create",
+          "server.contact.put",
+          "server.contact.delete",
+          "server.contact.block",
+          "server.contact.unblock",
+          "server.friend.requests.list",
+          "server.friend.requests.create",
+          "server.friend.requests.accept",
+          "server.friend.requests.reject",
+          "server.friend.list",
+          "server.friend.delete",
+          "server.group.list",
+          "server.group.get",
+          "server.group.create",
+          "server.group.put",
+          "server.group.delete",
+          "server.group.members.list",
+          "server.group.members.add",
+          "server.group.members.delete",
+          "server.group.messages.list",
+          "server.group.messages.send",
+          "server.call.list",
+          "server.call.get",
+          "server.call.create",
+          "server.call.answer",
+          "server.call.reject",
+          "server.call.end",
+          "server.game.results.create",
+          "server.reward.list",
+          "server.reward.get",
+          "server.reward.create",
+          "server.reward.claim"
         ]
       },
       "RPCVersion": {
@@ -635,6 +628,7 @@
           -32602,
           -32603,
           400,
+          403,
           404,
           409
         ],
@@ -644,6 +638,7 @@
           "InvalidParams",
           "InternalError",
           "BadRequest",
+          "Forbidden",
           "NotFound",
           "Conflict"
         ]

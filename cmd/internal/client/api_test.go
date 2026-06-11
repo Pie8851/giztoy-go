@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 )
 
 func TestProbeServerPublicReadyNilClient(t *testing.T) {
@@ -20,7 +20,7 @@ func TestProbeServerPublicReadyNilClient(t *testing.T) {
 }
 
 func TestProbeServerPublicReadyRequiresConnection(t *testing.T) {
-	err := probeServerPublicReady(&gizclaw.Client{})
+	err := probeServerPublicReady(&gizcli.Client{})
 	if err == nil {
 		t.Fatal("probeServerPublicReady should fail without connection")
 	}

@@ -19,14 +19,14 @@ func TestCurrentContextDefaultUserStory(t *testing.T) {
 	h.CreateContextWith("invalid", h.ServerAddr, invalidPubKey).MustSucceed(t)
 
 	h.UseContext("valid").MustSucceed(t)
-	validPing, err := h.RunCLIUntilSuccess("peer", "ping")
+	validPing, err := h.RunCLIUntilSuccess("connect", "ping")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertDefaultPingOutput(t, validPing.Stdout)
 
 	h.UseContext("invalid").MustSucceed(t)
-	invalidPing := h.RunCLI("peer", "ping")
+	invalidPing := h.RunCLI("connect", "ping")
 	if invalidPing.Err == nil {
 		t.Fatalf("ping without --context should fail for invalid current context:\nstdout:\n%s\nstderr:\n%s", invalidPing.Stdout, invalidPing.Stderr)
 	}
@@ -35,7 +35,7 @@ func TestCurrentContextDefaultUserStory(t *testing.T) {
 	}
 
 	h.UseContext("valid").MustSucceed(t)
-	validPingAgain, err := h.RunCLIUntilSuccess("peer", "ping")
+	validPingAgain, err := h.RunCLIUntilSuccess("connect", "ping")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -48,7 +48,7 @@ func (s *PeerService) ServeConn(conn *giznet.Conn) error {
 	if err := s.validateServices(); err != nil {
 		return err
 	}
-	if err := s.ensurePeerGear(context.Background(), conn); err != nil {
+	if err := s.ensureConnectedPeer(context.Background(), conn); err != nil {
 		return err
 	}
 	publicKey := conn.PublicKey()
@@ -62,7 +62,7 @@ func (s *PeerService) ServeConn(conn *giznet.Conn) error {
 	return g.Wait()
 }
 
-func (s *PeerService) ensurePeerGear(ctx context.Context, conn *giznet.Conn) error {
+func (s *PeerService) ensureConnectedPeer(ctx context.Context, conn *giznet.Conn) error {
 	if s == nil || s.manager == nil {
 		return nil
 	}

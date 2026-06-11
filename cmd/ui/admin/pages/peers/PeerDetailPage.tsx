@@ -19,7 +19,7 @@ import {
   putPeerInfo,
   refreshPeer,
   type DeviceInfo,
-  type GearRole,
+  type PeerRole,
   type Resource,
 } from "@gizclaw/adminservice";
 
@@ -48,7 +48,7 @@ export function PeerDetailPage(): JSX.Element {
   const detail = usePeerDetail(publicKey === "" ? undefined : publicKey);
   const [peerNotice, setPeerNotice] = useState<{ message: string; tone: "error" | "success" } | null>(null);
   const [peerActionBusy, setPeerActionBusy] = useState<string | null>(null);
-  const [approveRole, setApproveRole] = useState<GearRole>("gear");
+  const [approveRole, setApproveRole] = useState<PeerRole>("client");
   const [deviceName, setDeviceName] = useState("");
   const [peerConfigResource, setPeerConfigResource] = useState<Resource | null>(null);
 
@@ -370,12 +370,12 @@ export function PeerDetailPage(): JSX.Element {
                       label={isBlocked ? "Restore role" : "Approval role"}
                     >
                       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                        <Select onValueChange={(value) => setApproveRole(value as GearRole)} value={approveRole}>
+                        <Select onValueChange={(value) => setApproveRole(value as PeerRole)} value={approveRole}>
                           <SelectTrigger id="approve-role">
                             <SelectValue placeholder="Select role" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="gear">gear</SelectItem>
+                            <SelectItem value="client">client</SelectItem>
                             <SelectItem value="server">server</SelectItem>
                             <SelectItem value="admin">admin</SelectItem>
                           </SelectContent>
@@ -459,9 +459,9 @@ function formatBytes(value: number | undefined): string {
   return `${size.toFixed(precision)} ${units[unitIndex]}`;
 }
 
-function peerCliCommands(publicKey: string, role: GearRole): string {
+function peerCliCommands(publicKey: string, role: PeerRole): string {
   const key = shellQuote(publicKey);
-  const nextRole = shellQuote(role === "unspecified" ? "gear" : role);
+  const nextRole = shellQuote(role === "unspecified" ? "client" : role);
   return [
     `# Read this peer registration`,
     `gizclaw admin peers --context <admin-cli-context> get ${key}`,
@@ -483,7 +483,7 @@ function peerCliCommands(publicKey: string, role: GearRole): string {
     ``,
     `# Show/apply the declarative PeerConfig resource`,
     `gizclaw admin --context <admin-cli-context> show PeerConfig ${key}`,
-    `gizclaw admin --context <admin-cli-context> apply -f gear-config.json`,
+    `gizclaw admin --context <admin-cli-context> apply -f peer-config.json`,
     ``,
     `# Reset this peer registration`,
     `gizclaw admin peers --context <admin-cli-context> delete ${key}`,

@@ -30,7 +30,7 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 	req := &RPCRequest{
 		V:      RPCVersionV1,
 		Id:     "req-1",
-		Method: RPCMethodPeerPing,
+		Method: RPCMethodAllPing,
 		Params: &reqParams,
 	}
 	if err := WriteRequest(&reqBuf, req); err != nil {
@@ -40,7 +40,7 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadRequest() error = %v", err)
 	}
-	if gotReq.Id != req.Id || gotReq.Method != RPCMethodPeerPing || gotReq.Params == nil {
+	if gotReq.Id != req.Id || gotReq.Method != RPCMethodAllPing || gotReq.Params == nil {
 		t.Fatalf("ReadRequest() = %+v", gotReq)
 	}
 	gotReqParams, err := gotReq.Params.AsPingRequest()
@@ -89,11 +89,10 @@ func TestRPCUnionTypes(t *testing.T) {
 		t.Fatalf("AsPingRequest() = %+v, %v", got, err)
 	}
 
-	assertRequestUnion(t, "PeerGetInfo", PeerGetInfoRequest{}, (*RPCRequest_Params).FromPeerGetInfoRequest, RPCRequest_Params.AsPeerGetInfoRequest, (*RPCRequest_Params).MergePeerGetInfoRequest)
-	assertRequestUnion(t, "PeerPutInfo", PeerPutInfoRequest{Name: stringPtr("gear-1")}, (*RPCRequest_Params).FromPeerPutInfoRequest, RPCRequest_Params.AsPeerPutInfoRequest, (*RPCRequest_Params).MergePeerPutInfoRequest)
-	assertRequestUnion(t, "PeerGetRuntime", PeerGetRuntimeRequest{}, (*RPCRequest_Params).FromPeerGetRuntimeRequest, RPCRequest_Params.AsPeerGetRuntimeRequest, (*RPCRequest_Params).MergePeerGetRuntimeRequest)
-	assertRequestUnion(t, "DeviceGetInfo", DeviceGetInfoRequest{}, (*RPCRequest_Params).FromDeviceGetInfoRequest, RPCRequest_Params.AsDeviceGetInfoRequest, (*RPCRequest_Params).MergeDeviceGetInfoRequest)
-	assertRequestUnion(t, "DeviceGetIdentifiers", DeviceGetIdentifiersRequest{}, (*RPCRequest_Params).FromDeviceGetIdentifiersRequest, RPCRequest_Params.AsDeviceGetIdentifiersRequest, (*RPCRequest_Params).MergeDeviceGetIdentifiersRequest)
+	assertRequestUnion(t, "ServerPutInfo", ServerPutInfoRequest{Name: stringPtr("peer-1")}, (*RPCRequest_Params).FromServerPutInfoRequest, RPCRequest_Params.AsServerPutInfoRequest, (*RPCRequest_Params).MergeServerPutInfoRequest)
+	assertRequestUnion(t, "ServerGetRuntime", ServerGetRuntimeRequest{}, (*RPCRequest_Params).FromServerGetRuntimeRequest, RPCRequest_Params.AsServerGetRuntimeRequest, (*RPCRequest_Params).MergeServerGetRuntimeRequest)
+	assertRequestUnion(t, "ClientGetInfo", ClientGetInfoRequest{}, (*RPCRequest_Params).FromClientGetInfoRequest, RPCRequest_Params.AsClientGetInfoRequest, (*RPCRequest_Params).MergeClientGetInfoRequest)
+	assertRequestUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersRequest{}, (*RPCRequest_Params).FromClientGetIdentifiersRequest, RPCRequest_Params.AsClientGetIdentifiersRequest, (*RPCRequest_Params).MergeClientGetIdentifiersRequest)
 	assertRequestUnion(t, "ServerGetInfo", ServerGetInfoRequest{}, (*RPCRequest_Params).FromServerGetInfoRequest, RPCRequest_Params.AsServerGetInfoRequest, (*RPCRequest_Params).MergeServerGetInfoRequest)
 
 	var pingResult RPCResponse_Result
@@ -105,22 +104,21 @@ func TestRPCUnionTypes(t *testing.T) {
 	}
 
 	now := time.Unix(100, 0).UTC()
-	assertResponseUnion(t, "PeerGetInfo", PeerGetInfoResponse{Name: stringPtr("gear-1")}, (*RPCResponse_Result).FromPeerGetInfoResponse, RPCResponse_Result.AsPeerGetInfoResponse, (*RPCResponse_Result).MergePeerGetInfoResponse)
-	assertResponseUnion(t, "PeerPutInfo", PeerPutInfoResponse{Name: stringPtr("gear-2")}, (*RPCResponse_Result).FromPeerPutInfoResponse, RPCResponse_Result.AsPeerPutInfoResponse, (*RPCResponse_Result).MergePeerPutInfoResponse)
-	assertResponseUnion(t, "PeerGetRuntime", PeerGetRuntimeResponse{Online: true, LastSeenAt: now}, (*RPCResponse_Result).FromPeerGetRuntimeResponse, RPCResponse_Result.AsPeerGetRuntimeResponse, (*RPCResponse_Result).MergePeerGetRuntimeResponse)
-	assertResponseUnion(t, "DeviceGetInfo", DeviceGetInfoResponse{Name: stringPtr("gear-1")}, (*RPCResponse_Result).FromDeviceGetInfoResponse, RPCResponse_Result.AsDeviceGetInfoResponse, (*RPCResponse_Result).MergeDeviceGetInfoResponse)
-	assertResponseUnion(t, "DeviceGetIdentifiers", DeviceGetIdentifiersResponse{Sn: stringPtr("sn-1")}, (*RPCResponse_Result).FromDeviceGetIdentifiersResponse, RPCResponse_Result.AsDeviceGetIdentifiersResponse, (*RPCResponse_Result).MergeDeviceGetIdentifiersResponse)
-	assertResponseUnion(t, "ServerGetInfo", ServerGetInfoResponse{PublicKey: "server", ServerTime: 123}, (*RPCResponse_Result).FromServerGetInfoResponse, RPCResponse_Result.AsServerGetInfoResponse, (*RPCResponse_Result).MergeServerGetInfoResponse)
+	assertResponseUnion(t, "ServerGetInfo", ServerGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCResponse_Result).FromServerGetInfoResponse, RPCResponse_Result.AsServerGetInfoResponse, (*RPCResponse_Result).MergeServerGetInfoResponse)
+	assertResponseUnion(t, "ServerPutInfo", ServerPutInfoResponse{Name: stringPtr("peer-2")}, (*RPCResponse_Result).FromServerPutInfoResponse, RPCResponse_Result.AsServerPutInfoResponse, (*RPCResponse_Result).MergeServerPutInfoResponse)
+	assertResponseUnion(t, "ServerGetRuntime", ServerGetRuntimeResponse{Online: true, LastSeenAt: now}, (*RPCResponse_Result).FromServerGetRuntimeResponse, RPCResponse_Result.AsServerGetRuntimeResponse, (*RPCResponse_Result).MergeServerGetRuntimeResponse)
+	assertResponseUnion(t, "ClientGetInfo", ClientGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCResponse_Result).FromClientGetInfoResponse, RPCResponse_Result.AsClientGetInfoResponse, (*RPCResponse_Result).MergeClientGetInfoResponse)
+	assertResponseUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersResponse{Sn: stringPtr("sn-1")}, (*RPCResponse_Result).FromClientGetIdentifiersResponse, RPCResponse_Result.AsClientGetIdentifiersResponse, (*RPCResponse_Result).MergeClientGetIdentifiersResponse)
 }
 
 func TestRPCMethodValid(t *testing.T) {
 	for _, method := range []RPCMethod{
-		RPCMethodPeerPing,
-		RPCMethodDeviceInfoGet,
-		RPCMethodDeviceIdentifiersGet,
-		RPCMethodPeerInfoGet,
-		RPCMethodPeerInfoPut,
-		RPCMethodPeerRuntimeGet,
+		RPCMethodAllPing,
+		RPCMethodClientInfoGet,
+		RPCMethodClientIdentifiersGet,
+		RPCMethodServerInfoGet,
+		RPCMethodServerInfoPut,
+		RPCMethodServerRuntimeGet,
 		RPCMethodServerInfoGet,
 	} {
 		if !method.Valid() {
@@ -136,7 +134,7 @@ func TestRPCMethodValid(t *testing.T) {
 	if RPCVersion(2).Valid() {
 		t.Fatal("unknown RPC version should be invalid")
 	}
-	for _, code := range []RPCErrorCode{RPCErrorCodeInvalidRequest, RPCErrorCodeMethodNotFound, RPCErrorCodeInvalidParams, RPCErrorCodeInternalError, RPCErrorCodeBadRequest, RPCErrorCodeNotFound, RPCErrorCodeConflict} {
+	for _, code := range []RPCErrorCode{RPCErrorCodeInvalidRequest, RPCErrorCodeMethodNotFound, RPCErrorCodeInvalidParams, RPCErrorCodeInternalError, RPCErrorCodeBadRequest, RPCErrorCodeForbidden, RPCErrorCodeNotFound, RPCErrorCodeConflict} {
 		if !code.Valid() {
 			t.Fatalf("%d should be valid", code)
 		}

@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	ErrPeerNotFound      = errors.New("gear: gear not found")
-	ErrPeerAlreadyExists = errors.New("gear: gear already exists")
+	ErrPeerNotFound      = errors.New("peer: peer not found")
+	ErrPeerAlreadyExists = errors.New("peer: peer already exists")
 )
 
 const (
@@ -109,11 +109,11 @@ func (s *Server) DeletePeer(ctx context.Context, request adminservice.DeletePeer
 	if err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	gear, err := s.delete(ctx, publicKey)
+	peer, err := s.delete(ctx, publicKey)
 	if err != nil {
 		return adminservice.DeletePeer404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	return adminservice.DeletePeer200JSONResponse(toAdminRegistration(gear)), nil
+	return adminservice.DeletePeer200JSONResponse(toAdminRegistration(peer)), nil
 }
 
 // GetPeer implements `adminservice.StrictServerInterface.GetPeer`.
@@ -122,11 +122,11 @@ func (s *Server) GetPeer(ctx context.Context, request adminservice.GetPeerReques
 	if err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
 		return adminservice.GetPeer404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	return adminservice.GetPeer200JSONResponse(toAdminRegistration(gear)), nil
+	return adminservice.GetPeer200JSONResponse(toAdminRegistration(peer)), nil
 }
 
 // GetPeerConfig implements `adminservice.StrictServerInterface.GetPeerConfig`.
@@ -135,11 +135,11 @@ func (s *Server) GetPeerConfig(ctx context.Context, request adminservice.GetPeer
 	if err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
 		return adminservice.GetPeerConfig404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	return adminservice.GetPeerConfig200JSONResponse(gear.Configuration), nil
+	return adminservice.GetPeerConfig200JSONResponse(peer.Configuration), nil
 }
 
 // PutPeerConfig implements `adminservice.StrictServerInterface.PutPeerConfig`.
@@ -151,14 +151,14 @@ func (s *Server) PutPeerConfig(ctx context.Context, request adminservice.PutPeer
 	if err != nil {
 		return adminservice.PutPeerConfig400JSONResponse(apitypes.NewErrorResponse("INVALID_PARAMS", err.Error())), nil
 	}
-	gear, err := s.putConfig(ctx, publicKey, *request.Body)
+	peer, err := s.putConfig(ctx, publicKey, *request.Body)
 	if err != nil {
 		if errors.Is(err, ErrPeerNotFound) {
 			return adminservice.PutPeerConfig404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 		}
 		return adminservice.PutPeerConfig400JSONResponse(apitypes.NewErrorResponse("INVALID_PARAMS", err.Error())), nil
 	}
-	return adminservice.PutPeerConfig200JSONResponse(gear.Configuration), nil
+	return adminservice.PutPeerConfig200JSONResponse(peer.Configuration), nil
 }
 
 // GetPeerInfo implements `adminservice.StrictServerInterface.GetPeerInfo`.
@@ -167,11 +167,11 @@ func (s *Server) GetPeerInfo(ctx context.Context, request adminservice.GetPeerIn
 	if err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
 		return adminservice.GetPeerInfo404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	return adminservice.GetPeerInfo200JSONResponse(gear.Device), nil
+	return adminservice.GetPeerInfo200JSONResponse(peer.Device), nil
 }
 
 // PutPeerInfo implements `adminservice.StrictServerInterface.PutPeerInfo`.
@@ -187,11 +187,11 @@ func (s *Server) PutPeerInfo(ctx context.Context, request adminservice.PutPeerIn
 	if err != nil {
 		return adminservice.PutPeerInfo400JSONResponse(apitypes.NewErrorResponse("INVALID_DEVICE_INFO", err.Error())), nil
 	}
-	gear, err := s.putInfo(ctx, publicKey, info)
+	peer, err := s.putInfo(ctx, publicKey, info)
 	if err != nil {
 		return adminservice.PutPeerInfo404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	out, err := toAdminDeviceInfo(gear.Device)
+	out, err := toAdminDeviceInfo(peer.Device)
 	if err != nil {
 		return adminservice.PutPeerInfo400JSONResponse(apitypes.NewErrorResponse("INVALID_DEVICE_INFO", err.Error())), nil
 	}
@@ -216,11 +216,11 @@ func (s *Server) ApprovePeer(ctx context.Context, request adminservice.ApprovePe
 	if err != nil {
 		return adminservice.ApprovePeer400JSONResponse(apitypes.NewErrorResponse("INVALID_PARAMS", err.Error())), nil
 	}
-	gear, err := s.approve(ctx, publicKey, apitypes.GearRole(request.Body.Role))
+	peer, err := s.approve(ctx, publicKey, apitypes.PeerRole(request.Body.Role))
 	if err != nil {
 		return adminservice.ApprovePeer400JSONResponse(apitypes.NewErrorResponse("INVALID_ROLE", err.Error())), nil
 	}
-	return adminservice.ApprovePeer200JSONResponse(toAdminRegistration(gear)), nil
+	return adminservice.ApprovePeer200JSONResponse(toAdminRegistration(peer)), nil
 }
 
 // BlockPeer implements `adminservice.StrictServerInterface.BlockPeer`.
@@ -229,11 +229,11 @@ func (s *Server) BlockPeer(ctx context.Context, request adminservice.BlockPeerRe
 	if err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	gear, err := s.block(ctx, publicKey)
+	peer, err := s.block(ctx, publicKey)
 	if err != nil {
 		return adminservice.BlockPeer404JSONResponse(apitypes.NewErrorResponse("PEER_NOT_FOUND", err.Error())), nil
 	}
-	return adminservice.BlockPeer200JSONResponse(toAdminRegistration(gear)), nil
+	return adminservice.BlockPeer200JSONResponse(toAdminRegistration(peer)), nil
 }
 
 // RefreshPeer implements `adminservice.StrictServerInterface.RefreshPeer`.
@@ -260,11 +260,11 @@ func (s *Server) RefreshPeer(ctx context.Context, request adminservice.RefreshPe
 }
 
 func (s *Server) GetSelfInfo(ctx context.Context, publicKey giznet.PublicKey) (apitypes.DeviceInfo, error) {
-	gear, err := s.get(ctx, publicKey)
+	peer, err := s.get(ctx, publicKey)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	info, err := toGearDeviceInfo(gear.Device)
+	info, err := toPeerDeviceInfo(peer.Device)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
@@ -276,11 +276,11 @@ func (s *Server) PutSelfInfo(ctx context.Context, publicKey giznet.PublicKey, bo
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	gear, err := s.putInfo(ctx, publicKey, info)
+	peer, err := s.putInfo(ctx, publicKey, info)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	out, err := toGearDeviceInfo(gear.Device)
+	out, err := toPeerDeviceInfo(peer.Device)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}

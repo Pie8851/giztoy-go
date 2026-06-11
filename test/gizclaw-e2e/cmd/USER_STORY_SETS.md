@@ -39,7 +39,7 @@ Recommended rule:
 - `200-299`: server workspace lifecycle
 - `300-399`: single-client workflows
 - `400-499`: multi-client workflows
-- `500-599`: admin and gear workflows
+- `500-599`: admin and peer workflows
 - `600-699`: idempotency and repeatability
 - `700-799`: failure and recovery
 
@@ -62,7 +62,7 @@ Cases:
 - `000-ping`
   - start one server from CLI
   - create two client contexts
-  - run repeated `gizclaw peer ping`
+  - run repeated `gizclaw connect ping`
   - run small concurrent ping across two clients
   - status: implemented
 - `001-ping-reconnect`
@@ -194,7 +194,7 @@ Cases:
   - verify existing contexts continue to work after reconnect waves
   - status: implemented
 
-### `500-*` Admin And Gear Workflows
+### `500-*` Admin And Peer Workflows
 
 Purpose:
 - validate higher-level CLI user stories after the base harness is stable
@@ -206,10 +206,10 @@ Cases:
   - status: implemented
 - `501-admin-list-peers`
   - prepare server state with one or more peers
-  - run admin/gear listing commands through CLI
+  - run admin/peer listing commands through CLI
   - verify output shape and target selection
   - status: implemented
-- `502-admin-lookup-gear`
+- `502-admin-lookup-peer`
   - exercise lookup commands by public key / serial-like identifiers when supported
   - verify a clean not-found path and a successful path
   - status: implemented
@@ -313,7 +313,7 @@ Recommended implementation order:
 5. `400-*` multi-client coordination
 6. `600-*` idempotency and repeatability
 7. `300-*` single-client public workflows
-8. `500-*` admin and gear workflows
+8. `500-*` admin and peer workflows
 
 ## Design Notes
 

@@ -163,21 +163,21 @@ export function PeersListPage(): JSX.Element {
                     <TableHead className="w-56">Registration</TableHead>
                     <TableHead className="w-56">Runtime</TableHead>
                     <TableHead className="w-48">Endpoint</TableHead>
-                    <TableHead className="text-right">Gear Updated</TableHead>
+                    <TableHead className="text-right">Peer Updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPeers.map((gear) => {
-                    const name = peerDisplayName(gear, dashboard.infos[gear.public_key]);
-                    const copied = copiedPublicKey === gear.public_key;
-                    const runtime = dashboard.runtimes[gear.public_key];
+                  {filteredPeers.map((peer) => {
+                    const name = peerDisplayName(peer, dashboard.infos[peer.public_key]);
+                    const copied = copiedPublicKey === peer.public_key;
+                    const runtime = dashboard.runtimes[peer.public_key];
 
                     return (
                       <TableRow
                         className="cursor-pointer hover:bg-muted/40"
-                        key={gear.public_key}
-                        onClick={() => openPeer(gear.public_key)}
-                        onKeyDown={(event) => handlePeerRowKeyDown(event, gear.public_key)}
+                        key={peer.public_key}
+                        onClick={() => openPeer(peer.public_key)}
+                        onKeyDown={(event) => handlePeerRowKeyDown(event, peer.public_key)}
                         role="link"
                         tabIndex={0}
                       >
@@ -190,23 +190,23 @@ export function PeersListPage(): JSX.Element {
                             ) : null}
                             <button
                               className="flex max-w-full items-center gap-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
-                              onClick={(event) => void handleCopyPublicKey(event, gear.public_key)}
+                              onClick={(event) => void handleCopyPublicKey(event, peer.public_key)}
                               title="Copy public key"
                               type="button"
                             >
-                              <span className="block truncate">{gear.public_key}</span>
+                              <span className="block truncate">{peer.public_key}</span>
                               {copied ? <Check className="size-3 shrink-0 text-emerald-600" /> : <Copy className="size-3 shrink-0" />}
                             </button>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-start gap-1.5">
-                            <Badge title={gear.auto_registered ? "Auto registered" : "Manual registration"} variant="secondary">
-                              {gear.auto_registered ? "A" : "M"}
+                            <Badge title={peer.auto_registered ? "Auto registered" : "Manual registration"} variant="secondary">
+                              {peer.auto_registered ? "A" : "M"}
                             </Badge>
-                            <StatusBadge status={gear.status} />
-                            <Badge title={`Role: ${gear.role}`} variant="outline">
-                              {gear.role}
+                            <StatusBadge status={peer.status} />
+                            <Badge title={`Role: ${peer.role}`} variant="outline">
+                              {peer.role}
                             </Badge>
                           </div>
                         </TableCell>
@@ -216,7 +216,7 @@ export function PeersListPage(): JSX.Element {
                         <TableCell>
                           <PeerEndpoint runtime={runtime} />
                         </TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">{formatDate(gear.updated_at)}</TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{formatDate(peer.updated_at)}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -237,8 +237,8 @@ export function PeersListPage(): JSX.Element {
   );
 }
 
-function peerDisplayName(gear: NamedRegistration, info: DeviceInfo | null | undefined): string {
-  return gear.name?.trim() || gear.device?.name?.trim() || info?.name?.trim() || "";
+function peerDisplayName(peer: NamedRegistration, info: DeviceInfo | null | undefined): string {
+  return peer.name?.trim() || peer.device?.name?.trim() || info?.name?.trim() || "";
 }
 
 function PeerRuntime({ runtime }: { runtime: Runtime | null | undefined }): JSX.Element {

@@ -11,7 +11,7 @@ export type RegistrationList = {
 };
 
 export type RefreshResult = {
-    gear: Gear;
+    peer: Peer;
     updated_fields?: Array<string>;
     errors?: Array<string>;
 };
@@ -21,7 +21,7 @@ export type PublicKeyResponse = {
 };
 
 export type ApproveRequest = {
-    role: GearRole;
+    role: PeerRole;
 };
 
 export type AclViewUpsert = {
@@ -415,7 +415,7 @@ export type WorkspaceResource = {
 /**
  * ACL permission enum.
  */
-export type AclPermission = 'viewer' | 'editor' | 'owner' | 'workspace.read' | 'workspace.use' | 'workspace.admin' | 'workflow.read' | 'workflow.use' | 'workflow.admin' | 'voice.read' | 'voice.use' | 'voice.admin' | 'credential.read' | 'credential.use' | 'credential.admin' | 'model.read' | 'model.use' | 'model.admin' | 'view.read' | 'view.use' | 'view.admin';
+export type AclPermission = 'viewer' | 'editor' | 'owner' | 'workspace.read' | 'workspace.use' | 'workspace.admin' | 'workflow.read' | 'workflow.use' | 'workflow.admin' | 'voice.read' | 'voice.use' | 'voice.admin' | 'credential.read' | 'credential.use' | 'credential.admin' | 'model.read' | 'model.use' | 'model.admin' | 'view.read' | 'view.use' | 'view.admin' | 'pet.read' | 'pet.use' | 'pet.admin' | 'wallet.read' | 'wallet.use' | 'wallet.admin' | 'contact.read' | 'contact.use' | 'contact.admin' | 'friend.read' | 'friend.use' | 'friend.admin' | 'friend_request.read' | 'friend_request.use' | 'friend_request.admin' | 'group.read' | 'group.use' | 'group.admin' | 'call.read' | 'call.use' | 'call.admin' | 'game_result.read' | 'game_result.use' | 'game_result.admin' | 'reward.read' | 'reward.use' | 'reward.admin';
 
 export type AclPermissionList = Array<AclPermission>;
 
@@ -452,7 +452,7 @@ export type AclResource = {
 /**
  * ACL resource identity kind.
  */
-export type AclResourceKind = 'workspace' | 'workflow' | 'voice' | 'credential' | 'model' | 'view';
+export type AclResourceKind = 'workspace' | 'workflow' | 'voice' | 'credential' | 'model' | 'view' | 'pet' | 'wallet' | 'contact' | 'friend' | 'friend_request' | 'group' | 'call' | 'game_result' | 'reward';
 
 export type AclRole = {
     name: string;
@@ -494,7 +494,7 @@ export type AclViewSpec = {
 
 export type Configuration = {
     /**
-     * Current content view name selected for this gear.
+     * Current content view name selected for this peer.
      */
     view?: string;
 };
@@ -616,33 +616,6 @@ export type FirmwareSpec = {
     slots: FirmwareSlots;
 };
 
-export type Gear = {
-    public_key: string;
-    role: GearRole;
-    status: GearStatus;
-    device: DeviceInfo;
-    configuration: Configuration;
-    auto_registered?: boolean;
-    created_at: string;
-    updated_at: string;
-    approved_at?: string;
-};
-
-export type GearImei = {
-    name?: string;
-    tac: string;
-    serial: string;
-};
-
-export type GearLabel = {
-    key: string;
-    value: string;
-};
-
-export type GearRole = 'unspecified' | 'admin' | 'server' | 'gear';
-
-export type GearStatus = 'unspecified' | 'active' | 'blocked';
-
 export type GeminiTenant = {
     name: string;
     credential_name: string;
@@ -666,8 +639,8 @@ export type HardwareInfo = {
     manufacturer?: string;
     model?: string;
     hardware_revision?: string;
-    imeis?: Array<GearImei>;
-    labels?: Array<GearLabel>;
+    imeis?: Array<PeerImei>;
+    labels?: Array<PeerLabel>;
 };
 
 export type MiniMaxTenant = {
@@ -793,10 +766,37 @@ export type OpenAiTenantSpec = {
     description?: string;
 };
 
+export type Peer = {
+    public_key: string;
+    role: PeerRole;
+    status: PeerRegistrationStatus;
+    device: DeviceInfo;
+    configuration: Configuration;
+    auto_registered?: boolean;
+    created_at: string;
+    updated_at: string;
+    approved_at?: string;
+};
+
+export type PeerImei = {
+    name?: string;
+    tac: string;
+    serial: string;
+};
+
+export type PeerLabel = {
+    key: string;
+    value: string;
+};
+
+export type PeerRegistrationStatus = 'unspecified' | 'active' | 'blocked';
+
+export type PeerRole = 'unspecified' | 'admin' | 'server' | 'client';
+
 export type Registration = {
     public_key: string;
-    role: GearRole;
-    status: GearStatus;
+    role: PeerRole;
+    status: PeerRegistrationStatus;
     auto_registered?: boolean;
     device?: DeviceInfo;
     created_at: string;
@@ -3743,97 +3743,60 @@ export type ListPeersResponses = {
 
 export type ListPeersResponse = ListPeersResponses[keyof ListPeersResponses];
 
-export type ResolvePeerBySnData = {
+export type FindPubKeyBySnData = {
     body?: never;
     path: {
         sn: string;
     };
     query?: never;
-    url: '/peers/sn/{sn}';
+    url: '/peers/@findPubKeyBySn/{sn}';
 };
 
-export type ResolvePeerBySnErrors = {
+export type FindPubKeyBySnErrors = {
     /**
      * Peer not found
      */
     404: ErrorResponse;
 };
 
-export type ResolvePeerBySnError = ResolvePeerBySnErrors[keyof ResolvePeerBySnErrors];
+export type FindPubKeyBySnError = FindPubKeyBySnErrors[keyof FindPubKeyBySnErrors];
 
-export type ResolvePeerBySnResponses = {
+export type FindPubKeyBySnResponses = {
     /**
      * Resolved public key
      */
     200: PublicKeyResponse;
 };
 
-export type ResolvePeerBySnResponse = ResolvePeerBySnResponses[keyof ResolvePeerBySnResponses];
+export type FindPubKeyBySnResponse = FindPubKeyBySnResponses[keyof FindPubKeyBySnResponses];
 
-export type ResolvePeerByImeiData = {
+export type FindPubKeyByImeiData = {
     body?: never;
     path: {
         tac: string;
         serial: string;
     };
     query?: never;
-    url: '/peers/imei/{tac}/{serial}';
+    url: '/peers/@findPubKeyByImei/{tac}/{serial}';
 };
 
-export type ResolvePeerByImeiErrors = {
+export type FindPubKeyByImeiErrors = {
     /**
      * Peer not found
      */
     404: ErrorResponse;
 };
 
-export type ResolvePeerByImeiError = ResolvePeerByImeiErrors[keyof ResolvePeerByImeiErrors];
+export type FindPubKeyByImeiError = FindPubKeyByImeiErrors[keyof FindPubKeyByImeiErrors];
 
-export type ResolvePeerByImeiResponses = {
+export type FindPubKeyByImeiResponses = {
     /**
      * Resolved public key
      */
     200: PublicKeyResponse;
 };
 
-export type ResolvePeerByImeiResponse = ResolvePeerByImeiResponses[keyof ResolvePeerByImeiResponses];
-
-export type ListPeersByLabelData = {
-    body?: never;
-    path: {
-        key: string;
-        value: string;
-    };
-    query?: {
-        /**
-         * Opaque cursor returned by the previous list response
-         */
-        cursor?: string;
-        /**
-         * Maximum number of items to return. Omitted or non-positive values use the default page size; values above 200 are clamped.
-         */
-        limit?: number;
-    };
-    url: '/peers/label/{key}/{value}';
-};
-
-export type ListPeersByLabelErrors = {
-    /**
-     * Internal error
-     */
-    500: ErrorResponse;
-};
-
-export type ListPeersByLabelError = ListPeersByLabelErrors[keyof ListPeersByLabelErrors];
-
-export type ListPeersByLabelResponses = {
-    /**
-     * Matched peers
-     */
-    200: RegistrationList;
-};
-
-export type ListPeersByLabelResponse = ListPeersByLabelResponses[keyof ListPeersByLabelResponses];
+export type FindPubKeyByImeiResponse = FindPubKeyByImeiResponses[keyof FindPubKeyByImeiResponses];
 
 export type DeletePeerData = {
     body?: never;

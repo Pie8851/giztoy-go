@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
@@ -115,7 +116,7 @@ func startTestServerWithCipherMode(t *testing.T, cipherMode giznet.CipherMode) *
 	return ts
 }
 
-func newTestClient(t *testing.T, ts *testServer) *gizclaw.Client {
+func newTestClient(t *testing.T, ts *testServer) *gizcli.Client {
 	t.Helper()
 
 	keyPair, err := giznet.GenerateKeyPair()
@@ -123,7 +124,7 @@ func newTestClient(t *testing.T, ts *testServer) *gizclaw.Client {
 		t.Fatalf("GenerateKeyPair(client) error: %v", err)
 	}
 
-	client := &gizclaw.Client{KeyPair: keyPair, CipherMode: ts.cipherMode}
+	client := &gizcli.Client{KeyPair: keyPair, CipherMode: ts.cipherMode}
 	startTestClient(t, client, ts.server.PublicKey(), ts.addr)
 	t.Cleanup(func() { _ = client.Close() })
 	return client
@@ -142,7 +143,7 @@ func waitForServerReady(addr string, pk giznet.PublicKey, cipherMode giznet.Ciph
 			return fmt.Errorf("GenerateKeyPair(ready check): %w", err)
 		}
 
-		client := &gizclaw.Client{KeyPair: keyPair, CipherMode: cipherMode}
+		client := &gizcli.Client{KeyPair: keyPair, CipherMode: cipherMode}
 		if err := client.Dial(pk, addr); err != nil {
 			_ = client.Close()
 			return fmt.Errorf("dial ready check: %w", err)
@@ -175,7 +176,7 @@ func waitForServerReady(addr string, pk giznet.PublicKey, cipherMode giznet.Ciph
 	})
 }
 
-func startTestClient(t *testing.T, c *gizclaw.Client, serverPK giznet.PublicKey, addr string) {
+func startTestClient(t *testing.T, c *gizcli.Client, serverPK giznet.PublicKey, addr string) {
 	t.Helper()
 
 	if err := c.Dial(serverPK, addr); err != nil {
@@ -201,25 +202,25 @@ func startTestClient(t *testing.T, c *gizclaw.Client, serverPK giznet.PublicKey,
 	}
 }
 
-func probeServerPublicReady(c *gizclaw.Client) error {
+func probeServerPublicReady(c *gizcli.Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), testProbeTimeout)
 	defer cancel()
 	_, err := getServerInfo(ctx, c)
 	return err
 }
 
-func ensureAdminPeer(t testing.TB, ts *testServer, c *gizclaw.Client, info apitypes.DeviceInfo) string {
+func ensureAdminPeer(t testing.TB, ts *testServer, c *gizcli.Client, info apitypes.DeviceInfo) string {
 	t.Helper()
 	publicKey := c.KeyPair.Public
 	if err := waitUntil(testReadyTimeout, func() error {
-		gear, err := ts.server.Manager().Peers.LoadGear(context.Background(), publicKey)
+		peer, err := ts.server.Manager().Peers.LoadPeer(context.Background(), publicKey)
 		if err != nil {
 			return err
 		}
-		gear.Role = apitypes.GearRoleAdmin
-		gear.Status = apitypes.GearStatusActive
-		gear.Device = info
-		if _, err := ts.server.Manager().Peers.SaveGear(context.Background(), gear); err != nil {
+		peer.Role = apitypes.PeerRoleAdmin
+		peer.Status = apitypes.PeerRegistrationStatusActive
+		peer.Device = info
+		if _, err := ts.server.Manager().Peers.SavePeer(context.Background(), peer); err != nil {
 			return err
 		}
 		return nil
@@ -229,7 +230,7 @@ func ensureAdminPeer(t testing.TB, ts *testServer, c *gizclaw.Client, info apity
 	return publicKey.String()
 }
 
-func ensureGearInfo(t testing.TB, c *gizclaw.Client, info apitypes.DeviceInfo) string {
+func ensurePeerInfo(t testing.TB, c *gizcli.Client, info apitypes.DeviceInfo) string {
 	t.Helper()
 	if _, err := putInfo(context.Background(), c, info); err != nil {
 		t.Fatalf("PutInfo error: %v", err)
@@ -237,7 +238,7 @@ func ensureGearInfo(t testing.TB, c *gizclaw.Client, info apitypes.DeviceInfo) s
 	return c.KeyPair.Public.String()
 }
 
-func getServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo, error) {
+func getServerInfo(ctx context.Context, c *gizcli.Client) (apitypes.ServerInfo, error) {
 	api, err := c.ServerPublicClient()
 	if err != nil {
 		return apitypes.ServerInfo{}, err
@@ -252,28 +253,28 @@ func getServerInfo(ctx context.Context, c *gizclaw.Client) (apitypes.ServerInfo,
 	return apitypes.ServerInfo{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400)
 }
 
-func getInfo(ctx context.Context, c *gizclaw.Client) (apitypes.DeviceInfo, error) {
-	resp, err := c.GetPeerInfo(ctx, "peer.info.get")
+func getInfo(ctx context.Context, c *gizcli.Client) (apitypes.DeviceInfo, error) {
+	resp, err := c.GetServerInfo(ctx, "server.info.get")
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
 	return convertIntegrationAPIType[apitypes.DeviceInfo](*resp)
 }
 
-func putInfo(ctx context.Context, c *gizclaw.Client, info apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
-	rpcReq, err := convertIntegrationAPIType[rpcapi.PeerPutInfoRequest](info)
+func putInfo(ctx context.Context, c *gizcli.Client, info apitypes.DeviceInfo) (apitypes.DeviceInfo, error) {
+	rpcReq, err := convertIntegrationAPIType[rpcapi.ServerPutInfoRequest](info)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
-	resp, err := c.PutPeerInfo(ctx, "peer.info.put", rpcReq)
+	resp, err := c.PutServerInfo(ctx, "server.info.put", rpcReq)
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
 	}
 	return convertIntegrationAPIType[apitypes.DeviceInfo](*resp)
 }
 
-func getRuntime(ctx context.Context, c *gizclaw.Client) (apitypes.Runtime, error) {
-	resp, err := c.GetPeerRuntime(ctx, "peer.runtime.get")
+func getRuntime(ctx context.Context, c *gizcli.Client) (apitypes.Runtime, error) {
+	resp, err := c.GetServerRuntime(ctx, "server.runtime.get")
 	if err != nil {
 		return apitypes.Runtime{}, err
 	}
@@ -292,7 +293,7 @@ func convertIntegrationAPIType[T any](value any) (T, error) {
 	return out, nil
 }
 
-func listWorkflows(ctx context.Context, c *gizclaw.Client) ([]apitypes.WorkflowDocument, error) {
+func listWorkflows(ctx context.Context, c *gizcli.Client) ([]apitypes.WorkflowDocument, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return nil, err
@@ -320,7 +321,7 @@ func listWorkflows(ctx context.Context, c *gizclaw.Client) ([]apitypes.WorkflowD
 	}
 }
 
-func createWorkflow(ctx context.Context, c *gizclaw.Client, doc apitypes.WorkflowDocument) (apitypes.WorkflowDocument, error) {
+func createWorkflow(ctx context.Context, c *gizcli.Client, doc apitypes.WorkflowDocument) (apitypes.WorkflowDocument, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.WorkflowDocument{}, err
@@ -335,7 +336,7 @@ func createWorkflow(ctx context.Context, c *gizclaw.Client, doc apitypes.Workflo
 	return apitypes.WorkflowDocument{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON409, resp.JSON500)
 }
 
-func getWorkflow(ctx context.Context, c *gizclaw.Client, name string) (apitypes.WorkflowDocument, error) {
+func getWorkflow(ctx context.Context, c *gizcli.Client, name string) (apitypes.WorkflowDocument, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.WorkflowDocument{}, err
@@ -350,7 +351,7 @@ func getWorkflow(ctx context.Context, c *gizclaw.Client, name string) (apitypes.
 	return apitypes.WorkflowDocument{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func putWorkflow(ctx context.Context, c *gizclaw.Client, name string, doc apitypes.WorkflowDocument) (apitypes.WorkflowDocument, error) {
+func putWorkflow(ctx context.Context, c *gizcli.Client, name string, doc apitypes.WorkflowDocument) (apitypes.WorkflowDocument, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.WorkflowDocument{}, err
@@ -365,7 +366,7 @@ func putWorkflow(ctx context.Context, c *gizclaw.Client, name string, doc apityp
 	return apitypes.WorkflowDocument{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON500)
 }
 
-func deleteWorkflow(ctx context.Context, c *gizclaw.Client, name string) (apitypes.WorkflowDocument, error) {
+func deleteWorkflow(ctx context.Context, c *gizcli.Client, name string) (apitypes.WorkflowDocument, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.WorkflowDocument{}, err
@@ -380,7 +381,7 @@ func deleteWorkflow(ctx context.Context, c *gizclaw.Client, name string) (apityp
 	return apitypes.WorkflowDocument{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func listWorkspaces(ctx context.Context, c *gizclaw.Client) ([]apitypes.Workspace, error) {
+func listWorkspaces(ctx context.Context, c *gizcli.Client) ([]apitypes.Workspace, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return nil, err
@@ -408,7 +409,7 @@ func listWorkspaces(ctx context.Context, c *gizclaw.Client) ([]apitypes.Workspac
 	}
 }
 
-func createWorkspace(ctx context.Context, c *gizclaw.Client, body adminservice.WorkspaceUpsert) (apitypes.Workspace, error) {
+func createWorkspace(ctx context.Context, c *gizcli.Client, body adminservice.WorkspaceUpsert) (apitypes.Workspace, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Workspace{}, err
@@ -423,7 +424,7 @@ func createWorkspace(ctx context.Context, c *gizclaw.Client, body adminservice.W
 	return apitypes.Workspace{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON409, resp.JSON500)
 }
 
-func getWorkspace(ctx context.Context, c *gizclaw.Client, name string) (apitypes.Workspace, error) {
+func getWorkspace(ctx context.Context, c *gizcli.Client, name string) (apitypes.Workspace, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Workspace{}, err
@@ -438,7 +439,7 @@ func getWorkspace(ctx context.Context, c *gizclaw.Client, name string) (apitypes
 	return apitypes.Workspace{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func putWorkspace(ctx context.Context, c *gizclaw.Client, name string, body adminservice.WorkspaceUpsert) (apitypes.Workspace, error) {
+func putWorkspace(ctx context.Context, c *gizcli.Client, name string, body adminservice.WorkspaceUpsert) (apitypes.Workspace, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Workspace{}, err
@@ -453,7 +454,7 @@ func putWorkspace(ctx context.Context, c *gizclaw.Client, name string, body admi
 	return apitypes.Workspace{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON500)
 }
 
-func deleteWorkspace(ctx context.Context, c *gizclaw.Client, name string) (apitypes.Workspace, error) {
+func deleteWorkspace(ctx context.Context, c *gizcli.Client, name string) (apitypes.Workspace, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Workspace{}, err
@@ -468,7 +469,7 @@ func deleteWorkspace(ctx context.Context, c *gizclaw.Client, name string) (apity
 	return apitypes.Workspace{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func listCredentials(ctx context.Context, c *gizclaw.Client, provider *string) ([]apitypes.Credential, error) {
+func listCredentials(ctx context.Context, c *gizcli.Client, provider *string) ([]apitypes.Credential, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return nil, err
@@ -497,7 +498,7 @@ func listCredentials(ctx context.Context, c *gizclaw.Client, provider *string) (
 	}
 }
 
-func createCredential(ctx context.Context, c *gizclaw.Client, body adminservice.CredentialUpsert) (apitypes.Credential, error) {
+func createCredential(ctx context.Context, c *gizcli.Client, body adminservice.CredentialUpsert) (apitypes.Credential, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Credential{}, err
@@ -512,7 +513,7 @@ func createCredential(ctx context.Context, c *gizclaw.Client, body adminservice.
 	return apitypes.Credential{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON409, resp.JSON500)
 }
 
-func getCredential(ctx context.Context, c *gizclaw.Client, name string) (apitypes.Credential, error) {
+func getCredential(ctx context.Context, c *gizcli.Client, name string) (apitypes.Credential, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Credential{}, err
@@ -527,7 +528,7 @@ func getCredential(ctx context.Context, c *gizclaw.Client, name string) (apitype
 	return apitypes.Credential{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func putCredential(ctx context.Context, c *gizclaw.Client, name string, body adminservice.CredentialUpsert) (apitypes.Credential, error) {
+func putCredential(ctx context.Context, c *gizcli.Client, name string, body adminservice.CredentialUpsert) (apitypes.Credential, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Credential{}, err
@@ -542,7 +543,7 @@ func putCredential(ctx context.Context, c *gizclaw.Client, name string, body adm
 	return apitypes.Credential{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON500)
 }
 
-func deleteCredential(ctx context.Context, c *gizclaw.Client, name string) (apitypes.Credential, error) {
+func deleteCredential(ctx context.Context, c *gizcli.Client, name string) (apitypes.Credential, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Credential{}, err
@@ -557,7 +558,7 @@ func deleteCredential(ctx context.Context, c *gizclaw.Client, name string) (apit
 	return apitypes.Credential{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404, resp.JSON500)
 }
 
-func listPeers(ctx context.Context, c *gizclaw.Client) ([]apitypes.Registration, error) {
+func listPeers(ctx context.Context, c *gizcli.Client) ([]apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return nil, err
@@ -585,7 +586,7 @@ func listPeers(ctx context.Context, c *gizclaw.Client) ([]apitypes.Registration,
 	}
 }
 
-func getPeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Registration, error) {
+func getPeer(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Registration{}, err
@@ -600,7 +601,7 @@ func getPeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes
 	return apitypes.Registration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func findPubKeyBySN(ctx context.Context, c *gizclaw.Client, sn string) (string, error) {
+func findPubKeyBySN(ctx context.Context, c *gizcli.Client, sn string) (string, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return "", err
@@ -615,7 +616,7 @@ func findPubKeyBySN(ctx context.Context, c *gizclaw.Client, sn string) (string, 
 	return "", responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func findPubKeyByIMEI(ctx context.Context, c *gizclaw.Client, tac, serial string) (string, error) {
+func findPubKeyByIMEI(ctx context.Context, c *gizcli.Client, tac, serial string) (string, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return "", err
@@ -630,7 +631,7 @@ func findPubKeyByIMEI(ctx context.Context, c *gizclaw.Client, tac, serial string
 	return "", responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func approvePeer(ctx context.Context, c *gizclaw.Client, publicKey string, role apitypes.GearRole) (apitypes.Registration, error) {
+func approvePeer(ctx context.Context, c *gizcli.Client, publicKey string, role apitypes.PeerRole) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Registration{}, err
@@ -645,7 +646,7 @@ func approvePeer(ctx context.Context, c *gizclaw.Client, publicKey string, role 
 	return apitypes.Registration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400)
 }
 
-func blockPeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Registration, error) {
+func blockPeer(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Registration{}, err
@@ -660,7 +661,7 @@ func blockPeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apityp
 	return apitypes.Registration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func getPeerInfo(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.DeviceInfo, error) {
+func getPeerInfo(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.DeviceInfo, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.DeviceInfo{}, err
@@ -675,7 +676,7 @@ func getPeerInfo(ctx context.Context, c *gizclaw.Client, publicKey string) (apit
 	return apitypes.DeviceInfo{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func getPeerConfig(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Configuration, error) {
+func getPeerConfig(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.Configuration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Configuration{}, err
@@ -690,7 +691,7 @@ func getPeerConfig(ctx context.Context, c *gizclaw.Client, publicKey string) (ap
 	return apitypes.Configuration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func putPeerConfig(ctx context.Context, c *gizclaw.Client, publicKey string, cfg apitypes.Configuration) (apitypes.Configuration, error) {
+func putPeerConfig(ctx context.Context, c *gizcli.Client, publicKey string, cfg apitypes.Configuration) (apitypes.Configuration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Configuration{}, err
@@ -705,7 +706,7 @@ func putPeerConfig(ctx context.Context, c *gizclaw.Client, publicKey string, cfg
 	return apitypes.Configuration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON400, resp.JSON404)
 }
 
-func getPeerRuntime(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Runtime, error) {
+func getPeerRuntime(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.Runtime, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Runtime{}, err
@@ -720,7 +721,7 @@ func getPeerRuntime(ctx context.Context, c *gizclaw.Client, publicKey string) (a
 	return apitypes.Runtime{}, responseError(resp.StatusCode(), resp.Body)
 }
 
-func deletePeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apitypes.Registration, error) {
+func deletePeer(ctx context.Context, c *gizcli.Client, publicKey string) (apitypes.Registration, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return apitypes.Registration{}, err
@@ -735,7 +736,7 @@ func deletePeer(ctx context.Context, c *gizclaw.Client, publicKey string) (apity
 	return apitypes.Registration{}, responseError(resp.StatusCode(), resp.Body, resp.JSON404)
 }
 
-func refreshPeer(ctx context.Context, c *gizclaw.Client, publicKey string) (adminservice.RefreshResult, error) {
+func refreshPeer(ctx context.Context, c *gizcli.Client, publicKey string) (adminservice.RefreshResult, error) {
 	api, err := c.ServerAdminClient()
 	if err != nil {
 		return adminservice.RefreshResult{}, err

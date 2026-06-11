@@ -64,7 +64,7 @@ RPC request and response envelopes are JSON frames.
 Request:
 
 ```json
-{"v":1,"id":"req-1","method":"peer.ping","params":{}}
+{"v":1,"id":"req-1","method":"all.ping","params":{}}
 ```
 
 Unary response:

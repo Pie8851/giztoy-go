@@ -52,7 +52,7 @@ func New(cfg Config) (srv *CmdServer, err error) {
 		}
 	}()
 
-	gearsKV, err := ss.KV(cfg.Peers.Store)
+	peersKV, err := ss.KV(cfg.Peers.Store)
 	if err != nil {
 		return nil, fmt.Errorf("server: peers store: %w", err)
 	}
@@ -61,7 +61,7 @@ func New(cfg Config) (srv *CmdServer, err error) {
 		LocalStatic: *cfg.KeyPair,
 		ListenAddr:  cfg.ListenAddr,
 		CipherMode:  cfg.CipherMode,
-		PeerStore:   gearsKV,
+		PeerStore:   peersKV,
 		BuildCommit: BuildCommit,
 	}
 	if !cfg.AdminPublicKey.IsZero() {

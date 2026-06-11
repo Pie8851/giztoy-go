@@ -14,40 +14,6 @@
         ],
         "type": "object"
       },
-      "AudioSayRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "credential_name": {
-            "type": "string"
-          },
-          "model_id": {
-            "type": "string"
-          },
-          "text": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "voice_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ],
-        "type": "object"
-      },
-      "AudioSayResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "accepted": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "accepted"
-        ],
-        "type": "object"
-      },
       "CallAnswerRequest": {
         "additionalProperties": false,
         "properties": {
@@ -183,6 +149,22 @@
       },
       "CallRejectResponse": {
         "$ref": "#/components/schemas/CallObject"
+      },
+      "ClientGetIdentifiersRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ClientGetIdentifiersResponse": {
+        "$ref": "#/components/schemas/RefreshIdentifiers"
+      },
+      "ClientGetInfoRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ClientGetInfoResponse": {
+        "$ref": "#/components/schemas/RefreshInfo"
       },
       "ContactBlockRequest": {
         "additionalProperties": false,
@@ -502,22 +484,6 @@
         },
         "type": "object"
       },
-      "DeviceGetIdentifiersRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "DeviceGetIdentifiersResponse": {
-        "$ref": "#/components/schemas/RefreshIdentifiers"
-      },
-      "DeviceGetInfoRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "DeviceGetInfoResponse": {
-        "$ref": "#/components/schemas/RefreshInfo"
-      },
       "DeviceInfo": {
         "properties": {
           "hardware": {
@@ -782,39 +748,6 @@
             "type": "string"
           }
         },
-        "type": "object"
-      },
-      "GearIMEI": {
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "serial": {
-            "type": "string"
-          },
-          "tac": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "tac",
-          "serial"
-        ],
-        "type": "object"
-      },
-      "GearLabel": {
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ],
         "type": "object"
       },
       "GeminiTenantModelProviderData": {
@@ -1117,13 +1050,13 @@
           },
           "imeis": {
             "items": {
-              "$ref": "#/components/schemas/GearIMEI"
+              "$ref": "#/components/schemas/PeerIMEI"
             },
             "type": "array"
           },
           "labels": {
             "items": {
-              "$ref": "#/components/schemas/GearLabel"
+              "$ref": "#/components/schemas/PeerLabel"
             },
             "type": "array"
           },
@@ -1437,65 +1370,38 @@
         },
         "type": "object"
       },
-      "PeerGetInfoRequest": {
-        "additionalProperties": false,
-        "properties": {},
+      "PeerIMEI": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "tac": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tac",
+          "serial"
+        ],
         "type": "object"
       },
-      "PeerGetInfoResponse": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "PeerGetRunAgentRequest": {
-        "additionalProperties": false,
-        "properties": {},
+      "PeerLabel": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
         "type": "object"
-      },
-      "PeerGetRunAgentResponse": {
-        "$ref": "#/components/schemas/PeerRunAgent"
-      },
-      "PeerGetRunStatusRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerGetRunStatusResponse": {
-        "$ref": "#/components/schemas/PeerRunStatus"
-      },
-      "PeerGetRuntimeRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerGetRuntimeResponse": {
-        "$ref": "#/components/schemas/Runtime"
-      },
-      "PeerGetStatusRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerGetStatusResponse": {
-        "$ref": "#/components/schemas/PeerStatus"
-      },
-      "PeerPutInfoRequest": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "PeerPutInfoResponse": {
-        "$ref": "#/components/schemas/DeviceInfo"
-      },
-      "PeerPutStatusRequest": {
-        "$ref": "#/components/schemas/PeerStatus"
-      },
-      "PeerPutStatusResponse": {
-        "$ref": "#/components/schemas/PeerStatus"
-      },
-      "PeerReloadRunRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerReloadRunResponse": {
-        "$ref": "#/components/schemas/PeerRunStatus"
       },
       "PeerRunAgent": {
         "additionalProperties": false,
@@ -1545,12 +1451,6 @@
         ],
         "type": "string"
       },
-      "PeerSetRunAgentRequest": {
-        "$ref": "#/components/schemas/AgentSelection"
-      },
-      "PeerSetRunAgentResponse": {
-        "$ref": "#/components/schemas/PeerRunAgent"
-      },
       "PeerStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1586,14 +1486,6 @@
           }
         },
         "type": "object"
-      },
-      "PeerStopRunRequest": {
-        "additionalProperties": false,
-        "properties": {},
-        "type": "object"
-      },
-      "PeerStopRunResponse": {
-        "$ref": "#/components/schemas/PeerRunStatus"
       },
       "PetCreateRequest": {
         "additionalProperties": false,
@@ -1815,6 +1707,7 @@
           -32602,
           -32603,
           400,
+          403,
           404,
           409
         ],
@@ -1825,92 +1718,92 @@
           "InvalidParams",
           "InternalError",
           "BadRequest",
+          "Forbidden",
           "NotFound",
           "Conflict"
         ]
       },
       "RPCMethod": {
         "enum": [
-          "peer.ping",
-          "peer.speed_test.run",
-          "device.info.get",
-          "device.identifiers.get",
-          "peer.info.get",
-          "peer.info.put",
-          "peer.runtime.get",
+          "all.ping",
+          "all.speed_test.run",
+          "client.info.get",
+          "client.identifiers.get",
           "server.info.get",
-          "peer.status.get",
-          "peer.status.put",
-          "peer.run.agent.get",
-          "peer.run.agent.set",
-          "peer.run.reload",
-          "peer.run.status",
-          "peer.run.stop",
-          "audio.say",
-          "workspace.list",
-          "workspace.get",
-          "workspace.create",
-          "workspace.put",
-          "workspace.delete",
-          "workflow.list",
-          "workflow.get",
-          "workflow.create",
-          "workflow.put",
-          "workflow.delete",
-          "model.list",
-          "model.get",
-          "model.create",
-          "model.put",
-          "model.delete",
-          "credential.list",
-          "credential.get",
-          "credential.create",
-          "credential.put",
-          "credential.delete",
-          "pet.list",
-          "pet.get",
-          "pet.create",
-          "pet.put",
-          "pet.delete",
-          "pet.feed",
-          "pet.play",
-          "pet.level-up",
-          "wallet.get",
-          "wallet.transactions.list",
-          "contact.list",
-          "contact.get",
-          "contact.create",
-          "contact.put",
-          "contact.delete",
-          "contact.block",
-          "contact.unblock",
-          "friend.requests.list",
-          "friend.requests.create",
-          "friend.requests.accept",
-          "friend.requests.reject",
-          "friend.list",
-          "friend.delete",
-          "group.list",
-          "group.get",
-          "group.create",
-          "group.put",
-          "group.delete",
-          "group.members.list",
-          "group.members.add",
-          "group.members.delete",
-          "group.messages.list",
-          "group.messages.send",
-          "call.list",
-          "call.get",
-          "call.create",
-          "call.answer",
-          "call.reject",
-          "call.end",
-          "game.results.create",
-          "reward.list",
-          "reward.get",
-          "reward.create",
-          "reward.claim"
+          "server.info.put",
+          "server.runtime.get",
+          "server.status.get",
+          "server.status.put",
+          "server.run.agent.get",
+          "server.run.agent.set",
+          "server.run.reload",
+          "server.run.status",
+          "server.run.stop",
+          "server.run.say",
+          "server.workspace.list",
+          "server.workspace.get",
+          "server.workspace.create",
+          "server.workspace.put",
+          "server.workspace.delete",
+          "server.workflow.list",
+          "server.workflow.get",
+          "server.workflow.create",
+          "server.workflow.put",
+          "server.workflow.delete",
+          "server.model.list",
+          "server.model.get",
+          "server.model.create",
+          "server.model.put",
+          "server.model.delete",
+          "server.credential.list",
+          "server.credential.get",
+          "server.credential.create",
+          "server.credential.put",
+          "server.credential.delete",
+          "server.pet.list",
+          "server.pet.get",
+          "server.pet.create",
+          "server.pet.put",
+          "server.pet.delete",
+          "server.pet.feed",
+          "server.pet.play",
+          "server.pet.level-up",
+          "server.wallet.get",
+          "server.wallet.transactions.list",
+          "server.contact.list",
+          "server.contact.get",
+          "server.contact.create",
+          "server.contact.put",
+          "server.contact.delete",
+          "server.contact.block",
+          "server.contact.unblock",
+          "server.friend.requests.list",
+          "server.friend.requests.create",
+          "server.friend.requests.accept",
+          "server.friend.requests.reject",
+          "server.friend.list",
+          "server.friend.delete",
+          "server.group.list",
+          "server.group.get",
+          "server.group.create",
+          "server.group.put",
+          "server.group.delete",
+          "server.group.members.list",
+          "server.group.members.add",
+          "server.group.members.delete",
+          "server.group.messages.list",
+          "server.group.messages.send",
+          "server.call.list",
+          "server.call.get",
+          "server.call.create",
+          "server.call.answer",
+          "server.call.reject",
+          "server.call.end",
+          "server.game.results.create",
+          "server.reward.list",
+          "server.reward.get",
+          "server.reward.create",
+          "server.reward.claim"
         ],
         "type": "string"
       },
@@ -1931,46 +1824,43 @@
                 "$ref": "#/components/schemas/SpeedTestRequest"
               },
               {
-                "$ref": "#/components/schemas/DeviceGetInfoRequest"
+                "$ref": "#/components/schemas/ClientGetInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/DeviceGetIdentifiersRequest"
+                "$ref": "#/components/schemas/ClientGetIdentifiersRequest"
               },
               {
                 "$ref": "#/components/schemas/ServerGetInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetInfoRequest"
+                "$ref": "#/components/schemas/ServerPutInfoRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerPutInfoRequest"
+                "$ref": "#/components/schemas/ServerGetRuntimeRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRuntimeRequest"
+                "$ref": "#/components/schemas/ServerGetStatusRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetStatusRequest"
+                "$ref": "#/components/schemas/ServerPutStatusRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerPutStatusRequest"
+                "$ref": "#/components/schemas/ServerGetRunAgentRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRunAgentRequest"
+                "$ref": "#/components/schemas/ServerSetRunAgentRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerSetRunAgentRequest"
+                "$ref": "#/components/schemas/ServerReloadRunRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerReloadRunRequest"
+                "$ref": "#/components/schemas/ServerGetRunStatusRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRunStatusRequest"
+                "$ref": "#/components/schemas/ServerStopRunRequest"
               },
               {
-                "$ref": "#/components/schemas/PeerStopRunRequest"
-              },
-              {
-                "$ref": "#/components/schemas/AudioSayRequest"
+                "$ref": "#/components/schemas/ServerRunSayRequest"
               },
               {
                 "$ref": "#/components/schemas/WorkspaceListRequest"
@@ -2194,46 +2084,43 @@
                 "$ref": "#/components/schemas/SpeedTestResponse"
               },
               {
-                "$ref": "#/components/schemas/DeviceGetInfoResponse"
+                "$ref": "#/components/schemas/ClientGetInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/DeviceGetIdentifiersResponse"
+                "$ref": "#/components/schemas/ClientGetIdentifiersResponse"
               },
               {
                 "$ref": "#/components/schemas/ServerGetInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetInfoResponse"
+                "$ref": "#/components/schemas/ServerPutInfoResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerPutInfoResponse"
+                "$ref": "#/components/schemas/ServerGetRuntimeResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRuntimeResponse"
+                "$ref": "#/components/schemas/ServerGetStatusResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetStatusResponse"
+                "$ref": "#/components/schemas/ServerPutStatusResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerPutStatusResponse"
+                "$ref": "#/components/schemas/ServerGetRunAgentResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRunAgentResponse"
+                "$ref": "#/components/schemas/ServerSetRunAgentResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerSetRunAgentResponse"
+                "$ref": "#/components/schemas/ServerReloadRunResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerReloadRunResponse"
+                "$ref": "#/components/schemas/ServerGetRunStatusResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerGetRunStatusResponse"
+                "$ref": "#/components/schemas/ServerStopRunResponse"
               },
               {
-                "$ref": "#/components/schemas/PeerStopRunResponse"
-              },
-              {
-                "$ref": "#/components/schemas/AudioSayResponse"
+                "$ref": "#/components/schemas/ServerRunSayResponse"
               },
               {
                 "$ref": "#/components/schemas/WorkspaceListResponse"
@@ -2452,13 +2339,13 @@
         "properties": {
           "imeis": {
             "items": {
-              "$ref": "#/components/schemas/GearIMEI"
+              "$ref": "#/components/schemas/PeerIMEI"
             },
             "type": "array"
           },
           "labels": {
             "items": {
-              "$ref": "#/components/schemas/GearLabel"
+              "$ref": "#/components/schemas/PeerLabel"
             },
             "type": "array"
           },
@@ -2622,27 +2509,107 @@
         "type": "object"
       },
       "ServerGetInfoResponse": {
-        "$ref": "#/components/schemas/ServerInfo"
+        "$ref": "#/components/schemas/DeviceInfo"
       },
-      "ServerInfo": {
+      "ServerGetRunAgentRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetRunAgentResponse": {
+        "$ref": "#/components/schemas/PeerRunAgent"
+      },
+      "ServerGetRunStatusRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetRunStatusResponse": {
+        "$ref": "#/components/schemas/PeerRunStatus"
+      },
+      "ServerGetRuntimeRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetRuntimeResponse": {
+        "$ref": "#/components/schemas/Runtime"
+      },
+      "ServerGetStatusRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetStatusResponse": {
+        "$ref": "#/components/schemas/PeerStatus"
+      },
+      "ServerPutInfoRequest": {
+        "$ref": "#/components/schemas/DeviceInfo"
+      },
+      "ServerPutInfoResponse": {
+        "$ref": "#/components/schemas/DeviceInfo"
+      },
+      "ServerPutStatusRequest": {
+        "$ref": "#/components/schemas/PeerStatus"
+      },
+      "ServerPutStatusResponse": {
+        "$ref": "#/components/schemas/PeerStatus"
+      },
+      "ServerReloadRunRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerReloadRunResponse": {
+        "$ref": "#/components/schemas/PeerRunStatus"
+      },
+      "ServerRunSayRequest": {
+        "additionalProperties": false,
         "properties": {
-          "build_commit": {
+          "credential_name": {
             "type": "string"
           },
-          "public_key": {
+          "model_id": {
             "type": "string"
           },
-          "server_time": {
-            "format": "int64",
-            "type": "integer"
+          "text": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "voice_id": {
+            "type": "string"
           }
         },
         "required": [
-          "public_key",
-          "server_time",
-          "build_commit"
+          "text"
         ],
         "type": "object"
+      },
+      "ServerRunSayResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "ServerSetRunAgentRequest": {
+        "$ref": "#/components/schemas/AgentSelection"
+      },
+      "ServerSetRunAgentResponse": {
+        "$ref": "#/components/schemas/PeerRunAgent"
+      },
+      "ServerStopRunRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerStopRunResponse": {
+        "$ref": "#/components/schemas/PeerRunStatus"
       },
       "SpeedTestRequest": {
         "additionalProperties": false,

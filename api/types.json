@@ -83,20 +83,20 @@
           }
         }
       },
-      "Gear": {
-        "$ref": "./type/gear.json#/components/schemas/Gear"
+      "Peer": {
+        "$ref": "./type/peer.json#/components/schemas/Peer"
       },
-      "GearIMEI": {
-        "$ref": "./type/gear_imei.json#/components/schemas/GearIMEI"
+      "PeerIMEI": {
+        "$ref": "./type/peer_imei.json#/components/schemas/PeerIMEI"
       },
-      "GearLabel": {
-        "$ref": "./type/gear_label.json#/components/schemas/GearLabel"
+      "PeerLabel": {
+        "$ref": "./type/peer_label.json#/components/schemas/PeerLabel"
       },
-      "GearRole": {
-        "$ref": "./type/gear_role.json#/components/schemas/GearRole"
+      "PeerRole": {
+        "$ref": "./type/peer_role.json#/components/schemas/PeerRole"
       },
-      "GearStatus": {
-        "$ref": "./type/gear_status.json#/components/schemas/GearStatus"
+      "PeerRegistrationStatus": {
+        "$ref": "./type/peer_registration_status.json#/components/schemas/PeerRegistrationStatus"
       },
       "HardwareInfo": {
         "$ref": "./type/hardware_info.json#/components/schemas/HardwareInfo"
@@ -355,12 +355,6 @@
       },
       "PeerStatus": {
         "$ref": "./type/peer_status.json#/components/schemas/PeerStatus"
-      },
-      "AudioSayRequest": {
-        "$ref": "./type/audio_say.json#/components/schemas/AudioSayRequest"
-      },
-      "AudioSayResponse": {
-        "$ref": "./type/audio_say.json#/components/schemas/AudioSayResponse"
       }
     }
   }

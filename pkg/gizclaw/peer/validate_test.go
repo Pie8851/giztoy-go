@@ -7,23 +7,23 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
-func TestValidateGear(t *testing.T) {
-	roleErr := validateGear(apitypes.Gear{
+func TestValidatePeer(t *testing.T) {
+	roleErr := validatePeer(apitypes.Peer{
 		PublicKey: giznet.PublicKey{1}.String(),
-		Role:      apitypes.GearRole("bad"),
-		Status:    apitypes.GearStatusActive,
+		Role:      apitypes.PeerRole("bad"),
+		Status:    apitypes.PeerRegistrationStatusActive,
 	})
 	if roleErr == nil {
-		t.Fatal("validateGear should fail on invalid role")
+		t.Fatal("validatePeer should fail on invalid role")
 	}
 
-	statusErr := validateGear(apitypes.Gear{
+	statusErr := validatePeer(apitypes.Peer{
 		PublicKey: giznet.PublicKey{1}.String(),
-		Role:      apitypes.GearRoleServer,
-		Status:    apitypes.GearStatus("bad"),
+		Role:      apitypes.PeerRoleServer,
+		Status:    apitypes.PeerRegistrationStatus("bad"),
 	})
 	if statusErr == nil {
-		t.Fatal("validateGear should fail on invalid status")
+		t.Fatal("validatePeer should fail on invalid status")
 	}
 }
 

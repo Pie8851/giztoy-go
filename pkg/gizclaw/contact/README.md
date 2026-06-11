@@ -2,7 +2,7 @@
 
 Tracking issue: https://github.com/GizClaw/gizclaw-go/issues/23
 
-This package is reserved for gear-scoped contacts and blocking state.
+This package is reserved for peer-scoped contacts and blocking state.
 
 Planned scope:
 

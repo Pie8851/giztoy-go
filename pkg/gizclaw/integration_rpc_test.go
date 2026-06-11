@@ -9,6 +9,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
@@ -82,13 +83,13 @@ func TestIntegrationSameClientKeyReconnectsAfterClose(t *testing.T) {
 		t.Fatalf("GenerateKeyPair(client) error: %v", err)
 	}
 
-	first := &gizclaw.Client{KeyPair: keyPair}
+	first := &gizcli.Client{KeyPair: keyPair}
 	startTestClient(t, first, ts.server.PublicKey(), ts.addr)
 	if err := first.Close(); err != nil {
 		t.Fatalf("first Close error = %v", err)
 	}
 
-	second := &gizclaw.Client{KeyPair: keyPair}
+	second := &gizcli.Client{KeyPair: keyPair}
 	startTestClient(t, second, ts.server.PublicKey(), ts.addr)
 	t.Cleanup(func() { _ = second.Close() })
 }
@@ -109,7 +110,7 @@ func TestIntegrationRPCReversePingClient(t *testing.T) {
 		if !ok {
 			return fmt.Errorf("active peer not ready")
 		}
-		host := &gizclaw.GearConn{
+		host := &gizclaw.PeerConn{
 			Conn:    conn,
 			Service: ts.server.PeerService(),
 		}
@@ -144,7 +145,7 @@ func TestIntegrationRPCReversePingClient(t *testing.T) {
 	}
 }
 
-func TestIntegrationRPCGearClientMethods(t *testing.T) {
+func TestIntegrationRPCPeerClientMethods(t *testing.T) {
 	ts := startTestServer(t)
 	client := newTestClient(t, ts)
 
@@ -153,47 +154,47 @@ func TestIntegrationRPCGearClientMethods(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if _, err := client.PutPeerInfo(ctx, "rpc-put-info-initial", rpcapi.PeerPutInfoRequest{
-			Name: strPtr("rpc-gear"),
+		if _, err := client.PutServerInfo(ctx, "rpc-put-info-initial", rpcapi.ServerPutInfoRequest{
+			Name: strPtr("rpc-peer"),
 			Sn:   strPtr("rpc-sn"),
 		}); err != nil {
 			errLast = err
 			return err
 		}
-		info, err := client.GetPeerInfo(ctx, "rpc-info")
+		info, err := client.GetServerInfo(ctx, "rpc-info")
 		if err != nil {
 			errLast = err
 			return err
 		}
-		if info.Name == nil || *info.Name != "rpc-gear" {
-			errLast = fmt.Errorf("gear info = %+v", info)
+		if info.Name == nil || *info.Name != "rpc-peer" {
+			errLast = fmt.Errorf("peer info = %+v", info)
 			return errLast
 		}
-		if _, err := client.PutPeerInfo(ctx, "rpc-put-info", rpcapi.PeerPutInfoRequest{Name: strPtr("rpc-gear-2")}); err != nil {
+		if _, err := client.PutServerInfo(ctx, "rpc-put-info", rpcapi.ServerPutInfoRequest{Name: strPtr("rpc-peer-2")}); err != nil {
 			errLast = err
 			return err
 		}
-		gear, err := ts.server.Manager().Peers.LoadGear(ctx, client.KeyPair.Public)
+		peer, err := ts.server.Manager().Peers.LoadPeer(ctx, client.KeyPair.Public)
 		if err != nil {
 			errLast = err
 			return err
 		}
-		if gear.PublicKey == "" || gear.Role != apitypes.GearRoleGear {
-			errLast = fmt.Errorf("gear = %+v", gear)
+		if peer.PublicKey == "" || peer.Role != apitypes.PeerRoleClient {
+			errLast = fmt.Errorf("peer = %+v", peer)
 			return errLast
 		}
-		runtime, err := client.GetPeerRuntime(ctx, "rpc-runtime")
+		runtime, err := client.GetServerRuntime(ctx, "rpc-runtime")
 		if err != nil {
 			errLast = err
 			return err
 		}
 		if !runtime.Online {
-			errLast = fmt.Errorf("gear runtime = %+v", runtime)
+			errLast = fmt.Errorf("peer runtime = %+v", runtime)
 			return errLast
 		}
 		errLast = nil
 		return nil
 	}); err != nil {
-		t.Fatalf("gear RPC client methods err=%v", errLast)
+		t.Fatalf("peer RPC client methods err=%v", errLast)
 	}
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 )
 
@@ -21,7 +21,7 @@ func TestIntegrationPeerRPCRefresh(t *testing.T) {
 	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	device := newTestClient(t, ts)
-	devicePublicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{Name: strPtr("gear")})
+	devicePublicKey := ensurePeerInfo(t, device, apitypes.DeviceInfo{Name: strPtr("peer")})
 
 	device.Device = apitypes.DeviceInfo{
 		Hardware: &apitypes.HardwareInfo{
@@ -35,8 +35,8 @@ func TestIntegrationPeerRPCRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RefreshPeer error: %v", err)
 	}
-	if result.Gear.Device.Hardware == nil || result.Gear.Device.Hardware.Manufacturer == nil || *result.Gear.Device.Hardware.Manufacturer != "Acme" {
-		t.Fatalf("manufacturer = %+v", result.Gear.Device.Hardware)
+	if result.Peer.Device.Hardware == nil || result.Peer.Device.Hardware.Manufacturer == nil || *result.Peer.Device.Hardware.Manufacturer != "Acme" {
+		t.Fatalf("manufacturer = %+v", result.Peer.Device.Hardware)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestIntegrationPeerRPCRefreshReportsOfflineWhenDeviceDisconnected(t *testin
 	ensureAdminPeer(t, ts, admin, apitypes.DeviceInfo{Name: strPtr("admin")})
 
 	device := newTestClient(t, ts)
-	devicePublicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{Name: strPtr("gear")})
+	devicePublicKey := ensurePeerInfo(t, device, apitypes.DeviceInfo{Name: strPtr("peer")})
 	if err := device.Close(); err != nil {
 		t.Fatalf("device close error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestIntegrationPeerRPCRefreshReportsOfflineWhenDeviceDisconnected(t *testin
 	}
 }
 
-func waitForRefreshPeerSuccess(admin *gizclaw.Client, publicKey string) (adminservice.RefreshResult, error) {
+func waitForRefreshPeerSuccess(admin *gizcli.Client, publicKey string) (adminservice.RefreshResult, error) {
 	var lastResult adminservice.RefreshResult
 	err := waitUntil(testReadyTimeout, func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -69,15 +69,15 @@ func waitForRefreshPeerSuccess(admin *gizclaw.Client, publicKey string) (adminse
 		cancel()
 		lastResult = result
 		if err == nil &&
-			result.Gear.Device.Hardware != nil &&
-			result.Gear.Device.Hardware.Manufacturer != nil &&
-			*result.Gear.Device.Hardware.Manufacturer == "Acme" {
+			result.Peer.Device.Hardware != nil &&
+			result.Peer.Device.Hardware.Manufacturer != nil &&
+			*result.Peer.Device.Hardware.Manufacturer == "Acme" {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("refresh gear did not return expected manufacturer, got %+v", lastResult.Gear.Device.Hardware)
+		return fmt.Errorf("refresh peer did not return expected manufacturer, got %+v", lastResult.Peer.Device.Hardware)
 	})
 	if err != nil {
 		return lastResult, err
@@ -85,7 +85,7 @@ func waitForRefreshPeerSuccess(admin *gizclaw.Client, publicKey string) (adminse
 	return lastResult, nil
 }
 
-func waitForRefreshPeerFailure(admin *gizclaw.Client, publicKey string) error {
+func waitForRefreshPeerFailure(admin *gizcli.Client, publicKey string) error {
 	var offlineErr error
 	err := waitUntil(testReadyTimeout, func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -98,7 +98,7 @@ func waitForRefreshPeerFailure(admin *gizclaw.Client, publicKey string) error {
 		if err != nil {
 			return err
 		}
-		return errors.New("refresh gear did not return expected failure")
+		return errors.New("refresh peer did not return expected failure")
 	})
 	if err != nil {
 		return err

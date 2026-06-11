@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminLayout } from "./layout/AdminLayout";
 import { ModelDetailPage } from "./pages/ai/ModelDetailPage";
@@ -43,8 +43,6 @@ export function AppRoutes(): JSX.Element {
         <Route element={<FirmwaresListPage />} path="firmwares" />
         <Route element={<FirmwareCreatePage />} path="firmwares/new" />
         <Route element={<FirmwareDetailPage />} path="firmwares/:name" />
-        <Route element={<LegacyGearsRedirect />} path="gears" />
-        <Route element={<LegacyGearsRedirect />} path="gears/*" />
         <Route element={<CredentialsListPage />} path="providers/credentials" />
         <Route element={<CredentialDetailPage />} path="providers/credentials/:name" />
         <Route element={<OpenAITenantsListPage />} path="providers/openai-tenants" />
@@ -73,10 +71,4 @@ export function AppRoutes(): JSX.Element {
       <Route element={<Navigate replace to="/overview" />} path="*" />
     </Routes>
   );
-}
-
-function LegacyGearsRedirect(): JSX.Element {
-  const location = useLocation();
-  const target = location.pathname.replace(/^\/gears(?=\/|$)/, "/peers") + location.search + location.hash;
-  return <Navigate replace to={target} />;
 }

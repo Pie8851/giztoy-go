@@ -18,71 +18,71 @@ func TestStoreOpsHelpers(t *testing.T) {
 	if (&Server{}).peerRuntime(context.Background(), giznet.PublicKey{1}).Online {
 		t.Fatal("zero peerRuntime should be offline")
 	}
-	if optionalGear(apitypes.Gear{PublicKey: giznet.PublicKey{1}.String()}, nil) == nil {
-		t.Fatal("optionalGear should keep value")
+	if optionalPeer(apitypes.Peer{PublicKey: giznet.PublicKey{1}.String()}, nil) == nil {
+		t.Fatal("optionalPeer should keep value")
 	}
-	if optionalGear(apitypes.Gear{}, errors.New("boom")) != nil {
-		t.Fatal("optionalGear should drop error case")
+	if optionalPeer(apitypes.Peer{}, errors.New("boom")) != nil {
+		t.Fatal("optionalPeer should drop error case")
 	}
 }
 
-func TestStoreOpsEnsureConnectedGearValidation(t *testing.T) {
+func TestStoreOpsEnsureConnectedPeerValidation(t *testing.T) {
 	server := &Server{
 		Store: mustBadgerInMemory(t, nil),
 	}
 
-	_, err := server.EnsureConnectedGear(context.Background(), giznet.PublicKey{})
+	_, err := server.EnsureConnectedPeer(context.Background(), giznet.PublicKey{})
 	if err == nil || !strings.Contains(err.Error(), "empty public key") {
 		t.Fatalf("empty public key err = %v", err)
 	}
 }
 
-func TestStoreOpsEnsureConnectedGear(t *testing.T) {
+func TestStoreOpsEnsureConnectedPeer(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 	ctx := context.Background()
 	publicKey := giznet.PublicKey{1}
 
-	connected, err := server.EnsureConnectedGear(ctx, publicKey)
+	connected, err := server.EnsureConnectedPeer(ctx, publicKey)
 	if err != nil {
-		t.Fatalf("EnsureConnectedGear error = %v", err)
+		t.Fatalf("EnsureConnectedPeer error = %v", err)
 	}
-	if connected.Role != apitypes.GearRoleGear || connected.Status != apitypes.GearStatusActive {
-		t.Fatalf("connected gear = %+v", connected)
+	if connected.Role != apitypes.PeerRoleClient || connected.Status != apitypes.PeerRegistrationStatusActive {
+		t.Fatalf("connected peer = %+v", connected)
 	}
 	if connected.AutoRegistered == nil || !*connected.AutoRegistered {
 		t.Fatalf("connected auto_registered = %+v", connected.AutoRegistered)
 	}
 }
 
-func TestStoreOpsEnsureConnectedGearPreservesExisting(t *testing.T) {
+func TestStoreOpsEnsureConnectedPeerPreservesExisting(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 	ctx := context.Background()
 	publicKey := giznet.PublicKey{1}
-	if _, err := server.SaveGear(ctx, apitypes.Gear{
+	if _, err := server.SavePeer(ctx, apitypes.Peer{
 		PublicKey:     publicKey.String(),
-		Role:          apitypes.GearRoleAdmin,
-		Status:        apitypes.GearStatusBlocked,
+		Role:          apitypes.PeerRoleAdmin,
+		Status:        apitypes.PeerRegistrationStatusBlocked,
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 
-	got, err := server.EnsureConnectedGear(ctx, publicKey)
+	got, err := server.EnsureConnectedPeer(ctx, publicKey)
 	if err != nil {
-		t.Fatalf("EnsureConnectedGear error = %v", err)
+		t.Fatalf("EnsureConnectedPeer error = %v", err)
 	}
-	if got.Role != apitypes.GearRoleAdmin || got.Status != apitypes.GearStatusBlocked {
-		t.Fatalf("EnsureConnectedGear overwrote existing gear: %+v", got)
+	if got.Role != apitypes.PeerRoleAdmin || got.Status != apitypes.PeerRegistrationStatusBlocked {
+		t.Fatalf("EnsureConnectedPeer overwrote existing peer: %+v", got)
 	}
 }
 
-func TestStoreOpsLoadAndSaveGear(t *testing.T) {
+func TestStoreOpsLoadAndSavePeer(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 	publicKey := giznet.PublicKey{1}
-	want := apitypes.Gear{
+	want := apitypes.Peer{
 		PublicKey: publicKey.String(),
-		Role:      apitypes.GearRoleGear,
-		Status:    apitypes.GearStatusActive,
+		Role:      apitypes.PeerRoleClient,
+		Status:    apitypes.PeerRegistrationStatusActive,
 		Device: apitypes.DeviceInfo{
 			Name: func() *string {
 				value := "demo"
@@ -92,41 +92,41 @@ func TestStoreOpsLoadAndSaveGear(t *testing.T) {
 		Configuration: apitypes.Configuration{},
 	}
 
-	got, err := server.SaveGear(context.Background(), want)
+	got, err := server.SavePeer(context.Background(), want)
 	if err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 	if got.PublicKey != want.PublicKey {
-		t.Fatalf("SaveGear public key = %q, want %q", got.PublicKey, want.PublicKey)
+		t.Fatalf("SavePeer public key = %q, want %q", got.PublicKey, want.PublicKey)
 	}
 
-	loaded, err := server.LoadGear(context.Background(), publicKey)
+	loaded, err := server.LoadPeer(context.Background(), publicKey)
 	if err != nil {
-		t.Fatalf("LoadGear error = %v", err)
+		t.Fatalf("LoadPeer error = %v", err)
 	}
 	if loaded.PublicKey != want.PublicKey || loaded.Role != want.Role || loaded.Status != want.Status {
-		t.Fatalf("LoadGear = %+v", loaded)
+		t.Fatalf("LoadPeer = %+v", loaded)
 	}
 	if loaded.Device.Name == nil || *loaded.Device.Name != "demo" {
-		t.Fatalf("LoadGear device name = %+v", loaded.Device.Name)
+		t.Fatalf("LoadPeer device name = %+v", loaded.Device.Name)
 	}
 }
 
-func TestStoreOpsLoadGearMissing(t *testing.T) {
+func TestStoreOpsLoadPeerMissing(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 
-	_, err := server.LoadGear(context.Background(), giznet.PublicKey{1})
+	_, err := server.LoadPeer(context.Background(), giznet.PublicKey{1})
 	if !errors.Is(err, ErrPeerNotFound) {
-		t.Fatalf("LoadGear missing err = %v", err)
+		t.Fatalf("LoadPeer missing err = %v", err)
 	}
 }
 
-func TestStoreOpsSaveGearRejectsInvalidGear(t *testing.T) {
+func TestStoreOpsSavePeerRejectsInvalidPeer(t *testing.T) {
 	server := &Server{Store: mustBadgerInMemory(t, nil)}
 
-	_, err := server.SaveGear(context.Background(), apitypes.Gear{})
+	_, err := server.SavePeer(context.Background(), apitypes.Peer{})
 	if err == nil || !strings.Contains(err.Error(), "empty key") {
-		t.Fatalf("SaveGear invalid err = %v", err)
+		t.Fatalf("SavePeer invalid err = %v", err)
 	}
 
 }
@@ -139,13 +139,13 @@ func TestStoreOpsExists(t *testing.T) {
 		t.Fatalf("exists(missing) = %v, %v", exists, err)
 	}
 
-	if _, err := server.SaveGear(context.Background(), apitypes.Gear{
+	if _, err := server.SavePeer(context.Background(), apitypes.Peer{
 		PublicKey:     publicKey.String(),
-		Role:          apitypes.GearRoleGear,
-		Status:        apitypes.GearStatusActive,
+		Role:          apitypes.PeerRoleClient,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 
 	if exists, err := server.exists(context.Background(), publicKey); err != nil || !exists {

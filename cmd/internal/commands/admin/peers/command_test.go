@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
@@ -43,7 +43,7 @@ func TestPeerCommandsReturnContextErrors(t *testing.T) {
 		{"get", "device-pk"},
 		{"resolve-sn", "sn-001"},
 		{"resolve-imei", "12345678", "000001"},
-		{"approve", "device-pk", "gear"},
+		{"approve", "device-pk", "client"},
 		{"block", "device-pk"},
 		{"info", "device-pk"},
 		{"config", "device-pk"},
@@ -71,7 +71,7 @@ func TestPeerCommandsUseClientOperations(t *testing.T) {
 		{"get", "device-pk"},
 		{"resolve-sn", "sn-001"},
 		{"resolve-imei", "12345678", "000001"},
-		{"approve", "device-pk", "gear"},
+		{"approve", "device-pk", "client"},
 		{"block", "device-pk"},
 		{"info", "device-pk"},
 		{"config", "device-pk"},
@@ -114,44 +114,44 @@ func stubPeerCommandClients(t *testing.T) func() {
 	devicePublicKey := giznet.PublicKey{1}
 	registration := apitypes.Registration{
 		PublicKey: devicePublicKey.String(),
-		Role:      apitypes.GearRoleGear,
-		Status:    apitypes.GearStatusActive,
+		Role:      apitypes.PeerRoleClient,
+		Status:    apitypes.PeerRegistrationStatusActive,
 	}
-	connectFromContext = func(string) (*gizclaw.Client, error) { return &gizclaw.Client{}, nil }
-	listPeers = func(context.Context, *gizclaw.Client) ([]apitypes.Registration, error) {
+	connectFromContext = func(string) (*gizcli.Client, error) { return &gizcli.Client{}, nil }
+	listPeers = func(context.Context, *gizcli.Client) ([]apitypes.Registration, error) {
 		return []apitypes.Registration{registration}, nil
 	}
-	getPeer = func(context.Context, *gizclaw.Client, string) (apitypes.Registration, error) {
+	getPeer = func(context.Context, *gizcli.Client, string) (apitypes.Registration, error) {
 		return registration, nil
 	}
-	findPubKeyBySN = func(context.Context, *gizclaw.Client, string) (string, error) { return "device-pk", nil }
-	findPubKeyByIMEI = func(context.Context, *gizclaw.Client, string, string) (string, error) {
+	findPubKeyBySN = func(context.Context, *gizcli.Client, string) (string, error) { return "device-pk", nil }
+	findPubKeyByIMEI = func(context.Context, *gizcli.Client, string, string) (string, error) {
 		return "device-pk", nil
 	}
-	approvePeer = func(context.Context, *gizclaw.Client, string, apitypes.GearRole) (apitypes.Registration, error) {
+	approvePeer = func(context.Context, *gizcli.Client, string, apitypes.PeerRole) (apitypes.Registration, error) {
 		return registration, nil
 	}
-	blockPeer = func(context.Context, *gizclaw.Client, string) (apitypes.Registration, error) {
+	blockPeer = func(context.Context, *gizcli.Client, string) (apitypes.Registration, error) {
 		return registration, nil
 	}
-	getPeerInfo = func(context.Context, *gizclaw.Client, string) (apitypes.DeviceInfo, error) {
+	getPeerInfo = func(context.Context, *gizcli.Client, string) (apitypes.DeviceInfo, error) {
 		return apitypes.DeviceInfo{}, nil
 	}
-	getPeerConfig = func(context.Context, *gizclaw.Client, string) (apitypes.Configuration, error) {
+	getPeerConfig = func(context.Context, *gizcli.Client, string) (apitypes.Configuration, error) {
 		return apitypes.Configuration{}, nil
 	}
-	putPeerConfig = func(_ context.Context, _ *gizclaw.Client, _ string, cfg apitypes.Configuration) (apitypes.Configuration, error) {
+	putPeerConfig = func(_ context.Context, _ *gizcli.Client, _ string, cfg apitypes.Configuration) (apitypes.Configuration, error) {
 		return cfg, nil
 	}
-	getPeerRuntime = func(context.Context, *gizclaw.Client, string) (apitypes.Runtime, error) {
+	getPeerRuntime = func(context.Context, *gizcli.Client, string) (apitypes.Runtime, error) {
 		online := true
 		return apitypes.Runtime{Online: online}, nil
 	}
-	deletePeer = func(context.Context, *gizclaw.Client, string) (apitypes.Registration, error) {
+	deletePeer = func(context.Context, *gizcli.Client, string) (apitypes.Registration, error) {
 		return registration, nil
 	}
-	refreshPeer = func(context.Context, *gizclaw.Client, string) (adminservice.RefreshResult, error) {
-		return adminservice.RefreshResult{Gear: apitypes.Gear{PublicKey: devicePublicKey.String()}}, nil
+	refreshPeer = func(context.Context, *gizcli.Client, string) (adminservice.RefreshResult, error) {
+		return adminservice.RefreshResult{Peer: apitypes.Peer{PublicKey: devicePublicKey.String()}}, nil
 	}
 
 	return func() {

@@ -5,7 +5,7 @@ This document describes the connection-level AgentHost structure.
 ## Core Idea
 
 ```text
-PeerConn / GearConn
+PeerConn
 └── wraps the live peer connection as GenX input and output streams
     └── AgentHost
         ├── chooses the current agent for this peer connection
@@ -39,17 +39,17 @@ type PeerConnStream interface {
 }
 ```
 
-`PeerConnStream` is the adapter that turns a live `GearConn` into a GenX input
+`PeerConnStream` is the adapter that turns a live `PeerConn` into a GenX input
 stream.
 
 ```go
-type GearConnGenXStream struct {
-	Conn *GearConn
+type PeerConnGenXStream struct {
+	Conn *PeerConn
 }
 
-func (s *GearConnGenXStream) Next() (*genx.MessageChunk, error)
-func (s *GearConnGenXStream) Close() error
-func (s *GearConnGenXStream) CloseWithError(error) error
+func (s *PeerConnGenXStream) Next() (*genx.MessageChunk, error)
+func (s *PeerConnGenXStream) Close() error
+func (s *PeerConnGenXStream) CloseWithError(error) error
 ```
 
 Input examples:
@@ -70,25 +70,25 @@ type PeerConnOutput interface {
 ```
 
 ```go
-type GearConnOutput struct {
-	Conn *GearConn
+type PeerConnOutput struct {
+	Conn *PeerConn
 }
 
-func (o *GearConnOutput) ConsumeAgentOutput(ctx context.Context, output genx.Stream) error
+func (o *PeerConnOutput) ConsumeAgentOutput(ctx context.Context, output genx.Stream) error
 ```
 
 Output examples:
 
 ```text
 genx.Text                 -> RPC/text event to peer
-genx.Blob audio           -> GearConn audio mixer
+genx.Blob audio           -> PeerConn audio mixer
 genx.MessageChunk tool    -> tool call handling
 genx.MessageChunk Ctrl    -> stream routing/control
 ```
 
 ## Audio Mux
 
-Each live `GearConn` has one peer-level mixer.
+Each live `PeerConn` has one peer-level mixer.
 
 ```go
 type PeerAudioMixer interface {
@@ -112,12 +112,12 @@ Mux shape:
 genx audio stream A -> mixer track A
 genx audio stream B -> mixer track B
 genx audio stream C -> mixer track C
-                         └── GearConn mixer
+                         └── PeerConn mixer
                              └── stamped opus output to peer
 ```
 
 `TrackCtrl` controls per-stream gain, fade, and close. The peer mixer produces a
-single mixed PCM stream, and `GearConn` encodes that mixed stream to stamped
+single mixed PCM stream, and `PeerConn` encodes that mixed stream to stamped
 opus packets.
 
 ## Agent Runtime
@@ -201,10 +201,10 @@ workspace.parameters["agent_type"]
 └── else workflow apiVersion group
 ```
 
-## GearConn Wiring
+## PeerConn Wiring
 
 ```go
-type GearConn struct {
+type PeerConn struct {
 	Conn         *giznet.Conn
 	Service      *PeerService
 	AgentRuntime *AgentService
@@ -214,7 +214,7 @@ type GearConn struct {
 Connection lifecycle:
 
 ```text
-GearConn.serve()
+PeerConn.serve()
 ├── serve peer service
 ├── serve RPC
 ├── serve mixed audio packets
@@ -228,11 +228,11 @@ Peer run RPC methods are control methods for the connection-level background
 runtime.
 
 ```text
-peer.run.agent.get
-peer.run.agent.set
-peer.run.reload
-peer.run.status
-peer.run.stop
+server.run.agent.get
+server.run.agent.set
+server.run.reload
+server.run.status
+server.run.stop
 ```
 
 They do not carry the agent input/output stream. The peer connection itself is
@@ -249,10 +249,10 @@ type AgentSelection struct {
 }
 ```
 
-`peer.run.agent.get` reads the peer's active and pending agent selection.
+`server.run.agent.get` reads the peer's active and pending agent selection.
 
-`peer.run.agent.set` stores the peer's pending agent selection, such as the next
+`server.run.agent.set` stores the peer's pending agent selection, such as the next
 `workspace_name`. It does not switch the running agent by itself.
 
-`peer.run.reload` applies the pending agent selection and switches the
+`server.run.reload` applies the pending agent selection and switches the
 connection-level background agent runtime.

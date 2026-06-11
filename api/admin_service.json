@@ -5265,11 +5265,11 @@
       "RefreshResult": {
         "type": "object",
         "required": [
-          "gear"
+          "peer"
         ],
         "properties": {
-          "gear": {
-            "$ref": "./types.json#/components/schemas/Gear"
+          "peer": {
+            "$ref": "./types.json#/components/schemas/Peer"
           },
           "updated_fields": {
             "type": "array",
@@ -5303,7 +5303,7 @@
         ],
         "properties": {
           "role": {
-            "$ref": "./types.json#/components/schemas/GearRole"
+            "$ref": "./types.json#/components/schemas/PeerRole"
           }
         }
       },

@@ -41,15 +41,6 @@ func mbps(bytes int64, duration time.Duration) float64 {
 	return float64(bytes*8) / duration.Seconds() / 1_000_000
 }
 
-func (c *Client) SpeedTest(ctx context.Context, id string, request rpcapi.SpeedTestRequest) (SpeedTestResult, error) {
-	stream, err := c.rpcConn()
-	if err != nil {
-		return SpeedTestResult{}, err
-	}
-	defer func() { _ = stream.Close() }()
-	return callRPCSpeedTest(ctx, stream, id, request)
-}
-
 func callRPCSpeedTest(ctx context.Context, conn net.Conn, id string, request rpcapi.SpeedTestRequest) (SpeedTestResult, error) {
 	if err := validateSpeedTestRequest(request); err != nil {
 		return SpeedTestResult{}, err
@@ -65,43 +56,54 @@ func callRPCSpeedTest(ctx context.Context, conn net.Conn, id string, request rpc
 	}
 	defer stream.Close()
 
-	if err := stream.WriteRequest(newRPCRequest(id, rpcapi.RPCMethodPeerSpeedTestRun, params)); err != nil {
+	if err := stream.WriteRequest(newRPCRequest(id, rpcapi.RPCMethodAllSpeedTestRun, params)); err != nil {
 		return SpeedTestResult{}, err
 	}
 
 	start := time.Now()
 	var upBytes, downBytes int64
+	var responseErr error
 	g.Go(func() error {
 		n, err := writeBinaryFrames(stream, request.UpContentLength)
 		upBytes = n
 		return err
 	})
 	g.Go(func() error {
+		stopUpload := func(err error) error {
+			if err != nil {
+				responseErr = err
+				_ = stream.conn.SetDeadline(time.Now())
+			}
+			return err
+		}
 		resp, err := stream.ReadResponse()
 		if err != nil {
-			return err
+			return stopUpload(err)
 		}
 		if resp.Error != nil {
 			if err := stream.ReadEOS(); err != nil {
-				return err
+				return stopUpload(err)
 			}
-			return fmt.Errorf("rpc: %w", rpcapi.Error{RequestID: resp.Id, Code: resp.Error.Code, Message: resp.Error.Message})
+			return stopUpload(fmt.Errorf("rpc: %w", rpcapi.Error{RequestID: resp.Id, Code: resp.Error.Code, Message: resp.Error.Message}))
 		}
 		if resp.Result == nil {
-			return errRPCMissingResult
+			return stopUpload(errRPCMissingResult)
 		}
 		ack, err := resp.Result.AsSpeedTestResponse()
 		if err != nil {
-			return wrapRPCResultError("speed test", err)
+			return stopUpload(wrapRPCResultError("speed test", err))
 		}
 		if ack.UpContentLength != request.UpContentLength || ack.DownContentLength != request.DownContentLength {
-			return fmt.Errorf("rpc: speed test ack mismatch")
+			return stopUpload(fmt.Errorf("rpc: speed test ack mismatch"))
 		}
 		n, err := readBinaryFrames(stream)
 		downBytes = n
-		return err
+		return stopUpload(err)
 	})
 	if err := g.Wait(); err != nil {
+		if responseErr != nil {
+			return SpeedTestResult{}, responseErr
+		}
 		return SpeedTestResult{}, err
 	}
 	return SpeedTestResult{

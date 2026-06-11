@@ -1,0 +1,355 @@
+package peergenx
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+)
+
+type Tenant struct {
+	Kind      string
+	OpenAI    *apitypes.OpenAITenant
+	Gemini    *apitypes.GeminiTenant
+	DashScope *apitypes.DashScopeTenant
+	MiniMax   *apitypes.MiniMaxTenant
+	Volc      *apitypes.VolcTenant
+}
+
+type GeneratorConfig struct {
+	Pattern    string
+	Model      apitypes.Model
+	Tenant     Tenant
+	Credential apitypes.Credential
+}
+
+type TransformerConfig struct {
+	Pattern    string
+	Model      *apitypes.Model
+	Voice      *apitypes.Voice
+	Tenant     Tenant
+	Credential apitypes.Credential
+}
+
+func (s *Service) ResolveGenerator(ctx context.Context, pattern string) (GeneratorConfig, error) {
+	modelID, ok := parsePattern(pattern, "model", "models")
+	if !ok {
+		return GeneratorConfig{}, fmt.Errorf("%w: generator pattern %q must target model/<id>", ErrInvalid, pattern)
+	}
+	model, tenant, credential, err := s.resolveModel(ctx, modelID)
+	if err != nil {
+		return GeneratorConfig{}, err
+	}
+	if model.Kind != apitypes.ModelKindLlm {
+		return GeneratorConfig{}, fmt.Errorf("%w: model %q kind %q is not a generator", ErrInvalid, model.Id, model.Kind)
+	}
+	return GeneratorConfig{
+		Pattern:    pattern,
+		Model:      model,
+		Tenant:     tenant,
+		Credential: credential,
+	}, nil
+}
+
+func (s *Service) ResolveTransformer(ctx context.Context, pattern string) (TransformerConfig, error) {
+	if voiceID, ok := parsePattern(pattern, "voice", "voices"); ok {
+		voice, tenant, credential, err := s.resolveVoice(ctx, voiceID)
+		if err != nil {
+			return TransformerConfig{}, err
+		}
+		return TransformerConfig{
+			Pattern:    pattern,
+			Voice:      &voice,
+			Tenant:     tenant,
+			Credential: credential,
+		}, nil
+	}
+
+	modelID, ok := parsePattern(pattern, "model", "models")
+	if !ok {
+		return TransformerConfig{}, fmt.Errorf("%w: transformer pattern %q must target model/<id> or voice/<id>", ErrInvalid, pattern)
+	}
+	model, tenant, credential, err := s.resolveModel(ctx, modelID)
+	if err != nil {
+		return TransformerConfig{}, err
+	}
+	switch model.Kind {
+	case apitypes.ModelKindAsr, apitypes.ModelKindTts:
+	default:
+		return TransformerConfig{}, fmt.Errorf("%w: model %q kind %q is not a transformer", ErrInvalid, model.Id, model.Kind)
+	}
+	return TransformerConfig{
+		Pattern:    pattern,
+		Model:      &model,
+		Tenant:     tenant,
+		Credential: credential,
+	}, nil
+}
+
+func (s *Service) resolveModel(ctx context.Context, id string) (apitypes.Model, Tenant, apitypes.Credential, error) {
+	if s == nil || s.Models == nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, fmt.Errorf("%w: model getter is required", ErrNotConfigured)
+	}
+	resource := modelResource(id)
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionModelRead); err != nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, err
+	}
+	model, err := s.getModel(ctx, id)
+	if err != nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, err
+	}
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionModelUse); err != nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, err
+	}
+	tenant, credentialName, err := s.resolveModelTenant(ctx, model)
+	if err != nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, err
+	}
+	credential, err := s.resolveCredential(ctx, credentialName)
+	if err != nil {
+		return apitypes.Model{}, Tenant{}, apitypes.Credential{}, err
+	}
+	return model, tenant, credential, nil
+}
+
+func (s *Service) resolveVoice(ctx context.Context, id string) (apitypes.Voice, Tenant, apitypes.Credential, error) {
+	if s == nil || s.Voices == nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, fmt.Errorf("%w: voice getter is required", ErrNotConfigured)
+	}
+	resource := voiceResource(id)
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionVoiceRead); err != nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, err
+	}
+	voice, err := s.getVoice(ctx, id)
+	if err != nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, err
+	}
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionVoiceUse); err != nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, err
+	}
+	tenant, credentialName, err := s.resolveVoiceTenant(ctx, voice)
+	if err != nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, err
+	}
+	credential, err := s.resolveCredential(ctx, credentialName)
+	if err != nil {
+		return apitypes.Voice{}, Tenant{}, apitypes.Credential{}, err
+	}
+	return voice, tenant, credential, nil
+}
+
+func (s *Service) resolveCredential(ctx context.Context, name string) (apitypes.Credential, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return apitypes.Credential{}, fmt.Errorf("%w: credential name is required", ErrInvalid)
+	}
+	if s == nil || s.Credentials == nil {
+		return apitypes.Credential{}, fmt.Errorf("%w: credential getter is required", ErrNotConfigured)
+	}
+	if err := s.authorize(ctx, credentialResource(name), apitypes.ACLPermissionCredentialRead); err != nil {
+		return apitypes.Credential{}, err
+	}
+	if err := s.authorize(ctx, credentialResource(name), apitypes.ACLPermissionCredentialUse); err != nil {
+		return apitypes.Credential{}, err
+	}
+	return s.getCredential(ctx, name)
+}
+
+func (s *Service) resolveModelTenant(ctx context.Context, model apitypes.Model) (Tenant, string, error) {
+	if s == nil || s.ProviderTenants == nil {
+		return Tenant{}, "", fmt.Errorf("%w: provider tenant getter is required", ErrNotConfigured)
+	}
+	kind := string(model.Provider.Kind)
+	name := strings.TrimSpace(model.Provider.Name)
+	switch kind {
+	case string(apitypes.ModelProviderKindOpenaiTenant):
+		tenant, err := s.getOpenAITenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, OpenAI: &tenant}, tenant.CredentialName, nil
+	case string(apitypes.ModelProviderKindGeminiTenant):
+		tenant, err := s.getGeminiTenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, Gemini: &tenant}, tenant.CredentialName, nil
+	case string(apitypes.ModelProviderKindDashscopeTenant):
+		tenant, err := s.getDashScopeTenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, DashScope: &tenant}, tenant.CredentialName, nil
+	case string(apitypes.VoiceProviderKindVolcTenant):
+		tenant, err := s.getVolcTenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, Volc: &tenant}, tenant.CredentialName, nil
+	default:
+		return Tenant{}, "", fmt.Errorf("%w: model provider %q", ErrUnsupported, kind)
+	}
+}
+
+func (s *Service) resolveVoiceTenant(ctx context.Context, voice apitypes.Voice) (Tenant, string, error) {
+	if s == nil || s.ProviderTenants == nil {
+		return Tenant{}, "", fmt.Errorf("%w: provider tenant getter is required", ErrNotConfigured)
+	}
+	kind := string(voice.Provider.Kind)
+	name := strings.TrimSpace(voice.Provider.Name)
+	switch kind {
+	case string(apitypes.VoiceProviderKindMinimaxTenant):
+		tenant, err := s.getMiniMaxTenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, MiniMax: &tenant}, tenant.CredentialName, nil
+	case string(apitypes.VoiceProviderKindVolcTenant):
+		tenant, err := s.getVolcTenant(ctx, name)
+		if err != nil {
+			return Tenant{}, "", err
+		}
+		return Tenant{Kind: kind, Volc: &tenant}, tenant.CredentialName, nil
+	default:
+		return Tenant{}, "", fmt.Errorf("%w: voice provider %q", ErrUnsupported, kind)
+	}
+}
+
+func (s *Service) getModel(ctx context.Context, id string) (apitypes.Model, error) {
+	response, err := s.Models.GetModel(ctx, adminservice.GetModelRequestObject{Id: id})
+	if err != nil {
+		return apitypes.Model{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetModel200JSONResponse:
+		return apitypes.Model(typed), nil
+	case adminservice.GetModel404JSONResponse:
+		return apitypes.Model{}, fmt.Errorf("%w: model %q", ErrNotFound, id)
+	default:
+		return apitypes.Model{}, fmt.Errorf("%w: get model %q returned %T", ErrInvalid, id, response)
+	}
+}
+
+func (s *Service) getVoice(ctx context.Context, id string) (apitypes.Voice, error) {
+	response, err := s.Voices.GetVoice(ctx, adminservice.GetVoiceRequestObject{Id: id})
+	if err != nil {
+		return apitypes.Voice{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetVoice200JSONResponse:
+		return apitypes.Voice(typed), nil
+	case adminservice.GetVoice404JSONResponse:
+		return apitypes.Voice{}, fmt.Errorf("%w: voice %q", ErrNotFound, id)
+	default:
+		return apitypes.Voice{}, fmt.Errorf("%w: get voice %q returned %T", ErrInvalid, id, response)
+	}
+}
+
+func (s *Service) getCredential(ctx context.Context, name string) (apitypes.Credential, error) {
+	response, err := s.Credentials.GetCredential(ctx, adminservice.GetCredentialRequestObject{Name: name})
+	if err != nil {
+		return apitypes.Credential{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetCredential200JSONResponse:
+		return apitypes.Credential(typed), nil
+	case adminservice.GetCredential404JSONResponse:
+		return apitypes.Credential{}, fmt.Errorf("%w: credential %q", ErrNotFound, name)
+	default:
+		return apitypes.Credential{}, fmt.Errorf("%w: get credential %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func (s *Service) getOpenAITenant(ctx context.Context, name string) (apitypes.OpenAITenant, error) {
+	response, err := s.ProviderTenants.GetOpenAITenant(ctx, adminservice.GetOpenAITenantRequestObject{Name: name})
+	if err != nil {
+		return apitypes.OpenAITenant{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetOpenAITenant200JSONResponse:
+		return apitypes.OpenAITenant(typed), nil
+	case adminservice.GetOpenAITenant404JSONResponse:
+		return apitypes.OpenAITenant{}, fmt.Errorf("%w: openai tenant %q", ErrNotFound, name)
+	default:
+		return apitypes.OpenAITenant{}, fmt.Errorf("%w: get openai tenant %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func (s *Service) getGeminiTenant(ctx context.Context, name string) (apitypes.GeminiTenant, error) {
+	response, err := s.ProviderTenants.GetGeminiTenant(ctx, adminservice.GetGeminiTenantRequestObject{Name: name})
+	if err != nil {
+		return apitypes.GeminiTenant{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetGeminiTenant200JSONResponse:
+		return apitypes.GeminiTenant(typed), nil
+	case adminservice.GetGeminiTenant404JSONResponse:
+		return apitypes.GeminiTenant{}, fmt.Errorf("%w: gemini tenant %q", ErrNotFound, name)
+	default:
+		return apitypes.GeminiTenant{}, fmt.Errorf("%w: get gemini tenant %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func (s *Service) getDashScopeTenant(ctx context.Context, name string) (apitypes.DashScopeTenant, error) {
+	response, err := s.ProviderTenants.GetDashScopeTenant(ctx, adminservice.GetDashScopeTenantRequestObject{Name: name})
+	if err != nil {
+		return apitypes.DashScopeTenant{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetDashScopeTenant200JSONResponse:
+		return apitypes.DashScopeTenant(typed), nil
+	case adminservice.GetDashScopeTenant404JSONResponse:
+		return apitypes.DashScopeTenant{}, fmt.Errorf("%w: dashscope tenant %q", ErrNotFound, name)
+	default:
+		return apitypes.DashScopeTenant{}, fmt.Errorf("%w: get dashscope tenant %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func (s *Service) getMiniMaxTenant(ctx context.Context, name string) (apitypes.MiniMaxTenant, error) {
+	response, err := s.ProviderTenants.GetMiniMaxTenant(ctx, adminservice.GetMiniMaxTenantRequestObject{Name: name})
+	if err != nil {
+		return apitypes.MiniMaxTenant{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetMiniMaxTenant200JSONResponse:
+		return apitypes.MiniMaxTenant(typed), nil
+	case adminservice.GetMiniMaxTenant404JSONResponse:
+		return apitypes.MiniMaxTenant{}, fmt.Errorf("%w: minimax tenant %q", ErrNotFound, name)
+	default:
+		return apitypes.MiniMaxTenant{}, fmt.Errorf("%w: get minimax tenant %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func (s *Service) getVolcTenant(ctx context.Context, name string) (apitypes.VolcTenant, error) {
+	response, err := s.ProviderTenants.GetVolcTenant(ctx, adminservice.GetVolcTenantRequestObject{Name: name})
+	if err != nil {
+		return apitypes.VolcTenant{}, err
+	}
+	switch typed := response.(type) {
+	case adminservice.GetVolcTenant200JSONResponse:
+		return apitypes.VolcTenant(typed), nil
+	case adminservice.GetVolcTenant404JSONResponse:
+		return apitypes.VolcTenant{}, fmt.Errorf("%w: volc tenant %q", ErrNotFound, name)
+	default:
+		return apitypes.VolcTenant{}, fmt.Errorf("%w: get volc tenant %q returned %T", ErrInvalid, name, response)
+	}
+}
+
+func parsePattern(pattern string, prefixes ...string) (string, bool) {
+	pattern = strings.TrimSpace(pattern)
+	for _, prefix := range prefixes {
+		head := prefix + "/"
+		if id, ok := strings.CutPrefix(pattern, head); ok {
+			id = strings.TrimSpace(id)
+			return id, id != ""
+		}
+	}
+	return "", false
+}
+
+func isDenied(err error) bool {
+	return errors.Is(err, ErrDenied)
+}

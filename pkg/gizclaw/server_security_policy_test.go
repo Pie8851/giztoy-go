@@ -14,55 +14,55 @@ func testServerSecurityPolicy(peers *peer.Server) *ServerSecurityPolicy {
 	return (*ServerSecurityPolicy)(&Server{manager: NewManager(peers)})
 }
 
-func TestServerSecurityPolicyAllowsPublicServiceForActiveGear(t *testing.T) {
+func TestServerSecurityPolicyAllowsPublicServiceForActivePeer(t *testing.T) {
 	keyPair, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair error = %v", err)
 	}
 
 	service := &peer.Server{Store: mustBadgerInMemory(t, nil)}
-	if _, err := service.SaveGear(context.Background(), apitypes.Gear{
+	if _, err := service.SavePeer(context.Background(), apitypes.Peer{
 		PublicKey:     keyPair.Public.String(),
-		Role:          apitypes.GearRoleGear,
-		Status:        apitypes.GearStatusActive,
+		Role:          apitypes.PeerRoleClient,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Device:        apitypes.DeviceInfo{},
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 
 	policy := testServerSecurityPolicy(service)
 	if policy.AllowService(keyPair.Public, ServiceAdmin) {
-		t.Fatal("active gear should not allow admin service without admin role")
+		t.Fatal("active peer should not allow admin service without admin role")
 	}
 	if !policy.AllowService(keyPair.Public, ServiceServerPublic) {
-		t.Fatal("active gear should allow server public service")
+		t.Fatal("active peer should allow server public service")
 	}
 	if policy.AllowService(keyPair.Public, 0xffff) {
-		t.Fatal("active gear should not allow unknown service")
+		t.Fatal("active peer should not allow unknown service")
 	}
 }
 
-func TestServerSecurityPolicyAllowsAdminServiceForActiveAdminGear(t *testing.T) {
+func TestServerSecurityPolicyAllowsAdminServiceForActiveAdminPeer(t *testing.T) {
 	keyPair, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair error = %v", err)
 	}
 
 	service := &peer.Server{Store: mustBadgerInMemory(t, nil)}
-	if _, err := service.SaveGear(context.Background(), apitypes.Gear{
+	if _, err := service.SavePeer(context.Background(), apitypes.Peer{
 		PublicKey:     keyPair.Public.String(),
-		Role:          apitypes.GearRoleAdmin,
-		Status:        apitypes.GearStatusActive,
+		Role:          apitypes.PeerRoleAdmin,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Device:        apitypes.DeviceInfo{},
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 
 	policy := testServerSecurityPolicy(service)
 	if !policy.AllowService(keyPair.Public, ServiceAdmin) {
-		t.Fatal("active admin gear should allow admin service")
+		t.Fatal("active admin peer should allow admin service")
 	}
 }
 
@@ -73,23 +73,23 @@ func TestServerSecurityPolicyRequiresAdminRoleForAdminService(t *testing.T) {
 	}
 
 	service := &peer.Server{Store: mustBadgerInMemory(t, nil)}
-	if _, err := service.EnsureConnectedGear(context.Background(), keyPair.Public); err != nil {
-		t.Fatalf("EnsureConnectedGear error = %v", err)
+	if _, err := service.EnsureConnectedPeer(context.Background(), keyPair.Public); err != nil {
+		t.Fatalf("EnsureConnectedPeer error = %v", err)
 	}
 	policy := testServerSecurityPolicy(service)
 	if policy.AllowService(keyPair.Public, ServiceAdmin) {
-		t.Fatal("non-admin gear should not allow admin service")
+		t.Fatal("non-admin peer should not allow admin service")
 	}
-	stored, err := service.LoadGear(context.Background(), keyPair.Public)
+	stored, err := service.LoadPeer(context.Background(), keyPair.Public)
 	if err != nil {
-		t.Fatalf("LoadGear error = %v", err)
+		t.Fatalf("LoadPeer error = %v", err)
 	}
-	if stored.Role != apitypes.GearRoleGear {
+	if stored.Role != apitypes.PeerRoleClient {
 		t.Fatalf("policy changed stored role to %q", stored.Role)
 	}
 }
 
-func TestServerSecurityPolicyAllowsPublicServicesWithoutGearLookup(t *testing.T) {
+func TestServerSecurityPolicyAllowsPublicServicesWithoutPeerLookup(t *testing.T) {
 	policy := (*ServerSecurityPolicy)(&Server{manager: &Manager{}})
 	if !policy.AllowService(giznet.PublicKey{}, ServiceRPC) {
 		t.Fatal("policy should allow rpc service")
@@ -99,7 +99,7 @@ func TestServerSecurityPolicyAllowsPublicServicesWithoutGearLookup(t *testing.T)
 	}
 }
 
-func TestServerSecurityPolicyDeniesAdminServiceForUnknownGear(t *testing.T) {
+func TestServerSecurityPolicyDeniesAdminServiceForUnknownPeer(t *testing.T) {
 	keyPair, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair error = %v", err)
@@ -107,11 +107,11 @@ func TestServerSecurityPolicyDeniesAdminServiceForUnknownGear(t *testing.T) {
 
 	policy := testServerSecurityPolicy(&peer.Server{Store: mustBadgerInMemory(t, nil)})
 	if policy.AllowService(keyPair.Public, ServiceAdmin) {
-		t.Fatal("unknown gear should not allow admin service")
+		t.Fatal("unknown peer should not allow admin service")
 	}
 }
 
-func TestServerSecurityPolicyDeniesProtectedServicesForBlockedGear(t *testing.T) {
+func TestServerSecurityPolicyDeniesProtectedServicesForBlockedPeer(t *testing.T) {
 	keyPair, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair error = %v", err)
@@ -119,21 +119,21 @@ func TestServerSecurityPolicyDeniesProtectedServicesForBlockedGear(t *testing.T)
 
 	service := &peer.Server{Store: mustBadgerInMemory(t, nil)}
 	ctx := context.Background()
-	if _, err := service.SaveGear(ctx, apitypes.Gear{
+	if _, err := service.SavePeer(ctx, apitypes.Peer{
 		PublicKey:     keyPair.Public.String(),
-		Role:          apitypes.GearRoleUnspecified,
-		Status:        apitypes.GearStatusBlocked,
+		Role:          apitypes.PeerRoleUnspecified,
+		Status:        apitypes.PeerRegistrationStatusBlocked,
 		Device:        apitypes.DeviceInfo{},
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear error = %v", err)
+		t.Fatalf("SavePeer error = %v", err)
 	}
 
 	policy := testServerSecurityPolicy(service)
 	if policy.AllowService(keyPair.Public, ServiceAdmin) {
-		t.Fatal("blocked gear should not allow admin service")
+		t.Fatal("blocked peer should not allow admin service")
 	}
 	if policy.AllowService(keyPair.Public, 0xffff) {
-		t.Fatal("blocked gear should not allow unknown service")
+		t.Fatal("blocked peer should not allow unknown service")
 	}
 }

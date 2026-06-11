@@ -25,7 +25,7 @@ func TestClientPublicReadSequenceUserStory(t *testing.T) {
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	info, err := c.GetPeerInfo(ctx, "peer.info.get")
+	info, err := c.GetServerInfo(ctx, "server.info.get")
 	if err != nil {
 		t.Fatalf("get device info: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestClientPublicReadSequenceUserStory(t *testing.T) {
 		t.Fatalf("expected device info response, got %+v", info)
 	}
 
-	if _, err := h.RunCLIUntilSuccess("peer", "ping", "--context", "device-a"); err != nil {
+	if _, err := h.RunCLIUntilSuccess("connect", "ping", "--context", "device-a"); err != nil {
 		t.Fatal(err)
 	}
 }

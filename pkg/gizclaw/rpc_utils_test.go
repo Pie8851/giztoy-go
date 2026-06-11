@@ -15,8 +15,6 @@ func TestRPCClientPingSingleRequestResponse(t *testing.T) {
 	defer serverSide.Close()
 	defer clientSide.Close()
 
-	client := &rpcClient{}
-
 	reqCh := make(chan *rpcapi.RPCRequest, 1)
 	serverErrCh := make(chan error, 1)
 
@@ -44,7 +42,7 @@ func TestRPCClientPingSingleRequestResponse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	ping, err := client.Ping(ctx, clientSide, "req-1")
+	ping, err := callRPCPing(ctx, clientSide, "req-1")
 	if err != nil {
 		t.Fatalf("Ping(req-1) error: %v", err)
 	}
@@ -84,7 +82,7 @@ func TestRPCClientCallContextTimeout(t *testing.T) {
 	_, err = callRPC(ctx, clientSide, &rpcapi.RPCRequest{
 		V:      rpcapi.RPCVersionV1,
 		Id:     "timeout",
-		Method: rpcapi.RPCMethodPeerPing,
+		Method: rpcapi.RPCMethodAllPing,
 		Params: params,
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -124,7 +122,7 @@ func TestRPCClientCallContextCancel(t *testing.T) {
 	_, err = callRPC(ctx, clientSide, &rpcapi.RPCRequest{
 		V:      rpcapi.RPCVersionV1,
 		Id:     "cancel",
-		Method: rpcapi.RPCMethodPeerPing,
+		Method: rpcapi.RPCMethodAllPing,
 		Params: params,
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -143,7 +141,7 @@ func TestRPCClientCallValidatesRequest(t *testing.T) {
 	if _, err := callRPC(context.Background(), clientSide, nil); err == nil || err.Error() != "rpc: nil request" {
 		t.Fatalf("call(nil) err = %v", err)
 	}
-	if _, err := callRPC(context.Background(), clientSide, &rpcapi.RPCRequest{Method: rpcapi.RPCMethodPeerPing}); err == nil || err.Error() != "rpc: request id required" {
+	if _, err := callRPC(context.Background(), clientSide, &rpcapi.RPCRequest{Method: rpcapi.RPCMethodAllPing}); err == nil || err.Error() != "rpc: request id required" {
 		t.Fatalf("call(empty id) err = %v", err)
 	}
 }
@@ -154,14 +152,12 @@ func TestRPCClientPingErrorPaths(t *testing.T) {
 		defer serverSide.Close()
 		defer clientSide.Close()
 
-		client := &rpcClient{}
-
 		go func() {
 			req, _ := readRPCRequestWithEOS(serverSide)
 			_ = writeRPCResponseWithEOS(serverSide, rpcapi.Error{RequestID: req.Id, Code: -1, Message: "boom"}.RPCResponse())
 		}()
 
-		_, err := client.Ping(context.Background(), clientSide, "ping-error")
+		_, err := callRPCPing(context.Background(), clientSide, "ping-error")
 		if err == nil || err.Error() != "rpc: boom" {
 			t.Fatalf("Ping(error response) err = %v", err)
 		}
@@ -179,14 +175,12 @@ func TestRPCClientPingErrorPaths(t *testing.T) {
 		defer serverSide.Close()
 		defer clientSide.Close()
 
-		client := &rpcClient{}
-
 		go func() {
 			req, _ := readRPCRequestWithEOS(serverSide)
 			_ = writeRPCResponseWithEOS(serverSide, &rpcapi.RPCResponse{V: rpcapi.RPCVersionV1, Id: req.Id})
 		}()
 
-		_, err := client.Ping(context.Background(), clientSide, "ping-missing")
+		_, err := callRPCPing(context.Background(), clientSide, "ping-missing")
 		if err == nil || err.Error() != "rpc: missing ping result" {
 			t.Fatalf("Ping(missing result) err = %v", err)
 		}

@@ -112,15 +112,15 @@ export function usePeersPage(): {
       return dashboard.peers;
     }
     const query = filter.trim().toLowerCase();
-    return dashboard.peers.filter((gear) =>
+    return dashboard.peers.filter((peer) =>
       [
-        gear.public_key,
-        peerDeviceName(gear, dashboard.infos[gear.public_key]),
-        gear.role,
-        gear.status,
-        gear.auto_registered ? "auto" : "manual",
-        dashboard.runtimes[gear.public_key]?.online ? "online" : "offline",
-        dashboard.runtimes[gear.public_key]?.last_addr ?? "",
+        peer.public_key,
+        peerDeviceName(peer, dashboard.infos[peer.public_key]),
+        peer.role,
+        peer.status,
+        peer.auto_registered ? "auto" : "manual",
+        dashboard.runtimes[peer.public_key]?.online ? "online" : "offline",
+        dashboard.runtimes[peer.public_key]?.last_addr ?? "",
       ].some((value) =>
         value.toLowerCase().includes(query),
       ),
@@ -160,15 +160,15 @@ export function usePeersPage(): {
 
 async function loadPeerInfos(peers: Registration[]): Promise<PeerInfoMap> {
   const entries = await Promise.all(
-    peers.map(async (gear): Promise<[string, DeviceInfo | null]> => {
-      if (gear.device !== undefined) {
-        return [gear.public_key, gear.device];
+    peers.map(async (peer): Promise<[string, DeviceInfo | null]> => {
+      if (peer.device !== undefined) {
+        return [peer.public_key, peer.device];
       }
       try {
-        const info = await expectData(getPeerInfo({ path: { publicKey: gear.public_key } }));
-        return [gear.public_key, info];
+        const info = await expectData(getPeerInfo({ path: { publicKey: peer.public_key } }));
+        return [peer.public_key, info];
       } catch {
-        return [gear.public_key, null];
+        return [peer.public_key, null];
       }
     }),
   );
@@ -177,18 +177,18 @@ async function loadPeerInfos(peers: Registration[]): Promise<PeerInfoMap> {
 
 async function loadPeerRuntimes(peers: Registration[]): Promise<PeerRuntimeMap> {
   const entries = await Promise.all(
-    peers.map(async (gear): Promise<[string, Runtime | null]> => {
+    peers.map(async (peer): Promise<[string, Runtime | null]> => {
       try {
-        const runtime = await expectData(getPeerRuntime({ path: { publicKey: gear.public_key } }));
-        return [gear.public_key, runtime];
+        const runtime = await expectData(getPeerRuntime({ path: { publicKey: peer.public_key } }));
+        return [peer.public_key, runtime];
       } catch {
-        return [gear.public_key, null];
+        return [peer.public_key, null];
       }
     }),
   );
   return Object.fromEntries(entries);
 }
 
-function peerDeviceName(gear: Registration, info: DeviceInfo | null | undefined): string {
-  return gear.device?.name?.trim() || info?.name?.trim() || "";
+function peerDeviceName(peer: Registration, info: DeviceInfo | null | undefined): string {
+  return peer.device?.name?.trim() || info?.name?.trim() || "";
 }

@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/clicontext"
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
-func DialFromContext(name string) (*gizclaw.Client, giznet.PublicKey, string, error) {
+func DialFromContext(name string) (*gizcli.Client, giznet.PublicKey, string, error) {
 	store, err := clicontext.DefaultStore()
 	if err != nil {
 		return nil, giznet.PublicKey{}, "", err
@@ -29,7 +29,7 @@ func DialFromContext(name string) (*gizclaw.Client, giznet.PublicKey, string, er
 	if err != nil {
 		return nil, giznet.PublicKey{}, "", fmt.Errorf("invalid server public key: %w", err)
 	}
-	return &gizclaw.Client{
+	return &gizcli.Client{
 		KeyPair:    cliCtx.KeyPair,
 		CipherMode: cliCtx.Config.Server.CipherMode,
 	}, serverPK, cliCtx.Config.Server.Address, nil

@@ -61,6 +61,37 @@ func TestServerRunAgentRoundTrip(t *testing.T) {
 	if got.Pending == nil || got.Pending.WorkspaceName != "demo" {
 		t.Fatalf("GetRunAgent() = %+v", got)
 	}
+	selection, err := server.ResolveRunAgent(ctx, publicKey)
+	if err != nil {
+		t.Fatalf("ResolveRunAgent() error = %v", err)
+	}
+	if selection.WorkspaceName != "demo" {
+		t.Fatalf("ResolveRunAgent() = %+v", selection)
+	}
+	activated, err := server.ActivateRunAgent(ctx, publicKey, selection)
+	if err != nil {
+		t.Fatalf("ActivateRunAgent() error = %v", err)
+	}
+	if activated.Pending != nil || activated.Active == nil || activated.Active.WorkspaceName != "demo" {
+		t.Fatalf("ActivateRunAgent() = %+v", activated)
+	}
+	selection, err = server.ResolveRunAgent(ctx, publicKey)
+	if err != nil {
+		t.Fatalf("ResolveRunAgent(active) error = %v", err)
+	}
+	if selection.WorkspaceName != "demo" {
+		t.Fatalf("ResolveRunAgent(active) = %+v", selection)
+	}
+	if _, err := server.ActivateRunAgent(ctx, publicKey, apitypes.AgentSelection{WorkspaceName: "other"}); !errors.Is(err, ErrRunAgentChanged) {
+		t.Fatalf("ActivateRunAgent(changed) error = %v, want %v", err, ErrRunAgentChanged)
+	}
+	emptyKey := testPublicKey(t)
+	if _, err := server.ResolveRunAgent(ctx, emptyKey); !errors.Is(err, ErrRunAgentNotConfigured) {
+		t.Fatalf("ResolveRunAgent(empty) error = %v, want %v", err, ErrRunAgentNotConfigured)
+	}
+	if _, err := server.ActivateRunAgent(ctx, emptyKey, apitypes.AgentSelection{WorkspaceName: "demo"}); !errors.Is(err, ErrRunAgentNotConfigured) {
+		t.Fatalf("ActivateRunAgent(empty) error = %v, want %v", err, ErrRunAgentNotConfigured)
+	}
 }
 
 func TestValidation(t *testing.T) {

@@ -2,7 +2,7 @@
 
 Tracking issue: https://github.com/GizClaw/gizclaw-go/issues/22
 
-This package is reserved for gear-scoped wallet state and transaction history.
+This package is reserved for peer-scoped wallet state and transaction history.
 
 Planned scope:
 

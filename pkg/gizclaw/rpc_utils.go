@@ -170,7 +170,7 @@ func callRPCPing(ctx context.Context, conn net.Conn, id string) (*rpcapi.PingRes
 	if err != nil {
 		return nil, err
 	}
-	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodPeerPing, params), rpcapi.RPCResponse_Result.AsPingResponse)
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodAllPing, params), rpcapi.RPCResponse_Result.AsPingResponse)
 	if err != nil {
 		return nil, wrapRPCResultError("ping", err)
 	}
@@ -280,7 +280,7 @@ func rpcUnexpectedResponse(id string, response any) *rpcapi.RPCResponse {
 	return rpcapi.Error{
 		RequestID: id,
 		Code:      rpcapi.RPCErrorCodeInternalError,
-		Message:   fmt.Sprintf("unexpected gear service response: %T", response),
+		Message:   fmt.Sprintf("unexpected server service response: %T", response),
 	}.RPCResponse()
 }
 

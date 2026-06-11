@@ -160,7 +160,7 @@ func TestKVWithStoragePrefix(t *testing.T) {
 	defer physical.Close()
 
 	reg, err := NewWithStorage(physical, map[string]Config{
-		"gears":       {Kind: KindKeyValue, Storage: "main", Prefix: "gears"},
+		"peers":       {Kind: KindKeyValue, Storage: "main", Prefix: "peers"},
 		"credentials": {Kind: KindKeyValue, Storage: "main", Prefix: "credentials/by-name"},
 	})
 	if err != nil {
@@ -168,17 +168,17 @@ func TestKVWithStoragePrefix(t *testing.T) {
 	}
 	defer reg.Close()
 
-	gears, err := reg.KV("gears")
+	peers, err := reg.KV("peers")
 	if err != nil {
-		t.Fatalf("KV(gears): %v", err)
+		t.Fatalf("KV(peers): %v", err)
 	}
 	credentials, err := reg.KV("credentials")
 	if err != nil {
 		t.Fatalf("KV(credentials): %v", err)
 	}
 	ctx := context.Background()
-	if err := gears.Set(ctx, kv.Key{"abc"}, []byte("gear")); err != nil {
-		t.Fatalf("Set gear: %v", err)
+	if err := peers.Set(ctx, kv.Key{"abc"}, []byte("peer")); err != nil {
+		t.Fatalf("Set peer: %v", err)
 	}
 	if err := credentials.Set(ctx, kv.Key{"mini-max"}, []byte("secret")); err != nil {
 		t.Fatalf("Set credential: %v", err)
@@ -188,14 +188,14 @@ func TestKVWithStoragePrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage KV(main): %v", err)
 	}
-	if got, err := base.Get(ctx, kv.Key{"gears", "abc"}); err != nil || string(got) != "gear" {
-		t.Fatalf("base gear = %q, %v", got, err)
+	if got, err := base.Get(ctx, kv.Key{"peers", "abc"}); err != nil || string(got) != "peer" {
+		t.Fatalf("base peer = %q, %v", got, err)
 	}
 	if got, err := base.Get(ctx, kv.Key{"credentials", "by-name", "mini-max"}); err != nil || string(got) != "secret" {
 		t.Fatalf("base credential = %q, %v", got, err)
 	}
 	if _, err := credentials.Get(ctx, kv.Key{"abc"}); !errors.Is(err, kv.ErrNotFound) {
-		t.Fatalf("credentials should not see gear key, got %v", err)
+		t.Fatalf("credentials should not see peer key, got %v", err)
 	}
 }
 

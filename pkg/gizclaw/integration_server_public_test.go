@@ -7,14 +7,14 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 )
 
-func TestIntegrationServerPublicAutoGearAndReadBack(t *testing.T) {
+func TestIntegrationServerPublicAutoPeerAndReadBack(t *testing.T) {
 	ts := startTestServer(t)
 	device := newTestClient(t, ts)
 	if device.PeerConn() == nil {
 		t.Fatal("PeerConn returned nil")
 	}
 
-	publicKey := ensureGearInfo(t, device, apitypes.DeviceInfo{
+	publicKey := ensurePeerInfo(t, device, apitypes.DeviceInfo{
 		Name: strPtr("demo-device"),
 		Sn:   strPtr("sn-001"),
 		Hardware: &apitypes.HardwareInfo{
@@ -23,7 +23,7 @@ func TestIntegrationServerPublicAutoGearAndReadBack(t *testing.T) {
 		},
 	})
 	if publicKey == "" {
-		t.Fatal("empty public key after auto gear setup")
+		t.Fatal("empty public key after auto peer setup")
 	}
 
 	info, err := getInfo(context.Background(), device)
@@ -34,12 +34,12 @@ func TestIntegrationServerPublicAutoGearAndReadBack(t *testing.T) {
 		t.Fatalf("device name = %+v", info.Name)
 	}
 
-	gear, err := ts.server.Manager().Peers.LoadGear(context.Background(), device.KeyPair.Public)
+	peer, err := ts.server.Manager().Peers.LoadPeer(context.Background(), device.KeyPair.Public)
 	if err != nil {
-		t.Fatalf("LoadGear error: %v", err)
+		t.Fatalf("LoadPeer error: %v", err)
 	}
-	if gear.Role != apitypes.GearRoleGear {
-		t.Fatalf("role = %q", gear.Role)
+	if peer.Role != apitypes.PeerRoleClient {
+		t.Fatalf("role = %q", peer.Role)
 	}
 
 	if _, err := getServerInfo(context.Background(), device); err != nil {

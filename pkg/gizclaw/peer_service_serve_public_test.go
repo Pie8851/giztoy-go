@@ -101,14 +101,14 @@ func TestPeerServicePublicRoundTrip(t *testing.T) {
 	}
 	defer serverConn.Close()
 
-	gearsServer := &peer.Server{
+	peersServer := &peer.Server{
 		BuildCommit:     "test-build",
 		ServerPublicKey: serverKey.Public,
 	}
 	service := &PeerService{
-		manager: NewManager(gearsServer),
+		manager: NewManager(peersServer),
 		public: &serverPublic{
-			ServerPublicService: gearsServer,
+			ServerPublicService: peersServer,
 		},
 	}
 	serveErrCh := make(chan error, 1)

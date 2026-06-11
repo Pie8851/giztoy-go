@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/publiclogin"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	itest "github.com/GizClaw/gizclaw-go/test/gizclaw-e2e/testutil"
@@ -273,13 +273,13 @@ func (h *Harness) RegisterContext(name string, extraArgs ...string) Result {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
 	defer c.Close()
-	rpcReq, err := convertHarnessAPIType[rpcapi.PeerPutInfoRequest](info)
+	rpcReq, err := convertHarnessAPIType[rpcapi.ServerPutInfoRequest](info)
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
 	defer cancel()
-	resp, err := c.PutPeerInfo(ctx, "peer.info.put", rpcReq)
+	resp, err := c.PutServerInfo(ctx, "server.info.put", rpcReq)
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
@@ -337,7 +337,7 @@ func convertHarnessAPIType[T any](value any) (T, error) {
 func (h *Harness) WaitForPing(contextName string) {
 	h.t.Helper()
 
-	if _, err := h.RunCLIUntilSuccess("peer", "ping", "--context", contextName); err != nil {
+	if _, err := h.RunCLIUntilSuccess("connect", "ping", "--context", contextName); err != nil {
 		h.t.Fatalf("context %q did not become ping-ready: %v", contextName, err)
 	}
 }
@@ -406,7 +406,7 @@ func (h *Harness) PublicHTTPLogin(name string) publiclogin.LoginResponse {
 	return result
 }
 
-func (h *Harness) ConnectClientFromContext(name string) *gizclaw.Client {
+func (h *Harness) ConnectClientFromContext(name string) *gizcli.Client {
 	h.t.Helper()
 
 	client, err := h.connectClientFromContext(name)
@@ -484,7 +484,7 @@ func (h *Harness) RunCLI(args ...string) Result {
 	}
 }
 
-func (h *Harness) connectClientFromContext(name string) (*gizclaw.Client, error) {
+func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) {
 	contextDir := filepath.Join(h.contextRoot(), name)
 	data, err := os.ReadFile(filepath.Join(contextDir, "config.yaml"))
 	if err != nil {
@@ -506,7 +506,7 @@ func (h *Harness) connectClientFromContext(name string) (*gizclaw.Client, error)
 		return nil, fmt.Errorf("parse server public key: %w", err)
 	}
 
-	client := &gizclaw.Client{KeyPair: keyPair}
+	client := &gizcli.Client{KeyPair: keyPair}
 	if err := client.Dial(serverPublicKey, cfg.Server.Address); err != nil {
 		_ = client.Close()
 		return nil, err
@@ -593,7 +593,7 @@ func (h *Harness) waitForServerReady() {
 		if err != nil {
 			return err
 		}
-		client := &gizclaw.Client{KeyPair: keyPair}
+		client := &gizcli.Client{KeyPair: keyPair}
 		if err := client.Dial(serverPublicKey, h.ServerAddr); err != nil {
 			_ = client.Close()
 			return err
@@ -838,7 +838,7 @@ func loadIdentity(path string) (*giznet.KeyPair, error) {
 	return giznet.NewKeyPair(key)
 }
 
-func probeServerPublicReady(ctx context.Context, client *gizclaw.Client) error {
+func probeServerPublicReady(ctx context.Context, client *gizcli.Client) error {
 	api, err := client.ServerPublicClient()
 	if err != nil {
 		return err

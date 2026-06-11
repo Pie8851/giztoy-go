@@ -18,7 +18,7 @@ export function OverviewPage(): JSX.Element {
   const navigate = useNavigate();
   const dashboard = useOverviewData();
   const latestPeers = dashboard.peers.slice(0, 5);
-  const autoCount = dashboard.peers.filter((gear) => gear.auto_registered).length;
+  const autoCount = dashboard.peers.filter((peer) => peer.auto_registered).length;
   const openPath = (path: string) => {
     navigate(path);
   };
@@ -102,21 +102,21 @@ export function OverviewPage(): JSX.Element {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {latestPeers.map((gear) => {
-                      const path = `/peers/${encodeURIComponent(gear.public_key)}`;
+                    {latestPeers.map((peer) => {
+                      const path = `/peers/${encodeURIComponent(peer.public_key)}`;
                       return (
                         <TableRow
                           className="cursor-pointer hover:bg-muted/40"
-                          key={gear.public_key}
+                          key={peer.public_key}
                           onClick={() => openPath(path)}
                           onKeyDown={(event) => handleRowKeyDown(event, path)}
                           role="link"
                           tabIndex={0}
                         >
-                          <TableCell className="font-medium">{formatShortKey(gear.public_key)}</TableCell>
-                          <TableCell>{gear.role}</TableCell>
+                          <TableCell className="font-medium">{formatShortKey(peer.public_key)}</TableCell>
+                          <TableCell>{peer.role}</TableCell>
                           <TableCell>
-                            <StatusBadge status={gear.status} />
+                            <StatusBadge status={peer.status} />
                           </TableCell>
                         </TableRow>
                       );

@@ -1,0 +1,10 @@
+package gizcli
+
+const (
+	ServiceRPC          uint64 = 0x00
+	ServiceServerPublic uint64 = 0x01
+	ServiceAdmin        uint64 = 0x10
+
+	ProtocolEvent       byte = 0x03
+	ProtocolStampedOpus byte = 0x10
+)

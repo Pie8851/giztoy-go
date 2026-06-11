@@ -9,30 +9,30 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
 )
 
-func gearSN(gear apitypes.Gear) string {
-	if gear.Device.Sn == nil {
+func peerSN(peer apitypes.Peer) string {
+	if peer.Device.Sn == nil {
 		return ""
 	}
-	return *gear.Device.Sn
+	return *peer.Device.Sn
 }
 
-func gearIMEIs(gear apitypes.Gear) []apitypes.GearIMEI {
-	if gear.Device.Hardware == nil || gear.Device.Hardware.Imeis == nil {
+func peerIMEIs(peer apitypes.Peer) []apitypes.PeerIMEI {
+	if peer.Device.Hardware == nil || peer.Device.Hardware.Imeis == nil {
 		return nil
 	}
-	return *gear.Device.Hardware.Imeis
+	return *peer.Device.Hardware.Imeis
 }
 
-func gearLabels(gear apitypes.Gear) []apitypes.GearLabel {
-	if gear.Device.Hardware == nil || gear.Device.Hardware.Labels == nil {
+func peerLabels(peer apitypes.Peer) []apitypes.PeerLabel {
+	if peer.Device.Hardware == nil || peer.Device.Hardware.Labels == nil {
 		return nil
 	}
-	return *gear.Device.Hardware.Labels
+	return *peer.Device.Hardware.Labels
 }
 
-func dedupeIMEIs(items []apitypes.GearIMEI) []apitypes.GearIMEI {
+func dedupeIMEIs(items []apitypes.PeerIMEI) []apitypes.PeerIMEI {
 	seen := make(map[[2]string]struct{}, len(items))
-	out := make([]apitypes.GearIMEI, 0, len(items))
+	out := make([]apitypes.PeerIMEI, 0, len(items))
 	for _, item := range items {
 		if item.Tac == "" || item.Serial == "" {
 			continue
@@ -53,9 +53,9 @@ func dedupeIMEIs(items []apitypes.GearIMEI) []apitypes.GearIMEI {
 	return out
 }
 
-func dedupeLabels(items []apitypes.GearLabel) []apitypes.GearLabel {
+func dedupeLabels(items []apitypes.PeerLabel) []apitypes.PeerLabel {
 	seen := make(map[[2]string]struct{}, len(items))
-	out := make([]apitypes.GearLabel, 0, len(items))
+	out := make([]apitypes.PeerLabel, 0, len(items))
 	for _, item := range items {
 		if item.Key == "" || item.Value == "" {
 			continue
@@ -76,11 +76,11 @@ func dedupeLabels(items []apitypes.GearLabel) []apitypes.GearLabel {
 	return out
 }
 
-func gearKey(publicKey string) kv.Key {
+func peerKey(publicKey string) kv.Key {
 	return kv.Key{"by-pubkey", publicKey}
 }
 
-func gearsPrefix() kv.Key {
+func peersPrefix() kv.Key {
 	return kv.Key{"by-pubkey"}
 }
 
@@ -96,64 +96,64 @@ func labelPrefix(key, value string) kv.Key {
 	return kv.Key{"by-label", escapeIndexSegment(key), escapeIndexSegment(value)}
 }
 
-func labelKey(item apitypes.GearLabel, publicKey string) kv.Key {
+func labelKey(item apitypes.PeerLabel, publicKey string) kv.Key {
 	return append(labelPrefix(item.Key, item.Value), publicKey)
 }
 
-func rolePrefix(role apitypes.GearRole) kv.Key {
+func rolePrefix(role apitypes.PeerRole) kv.Key {
 	return kv.Key{"by-role", string(role)}
 }
 
-func roleKey(role apitypes.GearRole, publicKey string) kv.Key {
+func roleKey(role apitypes.PeerRole, publicKey string) kv.Key {
 	return append(rolePrefix(role), publicKey)
 }
 
-func statusPrefix(status apitypes.GearStatus) kv.Key {
+func statusPrefix(status apitypes.PeerRegistrationStatus) kv.Key {
 	return kv.Key{"by-status", string(status)}
 }
 
-func statusKey(status apitypes.GearStatus, publicKey string) kv.Key {
+func statusKey(status apitypes.PeerRegistrationStatus, publicKey string) kv.Key {
 	return append(statusPrefix(status), publicKey)
 }
 
-func indexEntries(gear apitypes.Gear) []kv.Entry {
-	publicKey := gear.PublicKey
-	entries := make([]kv.Entry, 0, 2+len(gearIMEIs(gear))+len(gearLabels(gear)))
-	if sn := gearSN(gear); sn != "" {
+func indexEntries(peer apitypes.Peer) []kv.Entry {
+	publicKey := peer.PublicKey
+	entries := make([]kv.Entry, 0, 2+len(peerIMEIs(peer))+len(peerLabels(peer)))
+	if sn := peerSN(peer); sn != "" {
 		entries = append(entries, kv.Entry{Key: snKey(sn), Value: []byte(publicKey)})
 	}
-	for _, item := range dedupeIMEIs(gearIMEIs(gear)) {
+	for _, item := range dedupeIMEIs(peerIMEIs(peer)) {
 		entries = append(entries, kv.Entry{Key: imeiKey(item.Tac, item.Serial), Value: []byte(publicKey)})
 	}
-	for _, item := range dedupeLabels(gearLabels(gear)) {
+	for _, item := range dedupeLabels(peerLabels(peer)) {
 		entries = append(entries, kv.Entry{Key: labelKey(item, publicKey), Value: []byte{1}})
 	}
-	if gear.Role != "" {
-		entries = append(entries, kv.Entry{Key: roleKey(gear.Role, publicKey), Value: []byte{1}})
+	if peer.Role != "" {
+		entries = append(entries, kv.Entry{Key: roleKey(peer.Role, publicKey), Value: []byte{1}})
 	}
-	if gear.Status != "" {
-		entries = append(entries, kv.Entry{Key: statusKey(gear.Status, publicKey), Value: []byte{1}})
+	if peer.Status != "" {
+		entries = append(entries, kv.Entry{Key: statusKey(peer.Status, publicKey), Value: []byte{1}})
 	}
 	return entries
 }
 
-func indexKeys(gear apitypes.Gear) []kv.Key {
-	publicKey := gear.PublicKey
-	keys := make([]kv.Key, 0, 2+len(gearIMEIs(gear))+len(gearLabels(gear)))
-	if sn := gearSN(gear); sn != "" {
+func indexKeys(peer apitypes.Peer) []kv.Key {
+	publicKey := peer.PublicKey
+	keys := make([]kv.Key, 0, 2+len(peerIMEIs(peer))+len(peerLabels(peer)))
+	if sn := peerSN(peer); sn != "" {
 		keys = append(keys, snKey(sn))
 	}
-	for _, item := range dedupeIMEIs(gearIMEIs(gear)) {
+	for _, item := range dedupeIMEIs(peerIMEIs(peer)) {
 		keys = append(keys, imeiKey(item.Tac, item.Serial))
 	}
-	for _, item := range dedupeLabels(gearLabels(gear)) {
+	for _, item := range dedupeLabels(peerLabels(peer)) {
 		keys = append(keys, labelKey(item, publicKey))
 	}
-	if gear.Role != "" {
-		keys = append(keys, roleKey(gear.Role, publicKey))
+	if peer.Role != "" {
+		keys = append(keys, roleKey(peer.Role, publicKey))
 	}
-	if gear.Status != "" {
-		keys = append(keys, statusKey(gear.Status, publicKey))
+	if peer.Status != "" {
+		keys = append(keys, statusKey(peer.Status, publicKey))
 	}
 	return keys
 }

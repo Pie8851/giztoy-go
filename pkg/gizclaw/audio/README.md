@@ -2,11 +2,11 @@
 
 Tracking issue: https://github.com/GizClaw/gizclaw-go/issues/21
 
-This package is reserved for server-provided audio output APIs for gears.
+This package is reserved for server-provided audio output APIs for peers.
 
 Planned scope:
 
-- `audio.say`
+- `server.run.say`
 - Voice/model/credential ACL checks for TTS.
 - Routing generated audio into peer mixer tracks.
 

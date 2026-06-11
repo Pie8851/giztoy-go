@@ -13,9 +13,11 @@ import (
 )
 
 var (
-	ErrNilServer        = errors.New("peerrun: nil server")
-	ErrNilStore         = errors.New("peerrun: nil store")
-	ErrInvalidPublicKey = errors.New("peerrun: invalid public key")
+	ErrNilServer             = errors.New("peerrun: nil server")
+	ErrNilStore              = errors.New("peerrun: nil store")
+	ErrInvalidPublicKey      = errors.New("peerrun: invalid public key")
+	ErrRunAgentNotConfigured = errors.New("peerrun: run agent not configured")
+	ErrRunAgentChanged       = errors.New("peerrun: run agent selection changed")
 )
 
 type Server struct {
@@ -120,6 +122,63 @@ func (s *Server) SetRunAgent(ctx context.Context, publicKey giznet.PublicKey, se
 	return agent, nil
 }
 
+func (s *Server) ResolveRunAgent(ctx context.Context, publicKey giznet.PublicKey) (apitypes.AgentSelection, error) {
+	agent, err := s.GetRunAgent(ctx, publicKey)
+	if err != nil {
+		return apitypes.AgentSelection{}, err
+	}
+	if agent.Pending != nil {
+		return *agent.Pending, nil
+	}
+	if agent.Active != nil {
+		return *agent.Active, nil
+	}
+	return apitypes.AgentSelection{}, ErrRunAgentNotConfigured
+}
+
+func (s *Server) ActivateRunAgent(ctx context.Context, publicKey giznet.PublicKey, selection apitypes.AgentSelection) (apitypes.PeerRunAgent, error) {
+	if err := validateAgentSelection(selection); err != nil {
+		return apitypes.PeerRunAgent{}, err
+	}
+	agent, err := s.GetRunAgent(ctx, publicKey)
+	if err != nil {
+		return apitypes.PeerRunAgent{}, err
+	}
+	switch {
+	case agent.Pending != nil:
+		if !sameAgentSelection(*agent.Pending, selection) {
+			return apitypes.PeerRunAgent{}, ErrRunAgentChanged
+		}
+		agent.Pending = nil
+	case agent.Active != nil:
+		if !sameAgentSelection(*agent.Active, selection) {
+			return apitypes.PeerRunAgent{}, ErrRunAgentChanged
+		}
+	default:
+		return apitypes.PeerRunAgent{}, ErrRunAgentNotConfigured
+	}
+	agent.Active = &selection
+	if err := validateRunAgent(agent); err != nil {
+		return apitypes.PeerRunAgent{}, err
+	}
+	store, err := s.store()
+	if err != nil {
+		return apitypes.PeerRunAgent{}, err
+	}
+	key, err := runAgentKey(publicKey)
+	if err != nil {
+		return apitypes.PeerRunAgent{}, err
+	}
+	data, err := json.Marshal(agent)
+	if err != nil {
+		return apitypes.PeerRunAgent{}, fmt.Errorf("peerrun: encode run agent: %w", err)
+	}
+	if err := store.Set(ctx, key, data); err != nil {
+		return apitypes.PeerRunAgent{}, fmt.Errorf("peerrun: activate run agent: %w", err)
+	}
+	return agent, nil
+}
+
 func (s *Server) store() (kv.Store, error) {
 	if s == nil {
 		return nil, ErrNilServer
@@ -177,4 +236,8 @@ func validateAgentSelection(selection apitypes.AgentSelection) error {
 		return fmt.Errorf("peerrun: workspace_name must not have surrounding whitespace")
 	}
 	return nil
+}
+
+func sameAgentSelection(a, b apitypes.AgentSelection) bool {
+	return a.WorkspaceName == b.WorkspaceName
 }

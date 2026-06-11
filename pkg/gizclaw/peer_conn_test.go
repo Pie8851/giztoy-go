@@ -1,0 +1,262 @@
+package gizclaw
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/GizClaw/gizclaw-go/pkg/audio/pcm"
+	"github.com/GizClaw/gizclaw-go/pkg/genx"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/agenthost"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peerrun"
+	"github.com/GizClaw/gizclaw-go/pkg/giznet"
+	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+)
+
+func TestPeerConnHelpersAndRPCHandle(t *testing.T) {
+	t.Run("audio mixer lifecycle", func(t *testing.T) {
+		var nilPeer *PeerConn
+		if _, err := nilPeer.audioMixer(); err != ErrNilPeerConn {
+			t.Fatalf("audioMixer(nil) err = %v, want %v", err, ErrNilPeerConn)
+		}
+
+		peer := &PeerConn{}
+		if _, err := peer.audioMixer(); err != ErrNilPeerConnMixer {
+			t.Fatalf("audioMixer() err = %v, want %v", err, ErrNilPeerConnMixer)
+		}
+
+		peer.init()
+		if _, err := peer.audioMixer(); err != nil {
+			t.Fatalf("audioMixer() after init error = %v", err)
+		}
+
+		track, ctrl, err := peer.CreateAudioTrack()
+		if err != nil {
+			t.Fatalf("CreateAudioTrack() error = %v", err)
+		}
+		if track == nil || ctrl == nil {
+			t.Fatalf("CreateAudioTrack() = (%v, %v)", track, ctrl)
+		}
+		if err := peer.close(); err != nil {
+			t.Fatalf("close() error = %v", err)
+		}
+		if !peer.isClosed() {
+			t.Fatal("peer should be closed")
+		}
+	})
+
+	t.Run("dispatch missing params", func(t *testing.T) {
+		server := &rpcServer{}
+		resp, err := server.dispatch(context.Background(), &rpcapi.RPCRequest{
+			Id:     "missing",
+			Method: rpcapi.RPCMethodAllPing,
+		})
+		if err != nil {
+			t.Fatalf("dispatch() error = %v", err)
+		}
+		if resp == nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeInvalidParams {
+			t.Fatalf("dispatch() response = %+v", resp)
+		}
+	})
+
+	t.Run("dispatch ping and unknown method", func(t *testing.T) {
+		server := &rpcServer{}
+		params, err := newRPCPingRequestParams(rpcapi.PingRequest{})
+		if err != nil {
+			t.Fatalf("newRPCPingRequestParams() error = %v", err)
+		}
+		resp, err := server.dispatch(context.Background(), &rpcapi.RPCRequest{
+			Id:     "ping",
+			Method: rpcapi.RPCMethodAllPing,
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("dispatch(ping) error = %v", err)
+		}
+		if resp == nil || resp.Result == nil {
+			t.Fatalf("dispatch(ping) response = %+v", resp)
+		}
+		result, err := resp.Result.AsPingResponse()
+		if err != nil {
+			t.Fatalf("dispatch(ping) result decode error = %v", err)
+		}
+		if result.ServerTime <= 0 {
+			t.Fatalf("dispatch(ping) response = %+v", result)
+		}
+
+		resp, err = server.dispatch(context.Background(), &rpcapi.RPCRequest{
+			Id:     "unknown",
+			Method: "rpc.unknown",
+		})
+		if err != nil {
+			t.Fatalf("dispatch(unknown) error = %v", err)
+		}
+		if resp == nil || resp.Error == nil || !strings.Contains(resp.Error.Message, "unknown method") {
+			t.Fatalf("dispatch(unknown) response = %+v", resp)
+		}
+	})
+}
+
+func TestPeerConnCloseClosesConn(t *testing.T) {
+	serverKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(server) error = %v", err)
+	}
+	clientKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(client) error = %v", err)
+	}
+	serverListener, err := (&giznet.ListenConfig{
+		Addr:           "127.0.0.1:0",
+		SecurityPolicy: testGiznetSecurityPolicy{},
+	}).Listen(serverKey)
+	if err != nil {
+		t.Fatalf("Listen(server) error = %v", err)
+	}
+	defer serverListener.Close()
+	go drainUDP(serverListener.UDP())
+	clientListener, err := (&giznet.ListenConfig{
+		Addr:           "127.0.0.1:0",
+		SecurityPolicy: testGiznetSecurityPolicy{},
+	}).Listen(clientKey)
+	if err != nil {
+		t.Fatalf("Listen(client) error = %v", err)
+	}
+	defer clientListener.Close()
+	go drainUDP(clientListener.UDP())
+
+	acceptCh := make(chan *giznet.Conn, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		conn, err := serverListener.Accept()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		acceptCh <- conn
+	}()
+
+	clientConn, err := clientListener.Dial(serverKey.Public, serverListener.HostInfo().Addr)
+	if err != nil {
+		t.Fatalf("Dial error = %v", err)
+	}
+	defer clientConn.Close()
+
+	var serverConn *giznet.Conn
+	select {
+	case serverConn = <-acceptCh:
+	case err := <-errCh:
+		t.Fatalf("Accept error = %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept timeout")
+	}
+
+	peer := &PeerConn{Conn: serverConn}
+	if err := peer.close(); err != nil {
+		t.Fatalf("PeerConn.close() error = %v", err)
+	}
+	if err := serverConn.Close(); !errors.Is(err, giznet.ErrConnClosed) {
+		t.Fatalf("server Conn.Close() after PeerConn.close err=%v, want %v", err, giznet.ErrConnClosed)
+	}
+}
+
+func TestPeerConnCloseStopsAgentRuntime(t *testing.T) {
+	ctx := context.Background()
+	keyPair, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair error = %v", err)
+	}
+	store := &peerrun.Server{Store: kv.NewMemory(nil)}
+	if _, err := store.SetRunAgent(ctx, keyPair.Public, apitypes.AgentSelection{WorkspaceName: "demo"}); err != nil {
+		t.Fatalf("SetRunAgent() error = %v", err)
+	}
+	output := newPeerConnBlockingStream()
+	runtime := &agenthost.Service{
+		Host:      peerConnTestHost{output: output},
+		PeerRun:   store,
+		PublicKey: keyPair.Public,
+		Source: agenthost.StreamSourceFunc(func(context.Context) (genx.Stream, error) {
+			return agenthost.NewInputStream(1), nil
+		}),
+		Consumer: agenthost.StreamConsumerFunc(func(ctx context.Context, _ genx.Stream) error {
+			<-ctx.Done()
+			return nil
+		}),
+	}
+	if _, err := runtime.Reload(ctx); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	peer := &PeerConn{agentHost: runtime}
+	if err := peer.close(); err != nil {
+		t.Fatalf("close() error = %v", err)
+	}
+	status, err := runtime.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.State != apitypes.PeerRunStatusStateStopped {
+		t.Fatalf("runtime status after close = %+v", status)
+	}
+	if !output.closed() {
+		t.Fatal("agent output stream was not closed")
+	}
+}
+
+func TestPeerConnPCMChunkToInt16(t *testing.T) {
+	chunk := &pcm.DataChunk{Data: []byte{0x34, 0x12, 0x78, 0x56}}
+	got := peerConnPCMChunkToInt16(chunk)
+	if len(got) != 2 {
+		t.Fatalf("len(peerConnPCMChunkToInt16()) = %d", len(got))
+	}
+	if got[0] != 0x1234 || got[1] != 0x5678 {
+		t.Fatalf("peerConnPCMChunkToInt16() = %#v", got)
+	}
+	if out := peerConnPCMChunkToInt16(nil); out != nil {
+		t.Fatalf("peerConnPCMChunkToInt16(nil) = %#v", out)
+	}
+}
+
+type peerConnTestHost struct {
+	output genx.Stream
+}
+
+func (h peerConnTestHost) Transform(context.Context, string, genx.Stream) (genx.Stream, error) {
+	return h.output, nil
+}
+
+type peerConnBlockingStream struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func newPeerConnBlockingStream() *peerConnBlockingStream {
+	return &peerConnBlockingStream{done: make(chan struct{})}
+}
+
+func (s *peerConnBlockingStream) Next() (*genx.MessageChunk, error) {
+	<-s.done
+	return nil, context.Canceled
+}
+
+func (s *peerConnBlockingStream) Close() error {
+	return s.CloseWithError(context.Canceled)
+}
+
+func (s *peerConnBlockingStream) CloseWithError(error) error {
+	s.once.Do(func() { close(s.done) })
+	return nil
+}
+
+func (s *peerConnBlockingStream) closed() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
+}

@@ -120,17 +120,17 @@ func TestServerInitConfiguresPeerRunService(t *testing.T) {
 	if err := server.init(); err != nil {
 		t.Fatalf("init() error = %v", err)
 	}
-	if server.manager == nil || server.manager.PeerRun == nil {
-		t.Fatalf("manager peer run service not configured: %+v", server.manager)
+	if server.manager == nil || server.manager.PeerRun == nil || server.manager.AgentHost == nil || server.manager.Voices == nil || server.manager.ProviderTenants == nil {
+		t.Fatalf("manager peer run runtime services not configured: %+v", server.manager)
 	}
-	conn := &GearConn{Service: server.peerService}
+	conn := &PeerConn{Service: server.peerService}
 	conn.initRPC()
 	if conn.rpc == nil || conn.rpc.peerRun != server.manager.PeerRun {
-		t.Fatalf("GearConn rpc peerRun = %+v, want %+v", conn.rpc, server.manager.PeerRun)
+		t.Fatalf("PeerConn rpc peerRun = %+v, want %+v", conn.rpc, server.manager.PeerRun)
 	}
 }
 
-func TestServerServeHTTPLoginRegisterAndGearAPI(t *testing.T) {
+func TestServerServeHTTPLoginRegisterAndPeerAPI(t *testing.T) {
 	serverKey, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair(server) error = %v", err)
@@ -189,52 +189,52 @@ func publicHTTPTestLogin(t *testing.T, baseURL string, serverPublicKey giznet.Pu
 	return result
 }
 
-func TestServerSecurityPolicyAllowServiceUsesGearPolicy(t *testing.T) {
+func TestServerSecurityPolicyAllowServiceUsesPeerPolicy(t *testing.T) {
 	var nilServer *Server
 	if (*ServerSecurityPolicy)(nilServer).AllowService(giznet.PublicKey{}, ServiceRPC) {
 		t.Fatal("nil server should deny all services")
 	}
 
-	gearKey, err := giznet.GenerateKeyPair()
+	peerKey, err := giznet.GenerateKeyPair()
 	if err != nil {
-		t.Fatalf("GenerateKeyPair gear error = %v", err)
+		t.Fatalf("GenerateKeyPair peer error = %v", err)
 	}
 	adminKey, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair admin error = %v", err)
 	}
-	gearsServer := &peer.Server{Store: mustBadgerInMemory(t, nil)}
-	if _, err := gearsServer.SaveGear(context.Background(), apitypes.Gear{
-		PublicKey:     gearKey.Public.String(),
-		Role:          apitypes.GearRoleGear,
-		Status:        apitypes.GearStatusActive,
+	peersServer := &peer.Server{Store: mustBadgerInMemory(t, nil)}
+	if _, err := peersServer.SavePeer(context.Background(), apitypes.Peer{
+		PublicKey:     peerKey.Public.String(),
+		Role:          apitypes.PeerRoleClient,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Device:        apitypes.DeviceInfo{},
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear gear error = %v", err)
+		t.Fatalf("SavePeer peer error = %v", err)
 	}
-	if _, err := gearsServer.SaveGear(context.Background(), apitypes.Gear{
+	if _, err := peersServer.SavePeer(context.Background(), apitypes.Peer{
 		PublicKey:     adminKey.Public.String(),
-		Role:          apitypes.GearRoleAdmin,
-		Status:        apitypes.GearStatusActive,
+		Role:          apitypes.PeerRoleAdmin,
+		Status:        apitypes.PeerRegistrationStatusActive,
 		Device:        apitypes.DeviceInfo{},
 		Configuration: apitypes.Configuration{},
 	}); err != nil {
-		t.Fatalf("SaveGear admin error = %v", err)
+		t.Fatalf("SavePeer admin error = %v", err)
 	}
-	server := &Server{manager: NewManager(gearsServer)}
+	server := &Server{manager: NewManager(peersServer)}
 	policy := (*ServerSecurityPolicy)(server)
-	if !policy.AllowService(gearKey.Public, ServiceRPC) {
-		t.Fatal("gear should allow rpc")
+	if !policy.AllowService(peerKey.Public, ServiceRPC) {
+		t.Fatal("peer should allow rpc")
 	}
-	if !policy.AllowService(gearKey.Public, ServiceServerPublic) {
-		t.Fatal("gear should allow server public")
+	if !policy.AllowService(peerKey.Public, ServiceServerPublic) {
+		t.Fatal("peer should allow server public")
 	}
-	if policy.AllowService(gearKey.Public, ServiceAdmin) {
-		t.Fatal("non-admin gear should not allow admin")
+	if policy.AllowService(peerKey.Public, ServiceAdmin) {
+		t.Fatal("non-admin peer should not allow admin")
 	}
 	if !policy.AllowService(adminKey.Public, ServiceAdmin) {
-		t.Fatal("active admin gear should allow admin")
+		t.Fatal("active admin peer should allow admin")
 	}
 	configuredKey, err := giznet.GenerateKeyPair()
 	if err != nil {

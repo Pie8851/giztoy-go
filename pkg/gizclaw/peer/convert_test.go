@@ -13,10 +13,10 @@ func TestConvertHelpers(t *testing.T) {
 	autoRegistered := true
 	deviceName := "convert-device"
 	publicKey := giznet.PublicKey{1}
-	gear := apitypes.Gear{
+	peer := apitypes.Peer{
 		PublicKey:      publicKey.String(),
-		Role:           apitypes.GearRoleServer,
-		Status:         apitypes.GearStatusActive,
+		Role:           apitypes.PeerRoleServer,
+		Status:         apitypes.PeerRegistrationStatusActive,
 		AutoRegistered: &autoRegistered,
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -26,30 +26,30 @@ func TestConvertHelpers(t *testing.T) {
 		},
 	}
 
-	adminRegistrations := toAdminRegistrationList([]apitypes.Gear{gear}, false, nil)
-	if len(adminRegistrations.Items) != 1 || adminRegistrations.Items[0].PublicKey != gear.PublicKey {
+	adminRegistrations := toAdminRegistrationList([]apitypes.Peer{peer}, false, nil)
+	if len(adminRegistrations.Items) != 1 || adminRegistrations.Items[0].PublicKey != peer.PublicKey {
 		t.Fatalf("toAdminRegistrationList = %+v", adminRegistrations)
 	}
 	if adminRegistrations.Items[0].Device == nil || adminRegistrations.Items[0].Device.Name == nil || *adminRegistrations.Items[0].Device.Name != deviceName {
 		t.Fatalf("toAdminRegistrationList device = %+v", adminRegistrations.Items[0].Device)
 	}
 
-	convertedDevice, err := toGearDeviceInfo(gear.Device)
+	convertedDevice, err := toPeerDeviceInfo(peer.Device)
 	if err != nil {
-		t.Fatalf("toGearDeviceInfo error: %v", err)
+		t.Fatalf("toPeerDeviceInfo error: %v", err)
 	}
-	if convertedDevice.Name == nil || *convertedDevice.Name != *gear.Device.Name {
-		t.Fatalf("toGearDeviceInfo = %+v", convertedDevice)
+	if convertedDevice.Name == nil || *convertedDevice.Name != *peer.Device.Name {
+		t.Fatalf("toPeerDeviceInfo = %+v", convertedDevice)
 	}
 
 	adminDevice, err := toAdminDeviceInfo(apitypes.DeviceInfo{
-		Name: gear.Device.Name,
-		Sn:   gear.Device.Sn,
+		Name: peer.Device.Name,
+		Sn:   peer.Device.Sn,
 	})
 	if err != nil {
 		t.Fatalf("toAdminDeviceInfo error: %v", err)
 	}
-	if adminDevice.Name == nil || *adminDevice.Name != *gear.Device.Name {
+	if adminDevice.Name == nil || *adminDevice.Name != *peer.Device.Name {
 		t.Fatalf("toAdminDeviceInfo = %+v", adminDevice)
 	}
 

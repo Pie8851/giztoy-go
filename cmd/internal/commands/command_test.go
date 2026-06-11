@@ -41,8 +41,8 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out, "migrate") {
 		t.Fatalf("help missing 'migrate': %s", out)
 	}
-	if !strings.Contains(out, "peer") {
-		t.Fatalf("help missing 'peer': %s", out)
+	if !strings.Contains(out, "connect") {
+		t.Fatalf("help missing 'connect': %s", out)
 	}
 	if !strings.Contains(out, "admin") {
 		t.Fatalf("help missing 'admin': %s", out)
@@ -149,7 +149,7 @@ func TestSetNameHelp(t *testing.T) {
 	root := New()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
-	root.SetArgs([]string{"peer", "set-name", "--help"})
+	root.SetArgs([]string{"connect", "set-name", "--help"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -163,24 +163,24 @@ func TestSetNameHelp(t *testing.T) {
 
 func TestSetNameRejectsEmptyName(t *testing.T) {
 	root := New()
-	root.SetArgs([]string{"peer", "set-name", "   "})
+	root.SetArgs([]string{"connect", "set-name", "   "})
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "device name must not be empty") {
 		t.Fatalf("set-name empty err=%v", err)
 	}
 }
 
-func TestPeerHelp(t *testing.T) {
+func TestConnectHelp(t *testing.T) {
 	root := New()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
-	root.SetArgs([]string{"peer", "--help"})
+	root.SetArgs([]string{"connect", "--help"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"ping", "server-info", "set-name", "test-speed"} {
+	for _, want := range []string{"ping", "server-info", "set-name", "say", "test-speed"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("peer help missing %q: %s", want, out)
+			t.Fatalf("connect help missing %q: %s", want, out)
 		}
 	}
 }
@@ -189,7 +189,7 @@ func TestPingHelp(t *testing.T) {
 	root := New()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
-	root.SetArgs([]string{"peer", "ping", "--help"})
+	root.SetArgs([]string{"connect", "ping", "--help"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -199,11 +199,35 @@ func TestPingHelp(t *testing.T) {
 	}
 }
 
+func TestSayHelp(t *testing.T) {
+	root := New()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"connect", "say", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"say --voice <voice-id> <text>", "--context", "--voice", "--timeout"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("say help missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestSayRejectsEmptyText(t *testing.T) {
+	root := New()
+	root.SetArgs([]string{"connect", "say", "--voice", "voice-1", "   "})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "text must not be empty") {
+		t.Fatalf("say empty err=%v", err)
+	}
+}
+
 func TestTestSpeedHelp(t *testing.T) {
 	root := New()
 	var buf bytes.Buffer
 	root.SetOut(&buf)
-	root.SetArgs([]string{"peer", "test-speed", "--help"})
+	root.SetArgs([]string{"connect", "test-speed", "--help"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}

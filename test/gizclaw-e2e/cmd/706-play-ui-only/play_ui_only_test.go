@@ -70,7 +70,7 @@ func TestPlayListenAutoRegistersCurrentContext(t *testing.T) {
 		t.Fatalf("play UI did not prepare context: %v\nplay stdout:\n%s\nplay stderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(result.Stdout, `"auto_registered":true`) {
-		t.Fatalf("prepared gear should be marked auto_registered:\n%s", result.Stdout)
+		t.Fatalf("prepared peer should be marked auto_registered:\n%s", result.Stdout)
 	}
 }
 

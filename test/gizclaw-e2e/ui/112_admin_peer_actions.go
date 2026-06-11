@@ -17,7 +17,7 @@ func adminPeerActionsStories() []Story {
 				page.ExpectText("Peer refreshed.")
 				page.ClickRole("tab", "Edit")
 				page.ClickRole("button", "Save Role")
-				page.ExpectText("Peer role saved as gear.")
+				page.ExpectText("Peer role saved as client.")
 				page.ClickRole("tab", "Edit")
 				page.ClickRole("button", "Block")
 				page.ExpectText("Peer blocked.")

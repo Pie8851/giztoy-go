@@ -12,21 +12,21 @@ import {
   type Runtime,
 } from "@gizclaw/adminservice";
 
-export interface GearDetail {
+export interface PeerDetail {
   config: Configuration | null;
   info: DeviceInfo | null;
   registration: Registration | null;
   runtime: Runtime | null;
 }
 
-export interface GearDetailState {
-  data: GearDetail | null;
+export interface PeerDetailState {
+  data: PeerDetail | null;
   error: string;
   loading: boolean;
 }
 
-export function usePeerDetail(publicKey: string | undefined): GearDetailState & { reload: () => Promise<void> } {
-  const [state, setState] = useState<GearDetailState>({
+export function usePeerDetail(publicKey: string | undefined): PeerDetailState & { reload: () => Promise<void> } {
+  const [state, setState] = useState<PeerDetailState>({
     data: null,
     error: "",
     loading: false,

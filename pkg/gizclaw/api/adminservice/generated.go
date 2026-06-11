@@ -63,7 +63,7 @@ type ACLViewUpsert struct {
 
 // ApproveRequest defines model for ApproveRequest.
 type ApproveRequest struct {
-	Role externalRef0.GearRole `json:"role"`
+	Role externalRef0.PeerRole `json:"role"`
 }
 
 // CredentialList defines model for CredentialList.
@@ -209,7 +209,7 @@ type PublicKeyResponse struct {
 // RefreshResult defines model for RefreshResult.
 type RefreshResult struct {
 	Errors        *[]string         `json:"errors,omitempty"`
-	Gear          externalRef0.Gear `json:"gear"`
+	Peer          externalRef0.Peer `json:"peer"`
 	UpdatedFields *[]string         `json:"updated_fields,omitempty"`
 }
 
