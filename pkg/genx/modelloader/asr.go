@@ -36,18 +36,6 @@ func registerDoubaoASR(cfg ConfigFile) ([]string, error) {
 	// Extract default params
 	var opts []transformers.DoubaoASRSAUCOption
 	if cfg.DefaultParams != nil {
-		if format, ok := cfg.DefaultParams["format"].(string); ok {
-			opts = append(opts, transformers.WithDoubaoASRSAUCFormat(format))
-		}
-		if sampleRate, ok := cfg.DefaultParams["sample_rate"].(float64); ok {
-			opts = append(opts, transformers.WithDoubaoASRSAUCSampleRate(int(sampleRate)))
-		}
-		if bits, ok := cfg.DefaultParams["bits"].(float64); ok {
-			opts = append(opts, transformers.WithDoubaoASRSAUCBits(int(bits)))
-		}
-		if channel, ok := cfg.DefaultParams["channel"].(float64); ok {
-			opts = append(opts, transformers.WithDoubaoASRSAUCChannels(int(channel)))
-		}
 		if language, ok := cfg.DefaultParams["language"].(string); ok {
 			opts = append(opts, transformers.WithDoubaoASRSAUCLanguage(language))
 		}
@@ -74,8 +62,12 @@ func registerDoubaoASR(cfg ConfigFile) ([]string, error) {
 		modelOpts := append(slices.Clone(opts), transformers.WithDoubaoASRSAUCResourceID(resourceID))
 		asr := transformers.NewDoubaoASRSAUC(client, modelOpts...)
 		// Register to both ASRMux and DefaultMux for compatibility
-		transformers.HandleASR(m.Name, asr)
-		transformers.Handle(m.Name, asr)
+		if err := transformers.HandleASR(m.Name, asr); err != nil {
+			return nil, fmt.Errorf("register ASR transformer %q: %w", m.Name, err)
+		}
+		if err := transformers.Handle(m.Name, asr); err != nil {
+			return nil, fmt.Errorf("register transformer %q: %w", m.Name, err)
+		}
 		names = append(names, m.Name)
 	}
 

@@ -1,12 +1,17 @@
 package modelloader
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
+	"github.com/GizClaw/gizclaw-go/pkg/genx/generators"
 	"github.com/GizClaw/gizclaw-go/pkg/genx/labelers"
+	"github.com/GizClaw/gizclaw-go/pkg/genx/transformers"
 )
 
 func TestExpandEnv(t *testing.T) {
@@ -166,6 +171,289 @@ func TestRegisterConfig_InvalidSchema(t *testing.T) {
 	_, err := registerConfig(cfg)
 	if err == nil {
 		t.Error("expected error for invalid schema")
+	}
+}
+
+func TestRegisterOpenAIAndGemini(t *testing.T) {
+	oldMux := generators.DefaultMux
+	generators.DefaultMux = generators.NewMux()
+	t.Cleanup(func() {
+		generators.DefaultMux = oldMux
+	})
+
+	openAINames, err := registerOpenAI(ConfigFile{
+		APIKey:  "sk-test",
+		BaseURL: "https://example.invalid/v1",
+		Models: []Entry{{
+			Name:              "openai/test",
+			Model:             "gpt-test",
+			SupportJSONOutput: true,
+			SupportToolCalls:  true,
+			TextOnly:          true,
+			PromptRole:        genx.PromptRoleSystem,
+			ExtraFields:       map[string]any{"x": "y"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("registerOpenAI() error = %v", err)
+	}
+	if len(openAINames) != 1 || openAINames[0] != "openai/test" {
+		t.Fatalf("openAI names = %v, want [openai/test]", openAINames)
+	}
+	if _, err := generators.DefaultMux.GenerateStream(testingContext(t), "openai/missing", nil); err == nil {
+		t.Fatal("expected missing generator error")
+	}
+
+	geminiNames, err := registerGemini(ConfigFile{
+		APIKey: "gemini-key",
+		Models: []Entry{{
+			Name:  "gemini/test",
+			Model: "gemini-test",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("registerGemini() error = %v", err)
+	}
+	if len(geminiNames) != 1 || geminiNames[0] != "gemini/test" {
+		t.Fatalf("gemini names = %v, want [gemini/test]", geminiNames)
+	}
+}
+
+func TestRegisterOpenAIAndGeminiValidation(t *testing.T) {
+	if _, err := registerOpenAI(ConfigFile{}); err == nil {
+		t.Fatal("expected openai missing api_key error")
+	}
+	if _, err := registerOpenAI(ConfigFile{APIKey: "sk-test", Models: []Entry{{Name: "bad"}}}); err == nil {
+		t.Fatal("expected openai missing model error")
+	}
+	if _, err := registerGemini(ConfigFile{}); err == nil {
+		t.Fatal("expected gemini missing api_key error")
+	}
+	if _, err := registerGemini(ConfigFile{APIKey: "gemini-key", Models: []Entry{{Model: "bad"}}}); err == nil {
+		t.Fatal("expected gemini missing name error")
+	}
+}
+
+func TestRegisterSpeechSchemaDispatch(t *testing.T) {
+	oldDefaultMux := transformers.DefaultMux
+	oldASRMux := transformers.ASRMux
+	oldTTSMux := transformers.TTSMux
+	transformers.DefaultMux = transformers.NewMux()
+	transformers.ASRMux = transformers.NewASRMux()
+	transformers.TTSMux = transformers.NewTTSMux()
+	t.Cleanup(func() {
+		transformers.DefaultMux = oldDefaultMux
+		transformers.ASRMux = oldASRMux
+		transformers.TTSMux = oldTTSMux
+	})
+
+	tests := []struct {
+		name string
+		cfg  ConfigFile
+		want string
+		call func(ConfigFile) ([]string, error)
+	}{
+		{
+			name: "asr",
+			cfg: ConfigFile{
+				Schema: "doubao/asr/v1",
+				AppID:  "app",
+				Token:  "token",
+				Models: []Entry{{Name: "asr/schema-test"}},
+			},
+			want: "asr/schema-test",
+			call: registerASRBySchema,
+		},
+		{
+			name: "realtime",
+			cfg: ConfigFile{
+				Schema: "doubao/realtime/v1",
+				AppID:  "app",
+				Token:  "token",
+				Models: []Entry{{Name: "realtime/schema-test"}},
+			},
+			want: "realtime/schema-test",
+			call: registerRealtimeBySchema,
+		},
+		{
+			name: "doubao tts",
+			cfg: ConfigFile{
+				Schema: "doubao/seed_tts/v2",
+				AppID:  "app",
+				Token:  "token",
+				DefaultParams: map[string]any{
+					"format":      "mp3",
+					"sample_rate": float64(24000),
+				},
+				Voices: []VoiceEntry{{Name: "tts/doubao", VoiceID: "voice-doubao"}},
+			},
+			want: "tts/doubao",
+			call: registerTTSBySchema,
+		},
+		{
+			name: "minimax tts",
+			cfg: ConfigFile{
+				Schema:  "minimax/speech/v1",
+				APIKey:  "mini-key",
+				BaseURL: "https://example.invalid",
+				Model:   "speech-02-hd",
+				Voices:  []VoiceEntry{{Name: "tts/minimax", VoiceID: "voice-minimax"}},
+			},
+			want: "tts/minimax",
+			call: registerTTSBySchema,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			names, err := tt.call(tt.cfg)
+			if err != nil {
+				t.Fatalf("%s register error = %v", tt.name, err)
+			}
+			if len(names) != 1 || names[0] != tt.want {
+				t.Fatalf("names = %v, want [%s]", names, tt.want)
+			}
+		})
+	}
+}
+
+func TestRegisterSpeechSchemaValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  ConfigFile
+		call func(ConfigFile) ([]string, error)
+	}{
+		{name: "asr invalid schema", cfg: ConfigFile{Schema: "bad"}, call: registerASRBySchema},
+		{name: "asr unknown provider", cfg: ConfigFile{Schema: "unknown/asr/v1"}, call: registerASRBySchema},
+		{name: "asr missing app", cfg: ConfigFile{Schema: "doubao/asr/v1", Token: "token"}, call: registerASRBySchema},
+		{name: "asr missing token", cfg: ConfigFile{Schema: "doubao/asr/v1", AppID: "app"}, call: registerASRBySchema},
+		{name: "asr missing model name", cfg: ConfigFile{Schema: "doubao/asr/v1", AppID: "app", Token: "token", Models: []Entry{{}}}, call: registerASRBySchema},
+		{name: "realtime invalid schema", cfg: ConfigFile{Schema: "bad"}, call: registerRealtimeBySchema},
+		{name: "realtime unknown provider", cfg: ConfigFile{Schema: "unknown/realtime/v1"}, call: registerRealtimeBySchema},
+		{name: "realtime missing app", cfg: ConfigFile{Schema: "doubao/realtime/v1", Token: "token"}, call: registerRealtimeBySchema},
+		{name: "realtime missing token", cfg: ConfigFile{Schema: "doubao/realtime/v1", AppID: "app"}, call: registerRealtimeBySchema},
+		{name: "realtime missing model name", cfg: ConfigFile{Schema: "doubao/realtime/v1", AppID: "app", Token: "token", Models: []Entry{{}}}, call: registerRealtimeBySchema},
+		{name: "tts invalid schema", cfg: ConfigFile{Schema: "bad"}, call: registerTTSBySchema},
+		{name: "tts unknown provider", cfg: ConfigFile{Schema: "unknown/tts/v1"}, call: registerTTSBySchema},
+		{name: "doubao tts missing app", cfg: ConfigFile{Schema: "doubao/tts/v1", Token: "token"}, call: registerTTSBySchema},
+		{name: "doubao tts missing token", cfg: ConfigFile{Schema: "doubao/tts/v1", AppID: "app"}, call: registerTTSBySchema},
+		{name: "doubao tts missing voice", cfg: ConfigFile{Schema: "doubao/tts/v1", AppID: "app", Token: "token", Voices: []VoiceEntry{{Name: "tts/bad"}}}, call: registerTTSBySchema},
+		{name: "minimax tts missing key", cfg: ConfigFile{Schema: "minimax/tts/v1"}, call: registerTTSBySchema},
+		{name: "minimax tts missing voice", cfg: ConfigFile{Schema: "minimax/tts/v1", APIKey: "mini-key", Voices: []VoiceEntry{{VoiceID: "voice"}}}, call: registerTTSBySchema},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := tc.call(tc.cfg); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestRegisterDoubaoASRIgnoresTransportAudioDefaults(t *testing.T) {
+	oldDefaultMux := transformers.DefaultMux
+	oldASRMux := transformers.ASRMux
+	transformers.DefaultMux = transformers.NewMux()
+	transformers.ASRMux = transformers.NewASRMux()
+	t.Cleanup(func() {
+		transformers.DefaultMux = oldDefaultMux
+		transformers.ASRMux = oldASRMux
+	})
+
+	names, err := registerDoubaoASR(ConfigFile{
+		AppID: "app",
+		Token: "token",
+		DefaultParams: map[string]any{
+			"format":      "ogg_opus",
+			"sample_rate": float64(24000),
+			"bits":        float64(24),
+			"channel":     float64(2),
+			"language":    "en-US",
+		},
+		Models: []Entry{{Name: "asr/test", ResourceID: "resource/test"}},
+	})
+	if err != nil {
+		t.Fatalf("registerDoubaoASR() error = %v", err)
+	}
+	if len(names) != 1 || names[0] != "asr/test" {
+		t.Fatalf("names = %v, want [asr/test]", names)
+	}
+
+	registered := mustRegisteredDefaultTransformer(t, "asr/test")
+	if got := stringField(t, registered, "format"); got != "pcm" {
+		t.Fatalf("format = %q, want fixed default pcm", got)
+	}
+	if got := intField(t, registered, "sampleRate"); got != 16000 {
+		t.Fatalf("sampleRate = %d, want fixed default 16000", got)
+	}
+	if got := intField(t, registered, "bits"); got != 16 {
+		t.Fatalf("bits = %d, want fixed default 16", got)
+	}
+	if got := intField(t, registered, "channels"); got != 1 {
+		t.Fatalf("channels = %d, want fixed default 1", got)
+	}
+	if got := stringField(t, registered, "language"); got != "en-US" {
+		t.Fatalf("language = %q, want configured language", got)
+	}
+
+	_, err = registerDoubaoASR(ConfigFile{
+		AppID:  "app",
+		Token:  "token",
+		Models: []Entry{{Name: "asr/test"}},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate ASR registration error")
+	}
+}
+
+func TestRegisterDoubaoRealtimeIgnoresOutputAudioDefaults(t *testing.T) {
+	oldDefaultMux := transformers.DefaultMux
+	transformers.DefaultMux = transformers.NewMux()
+	t.Cleanup(func() {
+		transformers.DefaultMux = oldDefaultMux
+	})
+
+	names, err := registerDoubaoRealtime(ConfigFile{
+		AppID: "app",
+		Token: "token",
+		DefaultParams: map[string]any{
+			"format":        "pcm",
+			"sample_rate":   float64(8000),
+			"model":         "SC",
+			"vad_window_ms": float64(350),
+		},
+		Models: []Entry{{Name: "realtime/test", Voice: "voice/test"}},
+	})
+	if err != nil {
+		t.Fatalf("registerDoubaoRealtime() error = %v", err)
+	}
+	if len(names) != 1 || names[0] != "realtime/test" {
+		t.Fatalf("names = %v, want [realtime/test]", names)
+	}
+
+	registered := mustRegisteredDefaultTransformer(t, "realtime/test")
+	if got := stringField(t, registered, "format"); got != "ogg_opus" {
+		t.Fatalf("format = %q, want fixed default ogg_opus", got)
+	}
+	if got := intField(t, registered, "sampleRate"); got != 24000 {
+		t.Fatalf("sampleRate = %d, want fixed default 24000", got)
+	}
+	if got := stringField(t, registered, "model"); got != "SC" {
+		t.Fatalf("model = %q, want configured model", got)
+	}
+	if got := intField(t, registered, "vadWindowMs"); got != 350 {
+		t.Fatalf("vadWindowMs = %d, want configured VAD window", got)
+	}
+	if got := stringField(t, registered, "speaker"); got != "voice/test" {
+		t.Fatalf("speaker = %q, want configured voice", got)
+	}
+
+	_, err = registerDoubaoRealtime(ConfigFile{
+		AppID:  "app",
+		Token:  "token",
+		Models: []Entry{{Name: "realtime/test"}},
+	})
+	if err == nil {
+		t.Fatal("expected duplicate realtime registration error")
 	}
 }
 
@@ -472,4 +760,38 @@ func TestRegisterBySchemaLabelerType(t *testing.T) {
 	if len(names) != 1 || names[0] != "labeler/demo" {
 		t.Fatalf("names = %v, want [labeler/demo]", names)
 	}
+}
+
+func mustRegisteredDefaultTransformer(t *testing.T, pattern string) genx.Transformer {
+	t.Helper()
+	muxValue := reflect.ValueOf(transformers.DefaultMux).Elem().FieldByName("mux")
+	muxValue = reflect.NewAt(muxValue.Type(), unsafe.Pointer(muxValue.UnsafeAddr())).Elem()
+	results := muxValue.MethodByName("Get").Call([]reflect.Value{reflect.ValueOf(pattern)})
+	if len(results) != 2 || !results[1].Bool() {
+		t.Fatalf("transformer %q was not registered", pattern)
+	}
+	ptr := results[0].Interface().(*genx.Transformer)
+	if ptr == nil || *ptr == nil {
+		t.Fatalf("transformer %q is nil", pattern)
+	}
+	return *ptr
+}
+
+func stringField(t *testing.T, value any, name string) string {
+	t.Helper()
+	field := reflect.ValueOf(value).Elem().FieldByName(name)
+	field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+	return field.String()
+}
+
+func intField(t *testing.T, value any, name string) int {
+	t.Helper()
+	field := reflect.ValueOf(value).Elem().FieldByName(name)
+	field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+	return int(field.Int())
+}
+
+func testingContext(t *testing.T) context.Context {
+	t.Helper()
+	return context.Background()
 }

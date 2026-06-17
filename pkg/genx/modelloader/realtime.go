@@ -38,12 +38,6 @@ func registerDoubaoRealtime(cfg ConfigFile) ([]string, error) {
 	// Extract default params
 	var defaultOpts []transformers.DoubaoRealtimeOption
 	if cfg.DefaultParams != nil {
-		if sampleRate, ok := cfg.DefaultParams["sample_rate"].(float64); ok {
-			defaultOpts = append(defaultOpts, transformers.WithDoubaoRealtimeSampleRate(int(sampleRate)))
-		}
-		if format, ok := cfg.DefaultParams["format"].(string); ok {
-			defaultOpts = append(defaultOpts, transformers.WithDoubaoRealtimeFormat(format))
-		}
 		if model, ok := cfg.DefaultParams["model"].(string); ok {
 			defaultOpts = append(defaultOpts, transformers.WithDoubaoRealtimeModel(model))
 		}
@@ -72,7 +66,9 @@ func registerDoubaoRealtime(cfg ConfigFile) ([]string, error) {
 
 		// Create realtime transformer
 		rt := transformers.NewDoubaoRealtime(client, opts...)
-		transformers.Handle(m.Name, rt)
+		if err := transformers.Handle(m.Name, rt); err != nil {
+			return nil, fmt.Errorf("register realtime transformer %q: %w", m.Name, err)
+		}
 		names = append(names, m.Name)
 	}
 
