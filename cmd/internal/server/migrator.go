@@ -8,6 +8,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/cmd/internal/stores"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/acl"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/credential"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 )
 
@@ -52,10 +53,19 @@ func NewMigrator(cfg Config) (migrator *CmdMigrator, err error) {
 		}
 		peers = &peer.Server{Store: peerKV}
 	}
+	var credentials *credential.Server
+	if storeExists(cfg, defaultCredentialsStore) {
+		credentialKV, err := ss.KV(defaultCredentialsStore)
+		if err != nil {
+			return nil, fmt.Errorf("server: credentials store: %w", err)
+		}
+		credentials = &credential.Server{Store: credentialKV}
+	}
 	return &CmdMigrator{
 		Migrator: &gizclaw.Migrator{
-			ACL:   &acl.Server{DB: aclDB},
-			Peers: peers,
+			ACL:         &acl.Server{DB: aclDB},
+			Credentials: credentials,
+			Peers:       peers,
 		},
 		stores: ss,
 	}, nil

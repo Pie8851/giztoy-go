@@ -3,12 +3,64 @@ package credential
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
 )
+
+func TestMigrationRemovesLegacyMethodFields(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t)
+	ctx := context.Background()
+	legacy := []byte(`{
+		"name":"legacy-volc",
+		"provider":"volc",
+		"method":"api_key",
+		"description":"legacy credential",
+		"body":{"method":"api_key","api_key":"ak","token":"tok"},
+		"created_at":"2026-01-01T00:00:00Z",
+		"updated_at":"2026-01-01T00:00:00Z"
+	}`)
+	if err := srv.Store.BatchSet(ctx, []kv.Entry{
+		{Key: credentialKey("legacy-volc"), Value: legacy},
+	}); err != nil {
+		t.Fatalf("seed legacy credential: %v", err)
+	}
+
+	for range 2 {
+		if err := srv.Migration(ctx); err != nil {
+			t.Fatalf("Migration() error = %v", err)
+		}
+	}
+
+	data, err := srv.Store.Get(ctx, credentialKey("legacy-volc"))
+	if err != nil {
+		t.Fatalf("get migrated credential: %v", err)
+	}
+	if strings.Contains(string(data), `"method"`) {
+		t.Fatalf("migrated credential still has method: %s", data)
+	}
+	record, err := decodeCredentialRecord(data)
+	if err != nil {
+		t.Fatalf("decode migrated credential: %v", err)
+	}
+	if record.Name != "legacy-volc" || record.Provider != "volc" {
+		t.Fatalf("record identity = %+v", record)
+	}
+	if got := apitypes.CredentialBodyString(record.Body, "api_key"); got != "ak" {
+		t.Fatalf("api_key = %q, want ak", got)
+	}
+	if got := apitypes.CredentialBodyString(record.Body, "token"); got != "tok" {
+		t.Fatalf("token = %q, want tok", got)
+	}
+	if _, err := srv.Store.Get(ctx, credentialByProviderKey("volc", "legacy-volc")); err != nil {
+		t.Fatalf("provider index missing: %v", err)
+	}
+}
 
 func TestServerCredentialsCRUD(t *testing.T) {
 	t.Parallel()

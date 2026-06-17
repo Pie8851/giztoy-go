@@ -5,12 +5,14 @@ import (
 	"errors"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/acl"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/credential"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 )
 
 type Migrator struct {
-	ACL   *acl.Server
-	Peers *peer.Server
+	ACL         *acl.Server
+	Credentials *credential.Server
+	Peers       *peer.Server
 }
 
 func (m *Migrator) Migrate(ctx context.Context) error {
@@ -24,6 +26,11 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 	}
 	if m.Peers != nil {
 		if err := m.Peers.Migration(ctx); err != nil {
+			return err
+		}
+	}
+	if m.Credentials != nil {
+		if err := m.Credentials.Migration(ctx); err != nil {
 			return err
 		}
 	}
