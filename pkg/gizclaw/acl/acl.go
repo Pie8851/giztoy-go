@@ -26,6 +26,8 @@ const (
 	ResourceKindFriend      = apitypes.ACLResourceKindFriend
 	ResourceKindFriendReq   = apitypes.ACLResourceKindFriendRequest
 	ResourceKindFriendGroup = apitypes.ACLResourceKindFriendGroup
+
+	CollectionResourceID = "__collection__"
 )
 
 var ErrDenied = errors.New("acl: denied")
@@ -96,6 +98,13 @@ func WorkspaceResource(name string) apitypes.ACLResource {
 	return apitypes.ACLResource{
 		Kind: ResourceKindWorkspace,
 		Id:   name,
+	}
+}
+
+func CollectionResource(kind apitypes.ACLResourceKind) apitypes.ACLResource {
+	return apitypes.ACLResource{
+		Kind: kind,
+		Id:   CollectionResourceID,
 	}
 }
 

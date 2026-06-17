@@ -19,7 +19,6 @@ func TestApplyCredentialCreatesResource(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"},
 			"description": "primary key"
 		}
@@ -41,10 +40,9 @@ func TestApplyCredentialCreatesResource(t *testing.T) {
 func TestApplyCredentialUnchangedSkipsPut(t *testing.T) {
 	credentials := newFakeCredentials()
 	credentials.items["minimax-main"] = apitypes.Credential{
-		Body:        apitypes.CredentialBody{"api_key": "secret"},
+		Body:        apitypes.NewOpenAICredentialBody("secret"),
 		CreatedAt:   time.Now().UTC(),
 		Description: ptr("primary key"),
-		Method:      apitypes.CredentialMethodApiKey,
 		Name:        "minimax-main",
 		Provider:    "minimax",
 		UpdatedAt:   time.Now().UTC(),
@@ -57,7 +55,6 @@ func TestApplyCredentialUnchangedSkipsPut(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"},
 			"description": "primary key"
 		}
@@ -76,9 +73,8 @@ func TestApplyCredentialUnchangedSkipsPut(t *testing.T) {
 func TestApplyCredentialUpdatesResource(t *testing.T) {
 	credentials := newFakeCredentials()
 	credentials.items["minimax-main"] = apitypes.Credential{
-		Body:      apitypes.CredentialBody{"api_key": "old"},
+		Body:      apitypes.NewOpenAICredentialBody("old"),
 		CreatedAt: time.Now().UTC(),
-		Method:    apitypes.CredentialMethodApiKey,
 		Name:      "minimax-main",
 		Provider:  "minimax",
 		UpdatedAt: time.Now().UTC(),
@@ -91,7 +87,6 @@ func TestApplyCredentialUpdatesResource(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "new"}
 		}
 	}`))
@@ -109,9 +104,8 @@ func TestApplyCredentialUpdatesResource(t *testing.T) {
 func TestGetCredentialReturnsResource(t *testing.T) {
 	credentials := newFakeCredentials()
 	credentials.items["minimax-main"] = apitypes.Credential{
-		Body:      apitypes.CredentialBody{"api_key": "secret"},
+		Body:      apitypes.NewOpenAICredentialBody("secret"),
 		CreatedAt: time.Now().UTC(),
-		Method:    apitypes.CredentialMethodApiKey,
 		Name:      "minimax-main",
 		Provider:  "minimax",
 		UpdatedAt: time.Now().UTC(),
@@ -132,8 +126,8 @@ func TestGetCredentialReturnsResource(t *testing.T) {
 	if credential.Metadata.Name != "minimax-main" {
 		t.Fatalf("metadata.name = %q, want minimax-main", credential.Metadata.Name)
 	}
-	if credential.Spec.Body["api_key"] != "secret" {
-		t.Fatalf("api_key = %q, want secret", credential.Spec.Body["api_key"])
+	if got := apitypes.CredentialBodyString(credential.Spec.Body, "api_key"); got != "secret" {
+		t.Fatalf("api_key = %q, want secret", got)
 	}
 }
 
@@ -147,7 +141,6 @@ func TestPutCredentialWritesAndReturnsResource(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`))
@@ -179,7 +172,6 @@ func TestPutCredentialEscapesServicePathName(t *testing.T) {
 		"metadata": {"name": "mini/max%main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`))
@@ -272,7 +264,6 @@ func (f *fakeCredentials) PutCredential(_ context.Context, request adminservice.
 		Body:        body.Body,
 		CreatedAt:   now,
 		Description: body.Description,
-		Method:      body.Method,
 		Name:        body.Name,
 		Provider:    body.Provider,
 		UpdatedAt:   now,

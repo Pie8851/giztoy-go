@@ -208,10 +208,10 @@ func peerStreamEventToChunk(event apitypes.PeerStreamEvent) (*genx.MessageChunk,
 	switch event.Type {
 	case apitypes.PeerStreamEventTypeBos:
 		ctrl.BeginOfStream = true
-		return &genx.MessageChunk{Ctrl: ctrl}, nil
+		return peerStreamEventControlChunk(ctrl, event), nil
 	case apitypes.PeerStreamEventTypeEos:
 		ctrl.EndOfStream = true
-		return &genx.MessageChunk{Ctrl: ctrl}, nil
+		return peerStreamEventControlChunk(ctrl, event), nil
 	case apitypes.PeerStreamEventTypeTextDelta:
 		text := ""
 		if event.Text != nil {
@@ -228,6 +228,28 @@ func peerStreamEventToChunk(event apitypes.PeerStreamEvent) (*genx.MessageChunk,
 	default:
 		return nil, fmt.Errorf("gizclaw: unsupported peer stream event type %q", event.Type)
 	}
+}
+
+func peerStreamEventControlChunk(ctrl *genx.StreamCtrl, event apitypes.PeerStreamEvent) *genx.MessageChunk {
+	chunk := &genx.MessageChunk{Ctrl: ctrl}
+	if blob := peerStreamEventBlobPart(event); blob != nil {
+		chunk.Part = blob
+	}
+	return chunk
+}
+
+func peerStreamEventBlobPart(event apitypes.PeerStreamEvent) *genx.Blob {
+	mimeType := ""
+	if event.MimeType != nil {
+		mimeType = strings.TrimSpace(*event.MimeType)
+	}
+	if mimeType == "" && event.Kind != nil && *event.Kind == apitypes.PeerStreamKindAudio {
+		mimeType = "audio/opus"
+	}
+	if mimeType == "" {
+		return nil
+	}
+	return &genx.Blob{MIMEType: mimeType}
 }
 
 func peerStreamEventsFromChunk(chunk *genx.MessageChunk) []apitypes.PeerStreamEvent {

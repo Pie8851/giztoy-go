@@ -80,6 +80,16 @@ func TestPeerStreamEventChunkMapping(t *testing.T) {
 	if len(events) != 1 || events[0].Error == nil || *events[0].Error != errorMessage {
 		t.Fatalf("event error = %+v, want %q", events, errorMessage)
 	}
+
+	mimeType := "audio/opus"
+	audioEOS, err := peerStreamEventToChunk(apitypes.PeerStreamEvent{V: 1, Type: apitypes.PeerStreamEventTypeEos, StreamId: &streamID, MimeType: &mimeType})
+	if err != nil {
+		t.Fatalf("audio eos peerStreamEventToChunk() error = %v", err)
+	}
+	blob, ok := audioEOS.Part.(*genx.Blob)
+	if !ok || blob.MIMEType != mimeType || len(blob.Data) != 0 || !audioEOS.IsEndOfStream() {
+		t.Fatalf("audio eos chunk = %#v, want empty audio EOS blob", audioEOS)
+	}
 }
 
 func TestPeerAgentOutputWritesStampedOpus(t *testing.T) {

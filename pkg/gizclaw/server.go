@@ -55,6 +55,7 @@ type Server struct {
 	CredentialStore              kv.Store
 	FirmwareStore                kv.Store
 	FirmwareAssets               objectstore.ObjectStore
+	AgentHostStore               objectstore.ObjectStore
 	MiniMaxCredentialStore       kv.Store
 	MiniMaxTenantStore           kv.Store
 	VolcTenantStore              kv.Store
@@ -250,6 +251,7 @@ func (s *Server) init() error {
 
 	legacySharedStore := s.CredentialStore == nil &&
 		s.FirmwareStore == nil &&
+		s.AgentHostStore == nil &&
 		s.MiniMaxTenantStore == nil &&
 		s.VolcTenantStore == nil &&
 		s.ModelStore == nil &&
@@ -396,6 +398,9 @@ func (s *Server) init() error {
 		Workspaces: workspaceServer,
 		Workflows:  workflowServer,
 	})
+	if s.AgentHostStore != nil {
+		manager.AgentHost.WorkspaceStore = agenthost.NewObjectWorkspaceStore(s.AgentHostStore)
+	}
 	manager.Workspaces = workspaceServer
 	manager.Workflows = workflowServer
 	manager.Firmwares = firmwareServer

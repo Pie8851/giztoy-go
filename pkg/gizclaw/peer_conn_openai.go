@@ -44,7 +44,7 @@ func (h *PeerConn) openAIHTTPHandler() http.Handler {
 }
 
 func newOpenAIHTTPHandler(svc *openaiapi.Server) http.Handler {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true, StreamRequestBody: true})
 	openaiservice.RegisterHandlersWithOptions(app, openaiservice.NewStrictHandler(svc, nil), openaiservice.FiberServerOptions{
 		BaseURL: "/v1",
 	})

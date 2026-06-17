@@ -2,7 +2,10 @@ package transformers
 
 import (
 	"context"
+	"log/slog"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/GizClaw/doubao-speech-go"
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
@@ -173,18 +176,45 @@ func (t *DoubaoTTSSeedV2) synthesize(ctx context.Context, text string, meta ttsC
 	}
 
 	normalizer := newTTSAudioNormalizer(mimeType)
+	start := time.Now()
+	firstAudio := false
 	for chunk, err := range t.client.TTSV2.Stream(ctx, req) {
 		if err != nil {
 			return err
 		}
 
 		if chunk.Audio != nil && len(chunk.Audio) > 0 {
-			if err := pushTTSAudioChunk(output, meta, mimeType, normalizer.Write(chunk.Audio)); err != nil {
+			audio := normalizer.Write(chunk.Audio)
+			if ttsDebugEnabled() && !firstAudio && len(audio) > 0 {
+				firstAudio = true
+				slog.Info(
+					"doubao tts: first audio",
+					"stream_id", meta.StreamID,
+					"name", meta.Name,
+					"runes", utf8.RuneCountInString(text),
+					"elapsed", time.Since(start),
+					"bytes", len(audio),
+					"text", ttsDebugPreview(text, 120),
+				)
+			}
+			if err := pushTTSAudioChunk(output, meta, mimeType, audio); err != nil {
 				return err
 			}
 		}
 	}
-	if err := pushTTSAudioChunk(output, meta, mimeType, normalizer.Flush()); err != nil {
+	audio := normalizer.Flush()
+	if ttsDebugEnabled() && !firstAudio && len(audio) > 0 {
+		slog.Info(
+			"doubao tts: first audio",
+			"stream_id", meta.StreamID,
+			"name", meta.Name,
+			"runes", utf8.RuneCountInString(text),
+			"elapsed", time.Since(start),
+			"bytes", len(audio),
+			"text", ttsDebugPreview(text, 120),
+		)
+	}
+	if err := pushTTSAudioChunk(output, meta, mimeType, audio); err != nil {
 		return err
 	}
 	return nil

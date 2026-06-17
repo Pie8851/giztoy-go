@@ -243,7 +243,11 @@ func TestDefaultBuilderBuildsOpenAIGenerator(t *testing.T) {
 				SystemRole: &trueValue,
 			},
 			ProviderData: &apitypes.ModelProviderData{
-				"openai-tenant": map[string]any{"upstream_model": upstream},
+				"openai-tenant": map[string]any{
+					"upstream_model":         upstream,
+					"thinking_param":         "thinking.type",
+					"default_thinking_level": "disabled",
+				},
 			},
 		},
 		Tenant: Tenant{
@@ -252,7 +256,7 @@ func TestDefaultBuilderBuildsOpenAIGenerator(t *testing.T) {
 		},
 		Credential: apitypes.Credential{
 			Name: "openai-key",
-			Body: apitypes.CredentialBody{"api_key": "sk-test"},
+			Body: apitypes.NewOpenAICredentialBody("sk-test"),
 		},
 	})
 	if err != nil {
@@ -264,6 +268,59 @@ func TestDefaultBuilderBuildsOpenAIGenerator(t *testing.T) {
 	}
 	if openaiGen.Model != upstream || !openaiGen.SupportJSONOutput || !openaiGen.SupportToolCalls || !openaiGen.TextOnly || openaiGen.PromptRole != genx.PromptRoleSystem {
 		t.Fatalf("OpenAIGenerator = %#v", openaiGen)
+	}
+	thinking, ok := openaiGen.ExtraFields["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "disabled" {
+		t.Fatalf("OpenAIGenerator ExtraFields = %#v, want thinking.type=disabled", openaiGen.ExtraFields)
+	}
+}
+
+func TestDefaultBuilderBuildsVolcArkGenerator(t *testing.T) {
+	trueValue := true
+	upstream := "doubao-test"
+	gen, err := (DefaultBuilder{}).BuildGenerator(context.Background(), GeneratorConfig{
+		Model: apitypes.Model{
+			Id:   "chat",
+			Kind: apitypes.ModelKindLlm,
+			Capabilities: &apitypes.ModelCapabilities{
+				JsonOutput: &trueValue,
+				ToolCalls:  &trueValue,
+				TextOnly:   &trueValue,
+				SystemRole: &trueValue,
+			},
+			ProviderData: &apitypes.ModelProviderData{
+				"volc-tenant": map[string]any{
+					"upstream_model":         upstream,
+					"thinking_param":         "thinking.type",
+					"default_thinking_level": "disabled",
+				},
+			},
+		},
+		Tenant: Tenant{
+			Kind: "volc-tenant",
+			Volc: &apitypes.VolcTenant{
+				Name:           "main",
+				CredentialName: "volc-key",
+			},
+		},
+		Credential: apitypes.Credential{
+			Name: "volc-key",
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"api_key": "ark-test"}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildGenerator() error = %v", err)
+	}
+	openaiGen, ok := gen.(*genx.OpenAIGenerator)
+	if !ok {
+		t.Fatalf("BuildGenerator() = %T, want *genx.OpenAIGenerator", gen)
+	}
+	if openaiGen.Model != upstream || !openaiGen.SupportJSONOutput || !openaiGen.SupportToolCalls || !openaiGen.TextOnly || openaiGen.PromptRole != genx.PromptRoleSystem {
+		t.Fatalf("OpenAIGenerator = %#v", openaiGen)
+	}
+	thinking, ok := openaiGen.ExtraFields["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "disabled" {
+		t.Fatalf("OpenAIGenerator ExtraFields = %#v, want thinking.type=disabled", openaiGen.ExtraFields)
 	}
 }
 
@@ -288,13 +345,12 @@ func TestDefaultBuilderBuildsVolcASRTransformer(t *testing.T) {
 			Kind: "volc-tenant",
 			Volc: &apitypes.VolcTenant{
 				Name:           "main",
-				AppId:          "app-id",
 				CredentialName: "volc-token",
 			},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{"token": "tok"},
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "token": "tok"}),
 		},
 	})
 	if err != nil {
@@ -345,13 +401,12 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformer(t *testing.T) {
 			Kind: "volc-tenant",
 			Volc: &apitypes.VolcTenant{
 				Name:           "main",
-				AppId:          "app-id",
 				CredentialName: "volc-token",
 			},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{"api_key": "runtime-key"},
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "api_key": "runtime-key"}),
 		},
 		Params: map[string]any{
 			"upstream_model": "SC",
@@ -383,13 +438,12 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformerFromWorkflowParams(t *testin
 			Kind: "volc-tenant",
 			Volc: &apitypes.VolcTenant{
 				Name:           "main",
-				AppId:          "app-id",
 				CredentialName: "volc-token",
 			},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{"access_key": "realtime-key"},
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "access_key": "realtime-key"}),
 		},
 		Params: map[string]any{
 			"auth_mode":          "v2",
@@ -473,16 +527,16 @@ func TestDefaultBuilderBuildsVolcASRTransformerPrefersSaucAccessToken(t *testing
 			Kind: "volc-tenant",
 			Volc: &apitypes.VolcTenant{
 				Name:           "main",
-				AppId:          "app-id",
 				CredentialName: "volc-token",
 			},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{
+				"app_id":        "app-id",
 				"access_key_id": "volc-ak",
 				"bearer_token":  "old-sauc-token",
-			},
+			}),
 		},
 	})
 	if err != nil {
@@ -507,11 +561,11 @@ func TestDefaultBuilderBuildsVolcASRTransformerTreatsAPIKeyAsSpeechAccessKey(t *
 		},
 		Tenant: Tenant{
 			Kind: "volc-tenant",
-			Volc: &apitypes.VolcTenant{Name: "main", AppId: "app-id"},
+			Volc: &apitypes.VolcTenant{Name: "main"},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{"api_key": "speech-runtime-key"},
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "api_key": "speech-runtime-key"}),
 		},
 	})
 	if err != nil {
@@ -522,6 +576,36 @@ func TestDefaultBuilderBuildsVolcASRTransformerTreatsAPIKeyAsSpeechAccessKey(t *
 	}
 	if got := transformerNestedStringField(t, tf, "client", "config", "apiKey"); got != "" {
 		t.Fatalf("ASR x-api-key = %q, want empty by default", got)
+	}
+}
+
+func TestDefaultBuilderBuildsVolcASRTransformerPrefersTokenOverArkAPIKey(t *testing.T) {
+	tf, err := (DefaultBuilder{}).BuildTransformer(context.Background(), TransformerConfig{
+		Model: &apitypes.Model{
+			Id:   "asr",
+			Kind: apitypes.ModelKindAsr,
+			ProviderData: &apitypes.ModelProviderData{
+				"volc-tenant": map[string]any{"resource_id": "volc.bigasr.sauc.duration"},
+			},
+		},
+		Tenant: Tenant{
+			Kind: "volc-tenant",
+			Volc: &apitypes.VolcTenant{Name: "main"},
+		},
+		Credential: apitypes.Credential{
+			Name: "volc-token",
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{
+				"app_id":  "app-id",
+				"api_key": "ark-runtime-key",
+				"token":   "speech-token",
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildTransformer() error = %v", err)
+	}
+	if got := transformerNestedStringField(t, tf, "client", "config", "accessKey"); got != "speech-token" {
+		t.Fatalf("ASR access key = %q, want speech token", got)
 	}
 }
 
@@ -536,11 +620,11 @@ func TestDefaultBuilderBuildsVolcASRTransformerSupportsXAPIKeyMode(t *testing.T)
 		},
 		Tenant: Tenant{
 			Kind: "volc-tenant",
-			Volc: &apitypes.VolcTenant{Name: "main", AppId: "app-id"},
+			Volc: &apitypes.VolcTenant{Name: "main"},
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: apitypes.CredentialBody{"api_key": "real-x-api-key"},
+			Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "api_key": "real-x-api-key"}),
 		},
 	})
 	if err != nil {
@@ -570,7 +654,7 @@ func TestDefaultBuilderBuildsGeminiGenerator(t *testing.T) {
 		},
 		Credential: apitypes.Credential{
 			Name: "gemini-key",
-			Body: apitypes.CredentialBody{"api_key": "gemini-token"},
+			Body: apitypes.NewGeminiCredentialBody("gemini-token"),
 		},
 	})
 	if err != nil {
@@ -612,11 +696,11 @@ func TestDefaultBuilderBuildsVoiceTransformers(t *testing.T) {
 				},
 				Tenant: Tenant{
 					Kind: "volc-tenant",
-					Volc: &apitypes.VolcTenant{Name: "main", AppId: "app-id", CredentialName: "volc-token"},
+					Volc: &apitypes.VolcTenant{Name: "main", CredentialName: "volc-token"},
 				},
-				Credential: apitypes.Credential{Name: "volc-token", Body: apitypes.CredentialBody{"token": "tok"}},
+				Credential: apitypes.Credential{Name: "volc-token", Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "token": "tok"})},
 			},
-			wantFormat:     defaultTTSAudioFormat,
+			wantFormat:     defaultVolcTTSAudioFormat,
 			wantSampleRate: defaultTTSAudioSampleRate,
 			wantResourceID: "seed-icl-2.0",
 		},
@@ -636,9 +720,9 @@ func TestDefaultBuilderBuildsVoiceTransformers(t *testing.T) {
 					Kind:    "minimax-tenant",
 					MiniMax: &apitypes.MiniMaxTenant{Name: "main", CredentialName: "minimax-key", BaseUrl: &baseURL},
 				},
-				Credential: apitypes.Credential{Name: "minimax-key", Body: apitypes.CredentialBody{"api_key": "sk-test"}},
+				Credential: apitypes.Credential{Name: "minimax-key", Body: apitypes.NewMiniMaxCredentialBody("sk-test")},
 			},
-			wantFormat:     defaultTTSAudioFormat,
+			wantFormat:     defaultMiniMaxTTSAudioFormat,
 			wantSampleRate: defaultTTSAudioSampleRate,
 			wantModel:      "speech-02-hd",
 			wantBaseURL:    baseURL,
@@ -656,9 +740,9 @@ func TestDefaultBuilderBuildsVoiceTransformers(t *testing.T) {
 					Kind:    "minimax-tenant",
 					MiniMax: &apitypes.MiniMaxTenant{Name: "main", CredentialName: "minimax-key"},
 				},
-				Credential: apitypes.Credential{Name: "minimax-key", Body: apitypes.CredentialBody{"api_key": "sk-test"}},
+				Credential: apitypes.Credential{Name: "minimax-key", Body: apitypes.NewMiniMaxCredentialBody("sk-test")},
 			},
-			wantFormat:     defaultTTSAudioFormat,
+			wantFormat:     defaultMiniMaxTTSAudioFormat,
 			wantSampleRate: defaultTTSAudioSampleRate,
 			wantBaseURL:    defaultMiniMaxBaseURL,
 		},
@@ -730,7 +814,7 @@ func TestDefaultBuilderRejectsInvalidGeneratorConfigs(t *testing.T) {
 					Kind:   string(apitypes.ModelProviderKindOpenaiTenant),
 					OpenAI: &apitypes.OpenAITenant{Name: "main"},
 				},
-				Credential: apitypes.Credential{Body: apitypes.CredentialBody{"api_key": "sk-test"}},
+				Credential: apitypes.Credential{Body: apitypes.NewOpenAICredentialBody("sk-test")},
 			},
 		},
 		{
@@ -801,7 +885,7 @@ func TestDefaultBuilderRejectsInvalidTransformerConfigs(t *testing.T) {
 				Model: &apitypes.Model{Id: "asr", Kind: apitypes.ModelKindAsr},
 				Tenant: Tenant{
 					Kind: string(apitypes.VoiceProviderKindVolcTenant),
-					Volc: &apitypes.VolcTenant{Name: "main", AppId: "app-id"},
+					Volc: &apitypes.VolcTenant{Name: "main"},
 				},
 			},
 		},
@@ -811,9 +895,9 @@ func TestDefaultBuilderRejectsInvalidTransformerConfigs(t *testing.T) {
 				Voice: &apitypes.Voice{Id: "voice"},
 				Tenant: Tenant{
 					Kind: string(apitypes.VoiceProviderKindVolcTenant),
-					Volc: &apitypes.VolcTenant{Name: "main", AppId: "app-id"},
+					Volc: &apitypes.VolcTenant{Name: "main"},
 				},
-				Credential: apitypes.Credential{Body: apitypes.CredentialBody{"token": "tok"}},
+				Credential: apitypes.Credential{Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-id", "token": "tok"})},
 			},
 		},
 		{
@@ -951,6 +1035,86 @@ func TestResolveGeneratorSupportsAdditionalTenantKinds(t *testing.T) {
 	}
 }
 
+func TestListAccessibleGeneratorConfigsEnumeratesAuthorizedLLMs(t *testing.T) {
+	ctx := context.Background()
+	events := []string{}
+	svc := New(Service{
+		Peer:       newTestPeer(),
+		Authorizer: &recordingAuthorizer{events: &events, deny: "auth:model:denied:model.read"},
+		Models: fakeModels{events: &events, listItems: []apitypes.Model{
+			testModel("chat", apitypes.ModelKindLlm),
+			testModel("asr", apitypes.ModelKindAsr),
+			testModel("denied", apitypes.ModelKindLlm),
+		}},
+		Credentials:     fakeCredentials{events: &events},
+		ProviderTenants: fakeTenants{events: &events},
+	})
+
+	got, err := svc.ListAccessibleGeneratorConfigs(ctx)
+	if err != nil {
+		t.Fatalf("ListAccessibleGeneratorConfigs() error = %v", err)
+	}
+	if len(got) != 1 || got[0].Model.Id != "chat" || got[0].Pattern != "model/chat" {
+		t.Fatalf("ListAccessibleGeneratorConfigs() = %#v, want only chat", got)
+	}
+	want := []string{
+		"list:models",
+		"auth:model:chat:model.read",
+		"auth:model:chat:model.use",
+		"get:tenant:openai:main",
+		"auth:credential:openai-key:credential.read",
+		"auth:credential:openai-key:credential.use",
+		"get:credential:openai-key",
+		"auth:model:denied:model.read",
+	}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+}
+
+func TestListAccessibleGeneratorConfigsErrorsAndUseDenial(t *testing.T) {
+	ctx := context.Background()
+	if _, err := (*Service)(nil).ListAccessibleGeneratorConfigs(ctx); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("nil ListAccessibleGeneratorConfigs() error = %v, want %v", err, ErrNotConfigured)
+	}
+	if _, err := (&Service{}).ListAccessibleGeneratorConfigs(ctx); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("missing models ListAccessibleGeneratorConfigs() error = %v, want %v", err, ErrNotConfigured)
+	}
+	if _, err := (&Service{Models: responseModels{}}).ListAccessibleGeneratorConfigs(ctx); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("missing lister ListAccessibleGeneratorConfigs() error = %v, want %v", err, ErrNotConfigured)
+	}
+	svc := &Service{Models: responseModelLister{response: adminservice.ListModels500JSONResponse{}}}
+	if _, err := svc.ListAccessibleGeneratorConfigs(ctx); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad list response error = %v, want %v", err, ErrInvalid)
+	}
+
+	events := []string{}
+	deniedUse := New(Service{
+		Peer:       newTestPeer(),
+		Authorizer: &recordingAuthorizer{events: &events, deny: "auth:model:denied:model.use"},
+		Models: fakeModels{events: &events, listItems: []apitypes.Model{
+			testModel("denied", apitypes.ModelKindLlm),
+		}},
+		Credentials:     fakeCredentials{events: &events},
+		ProviderTenants: fakeTenants{events: &events},
+	})
+	got, err := deniedUse.ListAccessibleGeneratorConfigs(ctx)
+	if err != nil {
+		t.Fatalf("denied use ListAccessibleGeneratorConfigs() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("denied use configs = %#v, want empty", got)
+	}
+	want := []string{
+		"list:models",
+		"auth:model:denied:model.read",
+		"auth:model:denied:model.use",
+	}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("denied use events = %#v, want %#v", events, want)
+	}
+}
+
 func TestBuilderHelpersHandleJSONNumberAndInvalidVoiceData(t *testing.T) {
 	number := json.Number("42")
 	if got, ok := mapInt(map[string]any{"n": number}, "n"); !ok || got != 42 {
@@ -991,6 +1155,49 @@ func TestBuilderHelpersHandleJSONNumberAndInvalidVoiceData(t *testing.T) {
 	}
 	if isDenied(ErrInvalid) {
 		t.Fatal("isDenied(ErrInvalid) = true, want false")
+	}
+}
+
+func TestBuilderBooleanHelperBranches(t *testing.T) {
+	if got, ok := mapBool(map[string]any{"a": "yes"}, "missing", "a"); !ok || !got {
+		t.Fatalf("mapBool(yes) = %t, %t; want true, true", got, ok)
+	}
+	if got, ok := mapBool(map[string]any{"a": "off"}, "a"); !ok || got {
+		t.Fatalf("mapBool(off) = %t, %t; want false, true", got, ok)
+	}
+	if got, ok := mapBool(map[string]any{"a": "maybe"}); ok || got {
+		t.Fatalf("mapBool(maybe) = %t, %t; want false, false", got, ok)
+	}
+	if boolValue(nil, boolPtr(true)) != true || boolValue(nil) != false {
+		t.Fatal("boolValue() returned unexpected result")
+	}
+	caps := &apitypes.ModelCapabilities{
+		JsonOutput: boolPtr(true),
+		ToolCalls:  boolPtr(false),
+		TextOnly:   boolPtr(true),
+		SystemRole: boolPtr(true),
+	}
+	for _, name := range []string{"json", "tools", "text", "system"} {
+		if capabilityBool(caps, name) == nil {
+			t.Fatalf("capabilityBool(%s) = nil", name)
+		}
+	}
+	if capabilityBool(caps, "unknown") != nil || capabilityBool(nil, "json") != nil {
+		t.Fatal("capabilityBool unknown/nil returned non-nil")
+	}
+	if openAIPromptRole(boolPtr(true)) != genx.PromptRoleSystem || openAIPromptRole(boolPtr(false)) != "" {
+		t.Fatal("openAIPromptRole() returned unexpected result")
+	}
+	if got := openAIThinkingValue("enable_thinking", "off"); got != false {
+		t.Fatalf("openAIThinkingValue(enable_thinking, off) = %#v, want false", got)
+	}
+	for _, value := range []string{"disabled", "disable", "off", "false", "0", "none", "no"} {
+		if !isDisabledThinkingLevel(value) {
+			t.Fatalf("isDisabledThinkingLevel(%q) = false, want true", value)
+		}
+	}
+	if isDisabledThinkingLevel("auto") {
+		t.Fatal("isDisabledThinkingLevel(auto) = true, want false")
 	}
 }
 
@@ -1141,10 +1348,27 @@ type fakeModels struct {
 	events       *[]string
 	modelKind    apitypes.ModelKind
 	providerKind string
+	listItems    []apitypes.Model
 }
 
 func (f fakeModels) GetModel(_ context.Context, request adminservice.GetModelRequestObject) (adminservice.GetModelResponseObject, error) {
 	*f.events = append(*f.events, "get:model:"+request.Id)
+	return adminservice.GetModel200JSONResponse(f.model(request.Id)), nil
+}
+
+func (f fakeModels) ListModels(_ context.Context, request adminservice.ListModelsRequestObject) (adminservice.ListModelsResponseObject, error) {
+	*f.events = append(*f.events, "list:models")
+	if request.Params.Cursor != nil && *request.Params.Cursor != "" {
+		return adminservice.ListModels200JSONResponse(adminservice.ModelList{}), nil
+	}
+	items := f.listItems
+	if items == nil {
+		items = []apitypes.Model{f.model("chat")}
+	}
+	return adminservice.ListModels200JSONResponse(adminservice.ModelList{Items: items}), nil
+}
+
+func (f fakeModels) model(id string) apitypes.Model {
 	kind := f.modelKind
 	if kind == "" {
 		kind = apitypes.ModelKindLlm
@@ -1153,14 +1377,29 @@ func (f fakeModels) GetModel(_ context.Context, request adminservice.GetModelReq
 	if providerKind == "" {
 		providerKind = string(apitypes.ModelProviderKindOpenaiTenant)
 	}
-	return adminservice.GetModel200JSONResponse(apitypes.Model{
-		Id:   request.Id,
+	return apitypes.Model{
+		Id:   id,
 		Kind: kind,
 		Provider: apitypes.ModelProvider{
 			Kind: apitypes.ModelProviderKind(providerKind),
 			Name: "main",
 		},
-	}), nil
+	}
+}
+
+func testModel(id string, kind apitypes.ModelKind) apitypes.Model {
+	return apitypes.Model{
+		Id:   id,
+		Kind: kind,
+		Provider: apitypes.ModelProvider{
+			Kind: apitypes.ModelProviderKindOpenaiTenant,
+			Name: "main",
+		},
+	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 type fakeVoices struct {
@@ -1195,10 +1434,11 @@ func (f fakeCredentials) GetCredential(_ context.Context, request adminservice.G
 	*f.events = append(*f.events, "get:credential:"+request.Name)
 	return adminservice.GetCredential200JSONResponse(apitypes.Credential{
 		Name: request.Name,
-		Body: apitypes.CredentialBody{
+		Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{
+			"app_id":  "app-id",
 			"api_key": "sk-test",
 			"token":   "tok-test",
-		},
+		}),
 	}), nil
 }
 
@@ -1228,7 +1468,7 @@ func (f fakeTenants) GetMiniMaxTenant(_ context.Context, request adminservice.Ge
 
 func (f fakeTenants) GetVolcTenant(_ context.Context, request adminservice.GetVolcTenantRequestObject) (adminservice.GetVolcTenantResponseObject, error) {
 	*f.events = append(*f.events, "get:tenant:volc:"+request.Name)
-	return adminservice.GetVolcTenant200JSONResponse(apitypes.VolcTenant{Name: request.Name, AppId: "app-id", CredentialName: "volc-token"}), nil
+	return adminservice.GetVolcTenant200JSONResponse(apitypes.VolcTenant{Name: request.Name, CredentialName: "volc-token"}), nil
 }
 
 type responseModels struct {
@@ -1236,6 +1476,18 @@ type responseModels struct {
 }
 
 func (f responseModels) GetModel(context.Context, adminservice.GetModelRequestObject) (adminservice.GetModelResponseObject, error) {
+	return f.response, nil
+}
+
+type responseModelLister struct {
+	response adminservice.ListModelsResponseObject
+}
+
+func (f responseModelLister) GetModel(context.Context, adminservice.GetModelRequestObject) (adminservice.GetModelResponseObject, error) {
+	return adminservice.GetModel404JSONResponse{}, nil
+}
+
+func (f responseModelLister) ListModels(context.Context, adminservice.ListModelsRequestObject) (adminservice.ListModelsResponseObject, error) {
 	return f.response, nil
 }
 

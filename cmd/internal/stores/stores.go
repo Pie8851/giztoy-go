@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/storage"
@@ -417,6 +418,21 @@ func (s prefixedObjectStore) List(prefix string) ([]objectstore.ObjectInfo, erro
 		items[i].Name = strings.TrimPrefix(items[i].Name, basePrefix)
 	}
 	return items, nil
+}
+
+func (s prefixedObjectStore) LocalDir() (string, bool) {
+	provider, ok := s.base.(objectstore.LocalDirProvider)
+	if !ok {
+		return "", false
+	}
+	dir, ok := provider.LocalDir()
+	if !ok {
+		return "", false
+	}
+	if s.prefix == "" {
+		return dir, true
+	}
+	return filepath.Join(dir, filepath.FromSlash(s.prefix)), true
 }
 
 func (s prefixedObjectStore) name(name string) string {

@@ -65,6 +65,7 @@ const (
 	defaultCredentialsStore              = "credentials"
 	defaultFirmwaresStore                = "firmwares"
 	defaultFirmwareAssetsStore           = "firmware-assets"
+	defaultAgentHostStore                = "agenthost"
 	defaultMiniMaxTenantsStore           = "minimax-tenants"
 	defaultVoicesStore                   = "voices"
 	defaultWorkspacesStore               = "workspaces"

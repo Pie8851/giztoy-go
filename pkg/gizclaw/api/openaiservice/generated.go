@@ -338,11 +338,7 @@ func (response CreateSpeech200ApplicationoctetStreamResponse) VisitCreateSpeechR
 	}
 	ctx.Status(200)
 
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	_, err := io.Copy(ctx.Response().BodyWriter(), response.Body)
-	return err
+	return setBodyStream(ctx, response.Body, response.ContentLength)
 }
 
 type CreateSpeech200TexteventStreamResponse struct {
@@ -357,15 +353,12 @@ func (response CreateSpeech200TexteventStreamResponse) VisitCreateSpeechResponse
 	}
 	ctx.Status(200)
 
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	_, err := io.Copy(ctx.Response().BodyWriter(), response.Body)
-	return err
+	return setBodyStream(ctx, response.Body, response.ContentLength)
 }
 
 type CreateTranscriptionRequestObject struct {
-	Body *multipart.Reader
+	Accept string
+	Body   *multipart.Reader
 }
 
 type CreateTranscriptionResponseObject interface {
@@ -393,11 +386,7 @@ func (response CreateTranscription200TexteventStreamResponse) VisitCreateTranscr
 	}
 	ctx.Status(200)
 
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	_, err := io.Copy(ctx.Response().BodyWriter(), response.Body)
-	return err
+	return setBodyStream(ctx, response.Body, response.ContentLength)
 }
 
 type CreateChatCompletionRequestObject struct {
@@ -429,11 +418,7 @@ func (response CreateChatCompletion200TexteventStreamResponse) VisitCreateChatCo
 	}
 	ctx.Status(200)
 
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	_, err := io.Copy(ctx.Response().BodyWriter(), response.Body)
-	return err
+	return setBodyStream(ctx, response.Body, response.ContentLength)
 }
 
 type ListModelsRequestObject struct {
@@ -450,6 +435,18 @@ func (response ListModels200JSONResponse) VisitListModelsResponse(ctx *fiber.Ctx
 	ctx.Status(200)
 
 	return ctx.JSON(&response)
+}
+
+func setBodyStream(ctx *fiber.Ctx, body io.Reader, contentLength int64) error {
+	if body == nil {
+		return nil
+	}
+	size := -1
+	if contentLength > 0 && contentLength <= int64(int(^uint(0)>>1)) {
+		size = int(contentLength)
+	}
+	ctx.Response().SetBodyStream(body, size)
+	return nil
 }
 
 // StrictServerInterface represents all server handlers.
@@ -516,7 +513,12 @@ func (sh *strictHandler) CreateSpeech(ctx *fiber.Ctx) error {
 func (sh *strictHandler) CreateTranscription(ctx *fiber.Ctx) error {
 	var request CreateTranscriptionRequestObject
 
-	request.Body = multipart.NewReader(bytes.NewReader(ctx.Request().Body()), string(ctx.Request().Header.MultipartFormBoundary()))
+	body := ctx.Context().RequestBodyStream()
+	if body == nil {
+		body = bytes.NewReader(ctx.Request().Body())
+	}
+	request.Accept = string(ctx.Request().Header.Peek("Accept"))
+	request.Body = multipart.NewReader(body, string(ctx.Request().Header.MultipartFormBoundary()))
 
 	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
 		return sh.ssi.CreateTranscription(ctx.UserContext(), request.(CreateTranscriptionRequestObject))

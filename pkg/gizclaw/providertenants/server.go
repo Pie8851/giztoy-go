@@ -498,21 +498,7 @@ func miniMaxAPIKey(credential apitypes.Credential) (string, error) {
 }
 
 func credentialBodyString(body apitypes.CredentialBody, key string) string {
-	if body == nil {
-		return ""
-	}
-	raw, ok := body[key]
-	if !ok || raw == nil {
-		return ""
-	}
-	switch value := raw.(type) {
-	case string:
-		return strings.TrimSpace(value)
-	case fmt.Stringer:
-		return strings.TrimSpace(value.String())
-	default:
-		return strings.TrimSpace(fmt.Sprint(value))
-	}
+	return apitypes.CredentialBodyString(body, key)
 }
 
 func listAllMiniMaxVoices(ctx context.Context, client *minimax.Client) ([]minimax.Voice, error) {

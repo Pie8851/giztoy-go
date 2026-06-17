@@ -92,6 +92,9 @@ Apply resources again in terminal 2:
 ```sh
 go run ./test/gizclaw-e2e/workspace \
   -config test/gizclaw-e2e/workspace/config/doubao-realtime.example.json
+
+go run ./test/gizclaw-e2e/workspace \
+  -config test/gizclaw-e2e/workspace/config/flowcraft.example.json
 ```
 
 Local compile/unit checks:
@@ -101,8 +104,10 @@ go test -count=1 ./test/gizclaw-e2e/setup ./test/gizclaw-e2e/openaicompat ./test
 ```
 
 `setup` owns credentials, tenants, models, voices, ACL grants, and the shared
-client identity. Test clients do not create provider-side resources. The
-workspace test creates only its workflow/workspace pair through peer RPC.
+client identity. It assigns models and voices through the e2e ACL view and grants
+generic workspace/workflow collection permissions for peer-created test data.
+Test clients do not create provider-side resources. The workspace test creates
+only its workflow/workspace pair through peer RPC.
 
 ## Context Config
 

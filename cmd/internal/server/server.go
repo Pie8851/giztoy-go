@@ -120,6 +120,11 @@ func New(cfg Config) (srv *CmdServer, err error) {
 				return nil, fmt.Errorf("server: firmwares assets store: %w", err)
 			}
 		}
+		if storeExists(cfg, defaultAgentHostStore) {
+			if gizServer.AgentHostStore, err = ss.ObjectStore(defaultAgentHostStore); err != nil {
+				return nil, fmt.Errorf("server: agenthost store: %w", err)
+			}
+		}
 		if gizServer.MiniMaxCredentialStore, err = ss.KV(defaultCredentialsStore); err != nil {
 			return nil, fmt.Errorf("server: minimax credentials store: %w", err)
 		}

@@ -37,6 +37,45 @@ type TransformerConfig struct {
 	Params     map[string]any
 }
 
+func (s *Service) ListAccessibleGeneratorConfigs(ctx context.Context) ([]GeneratorConfig, error) {
+	if s == nil || s.Models == nil {
+		return nil, fmt.Errorf("%w: model getter is required", ErrNotConfigured)
+	}
+	lister, ok := s.Models.(ModelLister)
+	if !ok {
+		return nil, fmt.Errorf("%w: model lister is required", ErrNotConfigured)
+	}
+	limit := int32(200)
+	var cursor *string
+	var out []GeneratorConfig
+	for {
+		resp, err := lister.ListModels(ctx, adminservice.ListModelsRequestObject{
+			Params: adminservice.ListModelsParams{Cursor: cursor, Limit: &limit},
+		})
+		if err != nil {
+			return nil, err
+		}
+		list, ok := resp.(adminservice.ListModels200JSONResponse)
+		if !ok {
+			return nil, fmt.Errorf("%w: list models returned %T", ErrInvalid, resp)
+		}
+		for _, model := range list.Items {
+			cfg, include, err := s.generatorConfigFromListedModel(ctx, model)
+			if err != nil {
+				return nil, err
+			}
+			if include {
+				out = append(out, cfg)
+			}
+		}
+		if !list.HasNext || list.NextCursor == nil || strings.TrimSpace(*list.NextCursor) == "" {
+			break
+		}
+		cursor = list.NextCursor
+	}
+	return out, nil
+}
+
 func (s *Service) ResolveGenerator(ctx context.Context, pattern string) (GeneratorConfig, error) {
 	modelID, ok := parsePattern(pattern, "model", "models")
 	if !ok {
@@ -55,6 +94,45 @@ func (s *Service) ResolveGenerator(ctx context.Context, pattern string) (Generat
 		Tenant:     tenant,
 		Credential: credential,
 	}, nil
+}
+
+func (s *Service) generatorConfigFromListedModel(ctx context.Context, model apitypes.Model) (GeneratorConfig, bool, error) {
+	if model.Kind != apitypes.ModelKindLlm {
+		return GeneratorConfig{}, false, nil
+	}
+	resource := modelResource(string(model.Id))
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionModelRead); err != nil {
+		if errors.Is(err, ErrDenied) {
+			return GeneratorConfig{}, false, nil
+		}
+		return GeneratorConfig{}, false, err
+	}
+	if err := s.authorize(ctx, resource, apitypes.ACLPermissionModelUse); err != nil {
+		if errors.Is(err, ErrDenied) {
+			return GeneratorConfig{}, false, nil
+		}
+		return GeneratorConfig{}, false, err
+	}
+	tenant, credentialName, err := s.resolveModelTenant(ctx, model)
+	if err != nil {
+		if errors.Is(err, ErrDenied) {
+			return GeneratorConfig{}, false, nil
+		}
+		return GeneratorConfig{}, false, err
+	}
+	credential, err := s.resolveCredential(ctx, credentialName)
+	if err != nil {
+		if errors.Is(err, ErrDenied) {
+			return GeneratorConfig{}, false, nil
+		}
+		return GeneratorConfig{}, false, err
+	}
+	return GeneratorConfig{
+		Pattern:    "model/" + string(model.Id),
+		Model:      model,
+		Tenant:     tenant,
+		Credential: credential,
+	}, true, nil
 }
 
 func (s *Service) ResolveTransformer(ctx context.Context, pattern string) (TransformerConfig, error) {

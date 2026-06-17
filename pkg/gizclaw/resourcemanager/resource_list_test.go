@@ -11,9 +11,8 @@ import (
 func TestApplyResourceListRecurses(t *testing.T) {
 	credentials := newFakeCredentials()
 	credentials.items["existing"] = apitypes.Credential{
-		Body:      apitypes.CredentialBody{"api_key": "old"},
+		Body:      apitypes.NewOpenAICredentialBody("old"),
 		CreatedAt: time.Now().UTC(),
-		Method:    apitypes.CredentialMethodApiKey,
 		Name:      "existing",
 		Provider:  "minimax",
 		UpdatedAt: time.Now().UTC(),
@@ -32,7 +31,6 @@ func TestApplyResourceListRecurses(t *testing.T) {
 					"metadata": {"name": "existing"},
 					"spec": {
 						"provider": "minimax",
-						"method": "api_key",
 						"body": {"api_key": "old"}
 					}
 				},
@@ -42,7 +40,6 @@ func TestApplyResourceListRecurses(t *testing.T) {
 					"metadata": {"name": "created"},
 					"spec": {
 						"provider": "minimax",
-						"method": "api_key",
 						"body": {"api_key": "new"}
 					}
 				}
@@ -82,7 +79,6 @@ func TestPutResourceListRecurses(t *testing.T) {
 					"metadata": {"name": "created"},
 					"spec": {
 						"provider": "minimax",
-						"method": "api_key",
 						"body": {"api_key": "new"}
 					}
 				}

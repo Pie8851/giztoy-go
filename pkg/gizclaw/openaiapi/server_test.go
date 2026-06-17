@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -529,6 +530,117 @@ func TestCreateTranscriptionSniffsAudioMIME(t *testing.T) {
 	}
 }
 
+func TestCreateTranscriptionStreamsMultipartFile(t *testing.T) {
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
+	releaseWriter := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() { close(releaseWriter) })
+	}
+	writerDone := make(chan error, 1)
+	go func() {
+		defer pw.Close()
+		if err := writer.WriteField("model", "asr"); err != nil {
+			writerDone <- err
+			return
+		}
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", `form-data; name="file"; filename="input.ogg"`)
+		header.Set("Content-Type", "audio/ogg")
+		part, err := writer.CreatePart(header)
+		if err != nil {
+			writerDone <- err
+			return
+		}
+		if _, err := part.Write([]byte("first")); err != nil {
+			writerDone <- err
+			return
+		}
+		<-releaseWriter
+		if _, err := part.Write([]byte("second")); err != nil {
+			writerDone <- err
+			return
+		}
+		writerDone <- writer.Close()
+	}()
+
+	firstChunk := make(chan string, 1)
+	srv := &Server{
+		Transformer: transformerFunc(func(_ context.Context, pattern string, input genx.Stream) (genx.Stream, error) {
+			if pattern != "model/asr" {
+				t.Errorf("pattern = %q", pattern)
+			}
+			chunk, err := input.Next()
+			if err != nil {
+				t.Errorf("input.Next() error = %v", err)
+				release()
+				return newTextStream(""), nil
+			}
+			blob, ok := chunk.Part.(*genx.Blob)
+			if !ok {
+				t.Errorf("input chunk part = %T, want *genx.Blob", chunk.Part)
+				release()
+				return newTextStream(""), nil
+			}
+			if blob.MIMEType != "audio/ogg" {
+				t.Errorf("input MIME type = %q, want audio/ogg", blob.MIMEType)
+			}
+			firstChunk <- string(blob.Data)
+			release()
+			for {
+				_, err := input.Next()
+				if errors.Is(err, genx.ErrDone) || errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					t.Errorf("drain input: %v", err)
+					break
+				}
+			}
+			return newTextStream("text"), nil
+		}),
+	}
+
+	respDone := make(chan error, 1)
+	go func() {
+		resp, err := srv.CreateTranscription(context.Background(), openaiservice.CreateTranscriptionRequestObject{
+			Body: multipart.NewReader(pr, writer.Boundary()),
+		})
+		if err != nil {
+			respDone <- err
+			return
+		}
+		out, ok := resp.(openaiservice.CreateTranscription200JSONResponse)
+		if !ok {
+			respDone <- errors.New("unexpected transcription response type")
+			return
+		}
+		if out.Text != "text" {
+			respDone <- errors.New("unexpected transcription text")
+			return
+		}
+		respDone <- nil
+	}()
+
+	select {
+	case got := <-firstChunk:
+		if got != "first" {
+			t.Fatalf("first audio chunk = %q, want first", got)
+		}
+	case <-time.After(time.Second):
+		_ = pw.CloseWithError(errors.New("test timed out waiting for streaming chunk"))
+		release()
+		t.Fatal("timed out waiting for first streaming audio chunk")
+	}
+	if err := <-writerDone; err != nil {
+		t.Fatalf("write multipart: %v", err)
+	}
+	if err := <-respDone; err != nil {
+		t.Fatalf("CreateTranscription() error = %v", err)
+	}
+}
+
 func TestTranscriptionAudioMIMEFallbacks(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -588,6 +700,39 @@ func TestCreateTranscriptionStreamsAndValidates(t *testing.T) {
 	}
 	if _, err := (&Server{}).CreateTranscription(context.Background(), openaiservice.CreateTranscriptionRequestObject{Body: newTranscriptionMultipart(t, map[string]string{"model": "asr"}, []byte("x"))}); err == nil {
 		t.Fatal("CreateTranscription(no transformer) succeeded")
+	}
+}
+
+func TestCreateTranscriptionAcceptHeaderSelectsEventStream(t *testing.T) {
+	srv := &Server{
+		Transformer: transformerFunc(func(context.Context, string, genx.Stream) (genx.Stream, error) {
+			return &sliceStream{chunks: []*genx.MessageChunk{
+				{Part: genx.Text("ordered")},
+			}}, nil
+		}),
+	}
+	reader := newTranscriptionMultipartOrdered(t, []transcriptionMultipartPart{
+		{field: "model", value: "asr"},
+		{file: []byte("ogg")},
+		{field: "stream", value: "true"},
+	})
+	resp, err := srv.CreateTranscription(context.Background(), openaiservice.CreateTranscriptionRequestObject{
+		Accept: "application/json, text/event-stream",
+		Body:   reader,
+	})
+	if err != nil {
+		t.Fatalf("CreateTranscription() error = %v", err)
+	}
+	out, ok := resp.(openaiservice.CreateTranscription200TexteventStreamResponse)
+	if !ok {
+		t.Fatalf("CreateTranscription() response = %T, want event stream", resp)
+	}
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("read transcription stream: %v", err)
+	}
+	if text := string(body); !strings.Contains(text, "ordered") || !strings.Contains(text, "transcript.text.done") {
+		t.Fatalf("transcription stream = %s", text)
 	}
 }
 
@@ -755,14 +900,33 @@ func mustKey(t *testing.T) *giznet.KeyPair {
 
 func newTranscriptionMultipart(t *testing.T, fields map[string]string, file []byte) *multipart.Reader {
 	t.Helper()
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
+	var parts []transcriptionMultipartPart
 	for key, value := range fields {
-		if err := writer.WriteField(key, value); err != nil {
-			t.Fatalf("WriteField(%s) error = %v", key, err)
-		}
+		parts = append(parts, transcriptionMultipartPart{field: key, value: value})
 	}
 	if file != nil {
+		parts = append(parts, transcriptionMultipartPart{file: file})
+	}
+	return newTranscriptionMultipartOrdered(t, parts)
+}
+
+type transcriptionMultipartPart struct {
+	field string
+	value string
+	file  []byte
+}
+
+func newTranscriptionMultipartOrdered(t *testing.T, parts []transcriptionMultipartPart) *multipart.Reader {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for _, partSpec := range parts {
+		if partSpec.field != "" {
+			if err := writer.WriteField(partSpec.field, partSpec.value); err != nil {
+				t.Fatalf("WriteField(%s) error = %v", partSpec.field, err)
+			}
+			continue
+		}
 		header := textproto.MIMEHeader{}
 		header.Set("Content-Disposition", `form-data; name="file"; filename="input.ogg"`)
 		header.Set("Content-Type", "audio/ogg")
@@ -770,7 +934,7 @@ func newTranscriptionMultipart(t *testing.T, fields map[string]string, file []by
 		if err != nil {
 			t.Fatalf("CreatePart error = %v", err)
 		}
-		_, _ = part.Write(file)
+		_, _ = part.Write(partSpec.file)
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("Close multipart writer: %v", err)

@@ -52,11 +52,47 @@ func TestPeerAuthorizerKeepsPKDenialWithoutView(t *testing.T) {
 	}
 }
 
+func TestPeerAuthorizerFallsBackToViewCollectionResource(t *testing.T) {
+	key, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+	view := "e2e-client"
+	auth := peerAuthorizer{
+		ACL: fakePeerACL{
+			allowedSubject:    acl.ViewSubject(view),
+			allowedResource:   acl.CollectionResource(acl.ResourceKindWorkspace),
+			allowedPermission: apitypes.ACLPermissionWorkspaceUse,
+		},
+		Peers:     fakePeerConfigGetter{view: &view},
+		PublicKey: key.Public,
+	}
+	err = auth.Authorize(context.Background(), acl.AuthorizeRequest{
+		Subject:    acl.PublicKeySubject(key.Public.String()),
+		Resource:   acl.WorkspaceResource("flowcraft-voice"),
+		Permission: apitypes.ACLPermissionWorkspaceUse,
+	})
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+}
+
 type fakePeerACL struct {
-	allowedSubject apitypes.ACLSubject
+	allowedSubject    apitypes.ACLSubject
+	allowedResource   apitypes.ACLResource
+	allowedPermission apitypes.ACLPermission
 }
 
 func (a fakePeerACL) Authorize(_ context.Context, request acl.AuthorizeRequest) error {
+	if request.Subject != a.allowedSubject {
+		return acl.ErrDenied
+	}
+	if a.allowedResource.Kind != "" && request.Resource != a.allowedResource {
+		return acl.ErrDenied
+	}
+	if a.allowedPermission != "" && request.Permission != a.allowedPermission {
+		return acl.ErrDenied
+	}
 	if request.Subject == a.allowedSubject {
 		return nil
 	}

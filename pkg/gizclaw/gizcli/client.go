@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/GizClaw/gizclaw-go/pkg/genx"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
@@ -20,6 +21,8 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/giznet/gizhttp"
 	"golang.org/x/sync/errgroup"
 )
+
+var _ genx.Transformer = (*Client)(nil)
 
 // Client holds device-side peer client configuration.
 type Client struct {
@@ -37,6 +40,42 @@ type Client struct {
 
 	packetMu          sync.RWMutex
 	packetSubscribers map[byte]map[chan []byte]struct{}
+	openPeerStream    func(int) (*PeerStream, error)
+}
+
+// Transform bridges a local genx stream to the connected peer workspace stream.
+func (c *Client) Transform(ctx context.Context, _ string, input genx.Stream) (genx.Stream, error) {
+	if c == nil {
+		return nil, fmt.Errorf("gizclaw: nil client")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("gizclaw: input stream is required")
+	}
+	openPeerStream := c.OpenPeerStream
+	if c.openPeerStream != nil {
+		openPeerStream = c.openPeerStream
+	}
+	stream, err := openPeerStream(64)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			chunk, err := input.Next()
+			if err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, genx.ErrDone) {
+					return
+				}
+				_ = stream.CloseWithError(err)
+				return
+			}
+			if err := stream.Push(ctx, chunk); err != nil {
+				_ = stream.CloseWithError(err)
+				return
+			}
+		}
+	}()
+	return stream, nil
 }
 
 // Dial establishes the peer connection and initializes client runtime state.

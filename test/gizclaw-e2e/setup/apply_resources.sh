@@ -57,6 +57,7 @@ require_env GIZCLAW_E2E_OPENAI_API_KEY
 require_env GIZCLAW_E2E_OPENAI_BASE_URL
 require_env GIZCLAW_E2E_OPENAI_UPSTREAM_MODEL
 require_env GIZCLAW_E2E_VOLC_APP_ID
+require_env GIZCLAW_E2E_VOLC_ARK_API_KEY
 require_env GIZCLAW_E2E_VOLC_TOKEN
 require_env GIZCLAW_E2E_VOLC_VOICE_ID
 require_env GIZCLAW_E2E_VOICE_RESOURCE
@@ -92,5 +93,3 @@ echo "asr_model=${GIZCLAW_E2E_ASR_MODEL:-e2e-asr}"
 echo "realtime_model=${GIZCLAW_E2E_REALTIME_MODEL:-e2e-realtime}"
 echo "acl_view=${GIZCLAW_E2E_ACL_VIEW:-e2e-client}"
 echo "voice=${GIZCLAW_E2E_VOICE_RESOURCE}"
-echo "workspace=${GIZCLAW_E2E_WORKSPACE:-doubao-realtime}"
-echo "workflow=${GIZCLAW_E2E_WORKFLOW:-e2e-doubao-realtime}"

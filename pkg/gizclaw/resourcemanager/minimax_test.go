@@ -47,7 +47,6 @@ func TestApplyVolcTenantCreatesResource(t *testing.T) {
 		"kind": "VolcTenant",
 		"metadata": {"name": "volc-main"},
 		"spec": {
-			"app_id": "9476442538",
 			"credential_name": "volc-cred",
 			"region": "cn-beijing",
 			"resource_ids": ["seed-tts-2.0"],
@@ -66,18 +65,15 @@ func TestApplyVolcTenantCreatesResource(t *testing.T) {
 	if minimax.volcTenants["volc-main"].CredentialName != "volc-cred" {
 		t.Fatalf("credential name = %q, want volc-cred", minimax.volcTenants["volc-main"].CredentialName)
 	}
-	if minimax.volcTenants["volc-main"].AppId != "9476442538" {
-		t.Fatalf("app_id = %q, want 9476442538", minimax.volcTenants["volc-main"].AppId)
-	}
 }
 
 func TestGetVolcTenantReturnsResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.volcTenants["volc-main"] = apitypes.VolcTenant{
-		AppId:          "9476442538",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "volc-cred",
 		Name:           "volc-main",
+		Region:         stringPtr("cn-shanghai"),
 		UpdatedAt:      time.Now().UTC(),
 	}
 	manager := New(Services{ProviderTenants: minimax, Voices: minimax})
@@ -96,18 +92,15 @@ func TestGetVolcTenantReturnsResource(t *testing.T) {
 	if tenant.Spec.CredentialName != "volc-cred" {
 		t.Fatalf("credential_name = %q, want volc-cred", tenant.Spec.CredentialName)
 	}
-	if tenant.Spec.AppId != "9476442538" {
-		t.Fatalf("app_id = %q, want 9476442538", tenant.Spec.AppId)
-	}
 }
 
 func TestApplyVolcTenantUnchangedSkipsPut(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.volcTenants["volc-main"] = apitypes.VolcTenant{
-		AppId:          "9476442538",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "volc-cred",
 		Name:           "volc-main",
+		Region:         stringPtr("cn-shanghai"),
 		UpdatedAt:      time.Now().UTC(),
 	}
 	manager := New(Services{ProviderTenants: minimax, Voices: minimax})
@@ -117,8 +110,8 @@ func TestApplyVolcTenantUnchangedSkipsPut(t *testing.T) {
 		"kind": "VolcTenant",
 		"metadata": {"name": "volc-main"},
 		"spec": {
-			"app_id": "9476442538",
-			"credential_name": "volc-cred"
+			"credential_name": "volc-cred",
+			"region": "cn-shanghai"
 		}
 	}`))
 	if err != nil {
@@ -135,7 +128,6 @@ func TestApplyVolcTenantUnchangedSkipsPut(t *testing.T) {
 func TestApplyVolcTenantUpdatesResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.volcTenants["volc-main"] = apitypes.VolcTenant{
-		AppId:          "old-app",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "volc-cred",
 		Name:           "volc-main",
@@ -148,8 +140,8 @@ func TestApplyVolcTenantUpdatesResource(t *testing.T) {
 		"kind": "VolcTenant",
 		"metadata": {"name": "volc-main"},
 		"spec": {
-			"app_id": "new-app",
-			"credential_name": "volc-cred"
+			"credential_name": "volc-cred",
+			"region": "cn-shanghai"
 		}
 	}`))
 	if err != nil {
@@ -172,7 +164,6 @@ func TestPutVolcTenantWritesAndReturnsResource(t *testing.T) {
 		"kind": "VolcTenant",
 		"metadata": {"name": "volc-main"},
 		"spec": {
-			"app_id": "9476442538",
 			"credential_name": "volc-cred"
 		}
 	}`))
@@ -194,7 +185,6 @@ func TestPutVolcTenantWritesAndReturnsResource(t *testing.T) {
 func TestDeleteVolcTenantDeletesAndReturnsResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.volcTenants["volc-main"] = apitypes.VolcTenant{
-		AppId:          "9476442538",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "volc-cred",
 		Name:           "volc-main",
@@ -221,7 +211,7 @@ func TestDeleteVolcTenantDeletesAndReturnsResource(t *testing.T) {
 func TestDeleteMiniMaxTenantDeletesAndReturnsResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.tenants["main"] = apitypes.MiniMaxTenant{
-		AppId:          "app",
+		AppId:          "new-app",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "minimax-main",
 		GroupId:        "group",
@@ -249,7 +239,7 @@ func TestDeleteMiniMaxTenantDeletesAndReturnsResource(t *testing.T) {
 func TestGetMiniMaxTenantReturnsResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.tenants["main"] = apitypes.MiniMaxTenant{
-		AppId:          "app",
+		AppId:          "old-app",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "minimax-main",
 		GroupId:        "group",
@@ -277,7 +267,7 @@ func TestGetMiniMaxTenantReturnsResource(t *testing.T) {
 func TestApplyMiniMaxTenantUnchangedSkipsPut(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.tenants["main"] = apitypes.MiniMaxTenant{
-		AppId:          "app",
+		AppId:          "new-app",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "minimax-main",
 		GroupId:        "group",
@@ -291,7 +281,7 @@ func TestApplyMiniMaxTenantUnchangedSkipsPut(t *testing.T) {
 		"kind": "MiniMaxTenant",
 		"metadata": {"name": "main"},
 		"spec": {
-			"app_id": "app",
+			"app_id": "new-app",
 			"group_id": "group",
 			"credential_name": "minimax-main"
 		}
@@ -310,7 +300,6 @@ func TestApplyMiniMaxTenantUnchangedSkipsPut(t *testing.T) {
 func TestApplyMiniMaxTenantUpdatesResource(t *testing.T) {
 	minimax := newFakeMiniMax()
 	minimax.tenants["main"] = apitypes.MiniMaxTenant{
-		AppId:          "old-app",
 		CreatedAt:      time.Now().UTC(),
 		CredentialName: "minimax-main",
 		GroupId:        "group",
@@ -324,7 +313,7 @@ func TestApplyMiniMaxTenantUpdatesResource(t *testing.T) {
 		"kind": "MiniMaxTenant",
 		"metadata": {"name": "main"},
 		"spec": {
-			"app_id": "new-app",
+			"app_id": "app",
 			"group_id": "group",
 			"credential_name": "minimax-main"
 		}
@@ -500,7 +489,6 @@ func TestPutMiniMaxTenantWritesAndReturnsResource(t *testing.T) {
 		"kind": "MiniMaxTenant",
 		"metadata": {"name": "main"},
 		"spec": {
-			"app_id": "app",
 			"group_id": "group",
 			"credential_name": "minimax-main"
 		}
@@ -738,7 +726,6 @@ func (f *fakeMiniMax) PutMiniMaxTenant(_ context.Context, request adminservice.P
 	body := *request.Body
 	now := time.Now().UTC()
 	tenant := apitypes.MiniMaxTenant{
-		AppId:          body.AppId,
 		BaseUrl:        body.BaseUrl,
 		CreatedAt:      now,
 		CredentialName: body.CredentialName,
@@ -794,7 +781,6 @@ func (f *fakeMiniMax) PutVolcTenant(_ context.Context, request adminservice.PutV
 	body := *request.Body
 	now := time.Now().UTC()
 	tenant := apitypes.VolcTenant{
-		AppId:          body.AppId,
 		CreatedAt:      now,
 		CredentialName: body.CredentialName,
 		Description:    body.Description,

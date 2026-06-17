@@ -10,27 +10,6 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Defines values for CredentialMethod.
-const (
-	CredentialMethodApiKey     CredentialMethod = "api_key"
-	CredentialMethodAppIdToken CredentialMethod = "app_id_token"
-	CredentialMethodToken      CredentialMethod = "token"
-)
-
-// Valid indicates whether the value is a known member of the CredentialMethod enum.
-func (e CredentialMethod) Valid() bool {
-	switch e {
-	case CredentialMethodApiKey:
-		return true
-	case CredentialMethodAppIdToken:
-		return true
-	case CredentialMethodToken:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for DashScopeTenantModelProviderDataApiMode.
 const (
 	DashScopeTenantModelProviderDataApiModeChatCompletions DashScopeTenantModelProviderDataApiMode = "chat_completions"
@@ -710,19 +689,19 @@ type ContactPutResponse = ContactObject
 
 // Credential defines model for Credential.
 type Credential struct {
+	// Body Provider-specific credential payload. The shape is selected by Credential.provider.
 	Body        CredentialBody `json:"body"`
 	CreatedAt   time.Time      `json:"created_at"`
 	Description *string        `json:"description,omitempty"`
-
-	// Method Credential authentication method
-	Method    CredentialMethod `json:"method"`
-	Name      string           `json:"name"`
-	Provider  string           `json:"provider"`
-	UpdatedAt time.Time        `json:"updated_at"`
+	Name        string         `json:"name"`
+	Provider    string         `json:"provider"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
-// CredentialBody defines model for CredentialBody.
-type CredentialBody map[string]interface{}
+// CredentialBody Provider-specific credential payload. The shape is selected by Credential.provider.
+type CredentialBody struct {
+	union json.RawMessage
+}
 
 // CredentialCreateRequest defines model for CredentialCreateRequest.
 type CredentialCreateRequest = Credential
@@ -759,9 +738,6 @@ type CredentialListResponse struct {
 	NextCursor *string      `json:"next_cursor,omitempty"`
 }
 
-// CredentialMethod Credential authentication method
-type CredentialMethod string
-
 // CredentialPutRequest defines model for CredentialPutRequest.
 type CredentialPutRequest struct {
 	Body Credential `json:"body"`
@@ -770,6 +746,13 @@ type CredentialPutRequest struct {
 
 // CredentialPutResponse defines model for CredentialPutResponse.
 type CredentialPutResponse = Credential
+
+// DashScopeCredentialBody defines model for DashScopeCredentialBody.
+type DashScopeCredentialBody struct {
+	ApiKey  *string `json:"api_key,omitempty"`
+	BaseUrl *string `json:"base_url,omitempty"`
+	Token   *string `json:"token,omitempty"`
+}
 
 // DashScopeTenantModelProviderData defines model for DashScopeTenantModelProviderData.
 type DashScopeTenantModelProviderData struct {
@@ -1158,6 +1141,13 @@ type FriendRequestRejectResponse = FriendRequestObject
 // FriendRequestState defines model for FriendRequestState.
 type FriendRequestState string
 
+// GeminiCredentialBody defines model for GeminiCredentialBody.
+type GeminiCredentialBody struct {
+	ApiKey  *string `json:"api_key,omitempty"`
+	BaseUrl *string `json:"base_url,omitempty"`
+	Token   *string `json:"token,omitempty"`
+}
+
 // GeminiTenantModelProviderData defines model for GeminiTenantModelProviderData.
 type GeminiTenantModelProviderData struct {
 	UpstreamModel *string `json:"upstream_model,omitempty"`
@@ -1170,6 +1160,15 @@ type HardwareInfo struct {
 	Labels           *[]PeerLabel `json:"labels,omitempty"`
 	Manufacturer     *string      `json:"manufacturer,omitempty"`
 	Model            *string      `json:"model,omitempty"`
+}
+
+// MiniMaxCredentialBody defines model for MiniMaxCredentialBody.
+type MiniMaxCredentialBody struct {
+	ApiKey              *string `json:"api_key,omitempty"`
+	BaseUrl             *string `json:"base_url,omitempty"`
+	MinimaxVoiceBaseUrl *string `json:"minimax_voice_base_url,omitempty"`
+	Token               *string `json:"token,omitempty"`
+	VoiceBaseUrl        *string `json:"voice_base_url,omitempty"`
 }
 
 // Model defines model for Model.
@@ -1277,6 +1276,15 @@ type ModelThinkingCapability struct {
 	// Param Provider request parameter mapping, such as reasoning_effort, thinking.type, or enable_thinking.
 	Param     *string `json:"param,omitempty"`
 	Supported bool    `json:"supported"`
+}
+
+// OpenAICredentialBody defines model for OpenAICredentialBody.
+type OpenAICredentialBody struct {
+	ApiKey       *string `json:"api_key,omitempty"`
+	BaseUrl      *string `json:"base_url,omitempty"`
+	Organization *string `json:"organization,omitempty"`
+	Project      *string `json:"project,omitempty"`
+	Token        *string `json:"token,omitempty"`
 }
 
 // OpenAITenantModelProviderData defines model for OpenAITenantModelProviderData.
@@ -1651,11 +1659,41 @@ type SpeedTestResponse struct {
 	UpContentLength   int64 `json:"up_content_length"`
 }
 
+// VolcCredentialBody defines model for VolcCredentialBody.
+type VolcCredentialBody struct {
+	AccessKey       *string `json:"access_key,omitempty"`
+	AccessKeyId     *string `json:"access_key_id,omitempty"`
+	AccessToken     *string `json:"access_token,omitempty"`
+	Ak              *string `json:"ak,omitempty"`
+	ApiKey          *string `json:"api_key,omitempty"`
+	AppId           *string `json:"app_id,omitempty"`
+	BaseUrl         *string `json:"base_url,omitempty"`
+	BearerToken     *string `json:"bearer_token,omitempty"`
+	SaucAccessKey   *string `json:"sauc_access_key,omitempty"`
+	SecretAccessKey *string `json:"secret_access_key,omitempty"`
+	SecretKey       *string `json:"secret_key,omitempty"`
+	SessionToken    *string `json:"session_token,omitempty"`
+	Sk              *string `json:"sk,omitempty"`
+	Token           *string `json:"token,omitempty"`
+	VoiceBaseUrl    *string `json:"voice_base_url,omitempty"`
+	XApiKey         *string `json:"x_api_key,omitempty"`
+}
+
 // VolcTenantModelProviderData defines model for VolcTenantModelProviderData.
 type VolcTenantModelProviderData struct {
-	ApiMode    *VolcTenantModelProviderDataApiMode `json:"api_mode,omitempty"`
-	AuthMode   *string                             `json:"auth_mode,omitempty"`
-	ResourceId *string                             `json:"resource_id,omitempty"`
+	ApiMode              *VolcTenantModelProviderDataApiMode `json:"api_mode,omitempty"`
+	AuthMode             *string                             `json:"auth_mode,omitempty"`
+	DefaultThinkingLevel *string                             `json:"default_thinking_level,omitempty"`
+	ResourceId           *string                             `json:"resource_id,omitempty"`
+	SupportJsonOutput    *bool                               `json:"support_json_output,omitempty"`
+	SupportTextOnly      *bool                               `json:"support_text_only,omitempty"`
+	SupportThinking      *bool                               `json:"support_thinking,omitempty"`
+	SupportToolCalls     *bool                               `json:"support_tool_calls,omitempty"`
+	ThinkingLevelParam   *string                             `json:"thinking_level_param,omitempty"`
+	ThinkingLevels       *[]string                           `json:"thinking_levels,omitempty"`
+	ThinkingParam        *string                             `json:"thinking_param,omitempty"`
+	UpstreamModel        *string                             `json:"upstream_model,omitempty"`
+	UseSystemRole        *bool                               `json:"use_system_role,omitempty"`
 }
 
 // VolcTenantModelProviderDataApiMode defines model for VolcTenantModelProviderData.ApiMode.
@@ -1817,6 +1855,146 @@ type WorkspacePutRequest struct {
 
 // WorkspacePutResponse defines model for WorkspacePutResponse.
 type WorkspacePutResponse = Workspace
+
+// AsOpenAICredentialBody returns the union data inside the CredentialBody as a OpenAICredentialBody
+func (t CredentialBody) AsOpenAICredentialBody() (OpenAICredentialBody, error) {
+	var body OpenAICredentialBody
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOpenAICredentialBody overwrites any union data inside the CredentialBody as the provided OpenAICredentialBody
+func (t *CredentialBody) FromOpenAICredentialBody(v OpenAICredentialBody) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOpenAICredentialBody performs a merge with any union data inside the CredentialBody, using the provided OpenAICredentialBody
+func (t *CredentialBody) MergeOpenAICredentialBody(v OpenAICredentialBody) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeminiCredentialBody returns the union data inside the CredentialBody as a GeminiCredentialBody
+func (t CredentialBody) AsGeminiCredentialBody() (GeminiCredentialBody, error) {
+	var body GeminiCredentialBody
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeminiCredentialBody overwrites any union data inside the CredentialBody as the provided GeminiCredentialBody
+func (t *CredentialBody) FromGeminiCredentialBody(v GeminiCredentialBody) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeminiCredentialBody performs a merge with any union data inside the CredentialBody, using the provided GeminiCredentialBody
+func (t *CredentialBody) MergeGeminiCredentialBody(v GeminiCredentialBody) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsDashScopeCredentialBody returns the union data inside the CredentialBody as a DashScopeCredentialBody
+func (t CredentialBody) AsDashScopeCredentialBody() (DashScopeCredentialBody, error) {
+	var body DashScopeCredentialBody
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromDashScopeCredentialBody overwrites any union data inside the CredentialBody as the provided DashScopeCredentialBody
+func (t *CredentialBody) FromDashScopeCredentialBody(v DashScopeCredentialBody) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeDashScopeCredentialBody performs a merge with any union data inside the CredentialBody, using the provided DashScopeCredentialBody
+func (t *CredentialBody) MergeDashScopeCredentialBody(v DashScopeCredentialBody) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMiniMaxCredentialBody returns the union data inside the CredentialBody as a MiniMaxCredentialBody
+func (t CredentialBody) AsMiniMaxCredentialBody() (MiniMaxCredentialBody, error) {
+	var body MiniMaxCredentialBody
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMiniMaxCredentialBody overwrites any union data inside the CredentialBody as the provided MiniMaxCredentialBody
+func (t *CredentialBody) FromMiniMaxCredentialBody(v MiniMaxCredentialBody) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMiniMaxCredentialBody performs a merge with any union data inside the CredentialBody, using the provided MiniMaxCredentialBody
+func (t *CredentialBody) MergeMiniMaxCredentialBody(v MiniMaxCredentialBody) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVolcCredentialBody returns the union data inside the CredentialBody as a VolcCredentialBody
+func (t CredentialBody) AsVolcCredentialBody() (VolcCredentialBody, error) {
+	var body VolcCredentialBody
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVolcCredentialBody overwrites any union data inside the CredentialBody as the provided VolcCredentialBody
+func (t *CredentialBody) FromVolcCredentialBody(v VolcCredentialBody) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVolcCredentialBody performs a merge with any union data inside the CredentialBody, using the provided VolcCredentialBody
+func (t *CredentialBody) MergeVolcCredentialBody(v VolcCredentialBody) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CredentialBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *CredentialBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsPingRequest returns the union data inside the RPCRequest_Params as a PingRequest
 func (t RPCRequest_Params) AsPingRequest() (PingRequest, error) {

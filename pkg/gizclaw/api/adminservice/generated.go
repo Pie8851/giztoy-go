@@ -106,13 +106,11 @@ type CredentialList struct {
 
 // CredentialUpsert defines model for CredentialUpsert.
 type CredentialUpsert struct {
+	// Body Provider-specific credential payload. The shape is selected by Credential.provider.
 	Body        externalRef0.CredentialBody `json:"body"`
 	Description *string                     `json:"description,omitempty"`
-
-	// Method Credential authentication method
-	Method   externalRef0.CredentialMethod `json:"method"`
-	Name     string                        `json:"name"`
-	Provider string                        `json:"provider"`
+	Name        string                      `json:"name"`
+	Provider    string                      `json:"provider"`
 }
 
 // DashScopeTenantList defines model for DashScopeTenantList.
@@ -297,7 +295,6 @@ type VolcTenantList struct {
 
 // VolcTenantUpsert defines model for VolcTenantUpsert.
 type VolcTenantUpsert struct {
-	AppId          string    `json:"app_id"`
 	CredentialName string    `json:"credential_name"`
 	Description    *string   `json:"description,omitempty"`
 	Endpoint       *string   `json:"endpoint,omitempty"`

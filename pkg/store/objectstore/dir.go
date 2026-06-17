@@ -115,6 +115,10 @@ func (d Dir) List(prefix string) ([]ObjectInfo, error) {
 	return out, err
 }
 
+func (d Dir) LocalDir() (string, bool) {
+	return d.root(), true
+}
+
 func (d Dir) abs(name string, allowEmpty bool) (string, error) {
 	name, err := cleanName(name, allowEmpty)
 	if err != nil {

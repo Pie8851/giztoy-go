@@ -93,7 +93,6 @@ func TestIntegrationAdminResourceAPIs(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)
@@ -120,7 +119,6 @@ func TestIntegrationAdminResourceAPIs(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"description": "updated credential",
 			"body": {"api_key": "secret"}
 		}

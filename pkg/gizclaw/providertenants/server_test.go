@@ -25,8 +25,7 @@ func TestServerMiniMaxTenantsCRUD(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodToken,
-		Body:      apitypes.CredentialBody{"token": "tok-main"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"token": "tok-main"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -161,8 +160,7 @@ func TestServerMiniMaxTenantsPaginationAndValidation(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodToken,
-		Body:      apitypes.CredentialBody{"token": "tok-main"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"token": "tok-main"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -212,7 +210,6 @@ func TestServerMiniMaxTenantsPaginationAndValidation(t *testing.T) {
 
 	invalidBody := adminservice.MiniMaxTenantUpsert{
 		Name:           "missing-cred",
-		AppId:          "app-x",
 		GroupId:        "group-x",
 		CredentialName: "not-found",
 	}
@@ -263,7 +260,6 @@ func TestServerMiniMaxCredentialValidation(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := context.Background()
 	tenant := apitypes.MiniMaxTenant{
-		AppId:          "app-1",
 		CredentialName: "cred-main",
 		GroupId:        "group-1",
 		Name:           "tenant-a",
@@ -272,8 +268,7 @@ func TestServerMiniMaxCredentialValidation(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "openai",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "sk-test"},
+		Body:      apitypes.NewOpenAICredentialBody("sk-test"),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -288,8 +283,7 @@ func TestServerMiniMaxCredentialValidation(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"other": "value"},
+		Body:      apitypes.CredentialBody{},
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -316,8 +310,8 @@ func TestServerMiniMaxHelpers(t *testing.T) {
 	if got := miniMaxBaseURL(apitypes.MiniMaxTenant{BaseUrl: &baseURL}); got != baseURL {
 		t.Fatalf("miniMaxBaseURL(tenant) = %q, want %q", got, baseURL)
 	}
-	if got := credentialBodyString(apitypes.CredentialBody{"api_key": 12345}, "api_key"); got != "12345" {
-		t.Fatalf("credentialBodyString(number) = %q, want 12345", got)
+	if got := credentialBodyString(apitypes.NewOpenAICredentialBody("12345"), "api_key"); got != "12345" {
+		t.Fatalf("credentialBodyString(api key) = %q, want 12345", got)
 	}
 	left := map[string]interface{}{"a": float64(1), "b": "text"}
 	right := map[string]interface{}{"b": "text", "a": float64(1)}
@@ -485,8 +479,7 @@ func TestServerMiniMaxTenantValidationAndConflictPaths(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodToken,
-		Body:      apitypes.CredentialBody{"token": "tok-main"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"token": "tok-main"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -587,8 +580,7 @@ func TestServerSyncMiniMaxTenantVoicesUsesTenantBaseURL(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "mmx-key", "base_url": "https://models.example.invalid"},
+		Body:      apitypes.NewMiniMaxCredentialBodyFromStrings(map[string]string{"api_key": "mmx-key", "base_url": "https://models.example.invalid"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -647,8 +639,7 @@ func TestServerSyncMiniMaxTenantVoicesCredentialRejected(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "bad-key"},
+		Body:      apitypes.NewMiniMaxCredentialBody("bad-key"),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -702,8 +693,7 @@ func TestServerSyncMiniMaxTenantVoicesFallsBackAfterRegionalAuthError(t *testing
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "mmx-key", "voice_base_url": success.URL},
+		Body:      apitypes.NewMiniMaxCredentialBodyFromStrings(map[string]string{"api_key": "mmx-key", "voice_base_url": success.URL}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -763,8 +753,7 @@ func TestServerSyncMiniMaxTenantVoicesReconcile(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "mmx-key", "base_url": "https://models.example.invalid"},
+		Body:      apitypes.NewMiniMaxCredentialBodyFromStrings(map[string]string{"api_key": "mmx-key", "base_url": "https://models.example.invalid"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -883,8 +872,7 @@ func TestServerSyncMiniMaxTenantVoicesFetchesAllVoiceTypes(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "cred-main",
 		Provider:  "minimax",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"api_key": "mmx-key", "base_url": "https://models.example.invalid"},
+		Body:      apitypes.NewMiniMaxCredentialBodyFromStrings(map[string]string{"api_key": "mmx-key", "base_url": "https://models.example.invalid"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -931,8 +919,7 @@ func TestServerVolcTenantsCRUDAndSyncVoices(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volcengine",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"access_key_id": "ak", "secret_access_key": "sk"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "access_key_id": "ak", "secret_access_key": "sk"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -974,7 +961,6 @@ func TestServerVolcTenantsCRUDAndSyncVoices(t *testing.T) {
 
 	resourceIDs := []string{"seed-tts-2.0", "seed-icl-2.0"}
 	createBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 		Region:         stringPtr("cn-beijing"),
@@ -992,10 +978,6 @@ func TestServerVolcTenantsCRUDAndSyncVoices(t *testing.T) {
 	if created.Name != "tenant-a" || created.CredentialName != "volc-main" {
 		t.Fatalf("CreateVolcTenant() tenant = %#v", created)
 	}
-	if created.AppId != "app-1" {
-		t.Fatalf("CreateVolcTenant() app_id = %q, want app-1", created.AppId)
-	}
-
 	listResp, err := srv.ListVolcTenants(ctx, adminservice.ListVolcTenantsRequestObject{})
 	if err != nil {
 		t.Fatalf("ListVolcTenants() error = %v", err)
@@ -1090,7 +1072,6 @@ func TestServerVolcTenantPutGetAndValidation(t *testing.T) {
 	ctx := context.Background()
 
 	invalidBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "missing-credential",
 		Endpoint:       stringPtr("not-a-url"),
@@ -1106,14 +1087,12 @@ func TestServerVolcTenantPutGetAndValidation(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volc",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"ak": "ak", "sk": "sk"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "ak": "ak", "sk": "sk"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
 	resourceIDs := []string{" seed-tts-2.0 ", "", "seed-tts-2.0", "seed-icl-2.0"}
 	body := adminservice.VolcTenantUpsert{
-		AppId:          " app-1 ",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 		Endpoint:       stringPtr("https://speech.example.com/"),
@@ -1129,7 +1108,7 @@ func TestServerVolcTenantPutGetAndValidation(t *testing.T) {
 	if !ok {
 		t.Fatalf("PutVolcTenant() response = %#v", putResp)
 	}
-	if put.AppId != "app-1" || put.Endpoint == nil || *put.Endpoint != "https://speech.example.com/" || put.Region == nil || *put.Region != "cn-beijing" {
+	if put.Endpoint == nil || *put.Endpoint != "https://speech.example.com/" || put.Region == nil || *put.Region != "cn-beijing" {
 		t.Fatalf("PutVolcTenant() tenant = %#v", put)
 	}
 	if put.ResourceIds == nil || !slices.Equal(*put.ResourceIds, []string{"seed-tts-2.0", "seed-icl-2.0"}) {
@@ -1170,13 +1149,11 @@ func TestServerVolcTenantErrorResponses(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volc",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"ak": "ak", "sk": "sk"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "ak": "ak", "sk": "sk"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
 	createBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 	}
@@ -1257,8 +1234,7 @@ func TestServerVolcSyncPublicOnlySkipsTrainStatusAPI(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volcengine",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"access_key_id": "ak", "secret_access_key": "sk"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "access_key_id": "ak", "secret_access_key": "sk"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -1272,7 +1248,6 @@ func TestServerVolcSyncPublicOnlySkipsTrainStatusAPI(t *testing.T) {
 		return fakeClient, nil
 	}
 	createBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 	}
@@ -1308,8 +1283,7 @@ func TestServerVolcSyncTimbreFallbackMapsICLResourceID(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volcengine",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"access_key_id": "ak", "secret_access_key": "sk"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "access_key_id": "ak", "secret_access_key": "sk"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
@@ -1325,7 +1299,6 @@ func TestServerVolcSyncTimbreFallbackMapsICLResourceID(t *testing.T) {
 	}
 	resourceIDs := []string{"seed-tts-1.0", "seed-tts-2.0", "seed-icl-2.0"}
 	createBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 		ResourceIds:    &resourceIDs,
@@ -1355,7 +1328,7 @@ func TestServerVolcTenantStoreNotConfigured(t *testing.T) {
 
 	srv := &Server{}
 	ctx := context.Background()
-	createBody := adminservice.VolcTenantUpsert{Name: "tenant-a", AppId: "app-1", CredentialName: "cred"}
+	createBody := adminservice.VolcTenantUpsert{Name: "tenant-a", CredentialName: "cred"}
 	for name, call := range map[string]func() (interface{}, error){
 		"ListVolcTenants": func() (interface{}, error) {
 			return srv.ListVolcTenants(ctx, adminservice.ListVolcTenantsRequestObject{})
@@ -1401,13 +1374,11 @@ func TestServerVolcSyncRejectsInvalidCredential(t *testing.T) {
 	seedCredential(t, srv, apitypes.Credential{
 		Name:      "volc-main",
 		Provider:  "volc",
-		Method:    apitypes.CredentialMethodApiKey,
-		Body:      apitypes.CredentialBody{"ak": "ak"},
+		Body:      apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"ak": "ak"}),
 		CreatedAt: srv.now(),
 		UpdatedAt: srv.now(),
 	})
 	createBody := adminservice.VolcTenantUpsert{
-		AppId:          "app-1",
 		Name:           "tenant-a",
 		CredentialName: "volc-main",
 	}
@@ -1432,11 +1403,11 @@ func TestVolcCredentialAndResourceHelpers(t *testing.T) {
 
 	ak, sk, token, err := volcCredentialKeys(apitypes.Credential{
 		Name: "volc-main",
-		Body: apitypes.CredentialBody{
+		Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{
 			"access_key":    " ak ",
 			"secret_key":    " sk ",
 			"session_token": " token ",
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("volcCredentialKeys() error = %v", err)
@@ -1444,7 +1415,7 @@ func TestVolcCredentialAndResourceHelpers(t *testing.T) {
 	if ak != "ak" || sk != "sk" || token != "token" {
 		t.Fatalf("volcCredentialKeys() = %q, %q, %q", ak, sk, token)
 	}
-	if _, _, _, err := volcCredentialKeys(apitypes.Credential{Name: "missing", Body: apitypes.CredentialBody{"ak": "ak"}}); err == nil {
+	if _, _, _, err := volcCredentialKeys(apitypes.Credential{Name: "missing", Body: apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"ak": "ak"})}); err == nil {
 		t.Fatal("volcCredentialKeys(missing secret) error = nil")
 	}
 
@@ -1512,7 +1483,6 @@ func TestVolcSpeakerClientForTenantValidation(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := context.Background()
 	tenant := apitypes.VolcTenant{
-		AppId:          "app-1",
 		CredentialName: "volc-main",
 		Name:           "tenant-a",
 		Region:         stringPtr("cn-beijing"),
@@ -1520,21 +1490,21 @@ func TestVolcSpeakerClientForTenantValidation(t *testing.T) {
 	if _, err := srv.volcSpeakerClientForTenant(ctx, apitypes.Credential{
 		Name:     "wrong-provider",
 		Provider: "minimax",
-		Body:     apitypes.CredentialBody{"ak": "ak", "sk": "sk"},
+		Body:     apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "ak": "ak", "sk": "sk"}),
 	}, tenant); err == nil || !strings.Contains(err.Error(), "provider must be volcengine") {
 		t.Fatalf("volcSpeakerClientForTenant(wrong provider) error = %v", err)
 	}
 	if _, err := srv.volcSpeakerClientForTenant(ctx, apitypes.Credential{
 		Name:     "missing-secret",
 		Provider: "volc",
-		Body:     apitypes.CredentialBody{"ak": "ak"},
+		Body:     apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"ak": "ak"}),
 	}, tenant); err == nil || !strings.Contains(err.Error(), "missing access_key_id/secret_access_key") {
 		t.Fatalf("volcSpeakerClientForTenant(missing secret) error = %v", err)
 	}
 	client, err := srv.volcSpeakerClientForTenant(ctx, apitypes.Credential{
 		Name:     "volc-main",
 		Provider: "volcengine",
-		Body:     apitypes.CredentialBody{"ak": "ak", "sk": "sk"},
+		Body:     apitypes.NewVolcCredentialBodyFromStrings(map[string]string{"app_id": "app-1", "ak": "ak", "sk": "sk"}),
 	}, tenant)
 	if err != nil {
 		t.Fatalf("volcSpeakerClientForTenant() error = %v", err)

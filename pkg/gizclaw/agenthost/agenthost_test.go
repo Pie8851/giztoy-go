@@ -191,6 +191,31 @@ func TestHostTransformRunsAgentAndReleasesOnClose(t *testing.T) {
 	}
 }
 
+func TestHostTransformPreparesWorkspaceRuntime(t *testing.T) {
+	host := New(fakeResolver{spec: Spec{Workspace: apitypes.Workspace{Name: "demo"}, AgentType: "echo"}})
+	host.WorkspaceStore = fakeWorkspaceStore{runtime: WorkspaceRuntime{
+		ObjectPrefix: "workspaces/demo",
+		LocalDir:     "/tmp/gizclaw-agenthost/workspaces/demo",
+	}}
+	if err := host.Register("echo", FactoryFunc(func(_ context.Context, spec Spec) (genx.Transformer, error) {
+		if spec.Runtime.ObjectPrefix != "workspaces/demo" {
+			t.Fatalf("runtime object prefix = %q, want workspaces/demo", spec.Runtime.ObjectPrefix)
+		}
+		if spec.Runtime.LocalDir == "" {
+			t.Fatal("runtime local dir is empty")
+		}
+		return fixedTransformer{text: "ok"}, nil
+	})); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	stream, err := host.Transform(context.Background(), "demo", emptyStream{})
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	defer stream.Close()
+}
+
 func TestHostTransformRejectsConcurrentSameWorkspace(t *testing.T) {
 	host := New(fakeResolver{spec: Spec{Workspace: apitypes.Workspace{Name: "demo"}, AgentType: "echo"}})
 	if err := host.Register("echo", FactoryFunc(func(context.Context, Spec) (genx.Transformer, error) {
@@ -326,6 +351,15 @@ func (r fakeResolver) Resolve(context.Context, string) (Spec, error) {
 		return Spec{}, r.err
 	}
 	return r.spec, nil
+}
+
+type fakeWorkspaceStore struct {
+	runtime WorkspaceRuntime
+	err     error
+}
+
+func (s fakeWorkspaceStore) PrepareWorkspace(context.Context, string) (WorkspaceRuntime, error) {
+	return s.runtime, s.err
 }
 
 type fakeWorkspaceService struct {

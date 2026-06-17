@@ -111,6 +111,7 @@ func TestPersonaDriverRunUsesPeerTransportContract(t *testing.T) {
 	opusPackets := make(chan timedPeerPacket, 8)
 	stream := newFakePeerStream()
 	var sentFrames [][]byte
+	reloadCount := 0
 	roundIndex := 0
 	assistantLabel := "assistant"
 	stream.push = func(chunk *genx.MessageChunk) error {
@@ -120,6 +121,7 @@ func TestPersonaDriverRunUsesPeerTransportContract(t *testing.T) {
 		}
 		sentFrames = append(sentFrames, append([]byte(nil), blob.Data...))
 		events <- timedTextEvent("transcript", "你好测试")
+		events <- timedTranscriptDoneEvent()
 		events <- timedTextEvent("assistant", "收到，继续。")
 		for j := 0; j < 4; j++ {
 			opusPackets <- newTimedPeerPacket([]byte{0x44, byte(roundIndex), byte(j)})
@@ -151,6 +153,10 @@ func TestPersonaDriverRunUsesPeerTransportContract(t *testing.T) {
 		transcribeAudioFile: func(context.Context, string) (string, error) {
 			return "你好测试", nil
 		},
+		reloadAgent: func(context.Context) error {
+			reloadCount++
+			return nil
+		},
 	}
 
 	stats, err := driver.run(context.Background())
@@ -162,6 +168,9 @@ func TestPersonaDriverRunUsesPeerTransportContract(t *testing.T) {
 	}
 	if len(sentFrames) != 2 {
 		t.Fatalf("sent frames = %d, want 2", len(sentFrames))
+	}
+	if reloadCount != 2 {
+		t.Fatalf("reload count = %d, want 2", reloadCount)
 	}
 	for i, frame := range sentFrames {
 		if !bytes.Equal(frame, []byte{0x11, 0x22}) {
@@ -308,7 +317,7 @@ func TestPersonaDriverRunRoundFailsWhenResponseIsIncomplete(t *testing.T) {
 }
 
 func TestPersonaDriverRunRoundTranscribesAssistantAudio(t *testing.T) {
-	events := make(chan timedPeerEvent, 2)
+	events := make(chan timedPeerEvent, 4)
 	label := "assistant"
 	opusPackets := make(chan timedPeerPacket, 1)
 	var publish sync.Once
@@ -319,6 +328,7 @@ func TestPersonaDriverRunRoundTranscribesAssistantAudio(t *testing.T) {
 		}
 		publish.Do(func() {
 			events <- timedTextEvent("transcript", "你好测试")
+			events <- timedTranscriptDoneEvent()
 			events <- newTimedPeerEvent(apitypes.PeerStreamEvent{
 				Type:  apitypes.PeerStreamEventTypeEos,
 				Label: &label,
@@ -475,6 +485,14 @@ func labeledTextEvent(label, text string) apitypes.PeerStreamEvent {
 
 func timedTextEvent(label, text string) timedPeerEvent {
 	return newTimedPeerEvent(labeledTextEvent(label, text))
+}
+
+func timedTranscriptDoneEvent() timedPeerEvent {
+	label := "transcript"
+	return newTimedPeerEvent(apitypes.PeerStreamEvent{
+		Type:  apitypes.PeerStreamEventTypeTextDone,
+		Label: &label,
+	})
 }
 
 type closeBuffer struct {

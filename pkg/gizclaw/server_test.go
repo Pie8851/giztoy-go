@@ -16,6 +16,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	"github.com/GizClaw/gizclaw-go/pkg/store/kv"
+	"github.com/GizClaw/gizclaw-go/pkg/store/objectstore"
 )
 
 type testGiznetSecurityPolicy struct {
@@ -158,6 +159,24 @@ func TestServerInitConfiguresPeerRunService(t *testing.T) {
 	conn.initRPC()
 	if conn.rpc == nil || conn.rpc.peerRun != server.manager.PeerRun {
 		t.Fatalf("PeerConn rpc peerRun = %+v, want %+v", conn.rpc, server.manager.PeerRun)
+	}
+}
+
+func TestServerInitConfiguresAgentHostWorkspaceStore(t *testing.T) {
+	keyPair, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair error = %v", err)
+	}
+	server := &Server{
+		LocalStatic:    *keyPair,
+		PeerStore:      mustBadgerInMemory(t, nil),
+		AgentHostStore: objectstore.Dir(t.TempDir()),
+	}
+	if err := server.init(); err != nil {
+		t.Fatalf("init() error = %v", err)
+	}
+	if server.manager == nil || server.manager.AgentHost == nil || server.manager.AgentHost.WorkspaceStore == nil {
+		t.Fatalf("agenthost workspace store not configured: %+v", server.manager)
 	}
 }
 

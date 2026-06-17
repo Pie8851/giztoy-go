@@ -284,6 +284,7 @@ func TestPrintRunSummary(t *testing.T) {
 			InputASR:                "你好",
 			Transcript:              "你好",
 			AssistantText:           "收到",
+			FirstAssistantText:      "收",
 			InputOpusPackets:        2,
 			InputOpusBytes:          10,
 			DownlinkPackets:         3,
@@ -292,6 +293,7 @@ func TestPrintRunSummary(t *testing.T) {
 			UplinkSend:              8 * time.Millisecond,
 			ResponseTotal:           40 * time.Millisecond,
 			FirstTranscriptChunk:    10 * time.Millisecond,
+			TranscriptDone:          15 * time.Millisecond,
 			FirstAssistantTextChunk: 20 * time.Millisecond,
 			FirstAudioChunk:         30 * time.Millisecond,
 			WorkspaceTotal:          time.Second,
@@ -300,14 +302,17 @@ func TestPrintRunSummary(t *testing.T) {
 	if !strings.Contains(output, "workspace=demo") ||
 		!strings.Contains(output, "round=1") ||
 		!strings.Contains(output, "workspace_uplink_send=8ms") ||
-		!strings.Contains(output, "after_eos_transcript_first_chunk=10ms") ||
+		!strings.Contains(output, "after_eos_transcript_start=10ms") ||
+		!strings.Contains(output, "after_eos_transcript_done=15ms") ||
 		!strings.Contains(output, "after_eos_text_first_chunk=20ms") ||
+		!strings.Contains(output, "text_first_after_transcript_done=5ms") ||
 		!strings.Contains(output, "after_eos_audio_first_chunk=30ms") ||
 		!strings.Contains(output, "after_eos_complete=40ms") ||
 		!strings.Contains(output, "workspace_total=1s") ||
 		!strings.Contains(output, "timing_summary=") ||
 		!strings.Contains(output, `"user":"你好"`) ||
 		!strings.Contains(output, `"transcript":"你好"`) ||
+		!strings.Contains(output, `"assistant_first_delta":"收"`) ||
 		!strings.Contains(output, `"assistant":"收到"`) {
 		t.Fatalf("summary output = %q", output)
 	}
@@ -325,6 +330,7 @@ func TestRoundTimingSummary(t *testing.T) {
 		{
 			UplinkSend:              5 * time.Millisecond,
 			FirstTranscriptChunk:    10 * time.Millisecond,
+			TranscriptDone:          15 * time.Millisecond,
 			FirstAssistantTextChunk: 20 * time.Millisecond,
 			FirstAudioChunk:         30 * time.Millisecond,
 			ResponseTotal:           40 * time.Millisecond,
@@ -333,6 +339,7 @@ func TestRoundTimingSummary(t *testing.T) {
 		{
 			UplinkSend:              15 * time.Millisecond,
 			FirstTranscriptChunk:    30 * time.Millisecond,
+			TranscriptDone:          35 * time.Millisecond,
 			FirstAssistantTextChunk: 40 * time.Millisecond,
 			FirstAudioChunk:         50 * time.Millisecond,
 			ResponseTotal:           60 * time.Millisecond,
@@ -342,8 +349,17 @@ func TestRoundTimingSummary(t *testing.T) {
 	if got := summary["after_eos_transcript_first"]; got.Count != 2 || got.MinMS != 10 || got.AvgMS != 20 || got.MaxMS != 30 {
 		t.Fatalf("after_eos_transcript_first summary = %+v", got)
 	}
+	if got := summary["after_eos_transcript_start"]; got.Count != 2 || got.MinMS != 10 || got.AvgMS != 20 || got.MaxMS != 30 {
+		t.Fatalf("after_eos_transcript_start summary = %+v", got)
+	}
+	if got := summary["after_eos_transcript_done"]; got.Count != 2 || got.MinMS != 15 || got.AvgMS != 25 || got.MaxMS != 35 {
+		t.Fatalf("after_eos_transcript_done summary = %+v", got)
+	}
 	if got := summary["after_eos_text_first"]; got.Count != 2 || got.MinMS != 20 || got.MaxMS != 40 {
 		t.Fatalf("after_eos_text_first summary = %+v", got)
+	}
+	if got := summary["text_first_after_transcript_done"]; got.Count != 2 || got.MinMS != 5 || got.MaxMS != 5 {
+		t.Fatalf("text_first_after_transcript_done summary = %+v", got)
 	}
 	if got := summary["after_eos_audio_first"]; got.Count != 2 || got.MinMS != 30 || got.MaxMS != 50 {
 		t.Fatalf("after_eos_audio_first summary = %+v", got)

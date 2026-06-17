@@ -16,6 +16,7 @@ type Spec struct {
 	Workspace apitypes.Workspace
 	Workflow  apitypes.WorkflowDocument
 	AgentType string
+	Runtime   WorkspaceRuntime
 }
 
 type workflowEnvelope struct {

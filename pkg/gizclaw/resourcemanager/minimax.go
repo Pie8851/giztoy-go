@@ -287,7 +287,6 @@ func miniMaxTenantUpsert(resource apitypes.MiniMaxTenantResource) adminservice.M
 
 func volcTenantSpec(tenant apitypes.VolcTenant) apitypes.VolcTenantSpec {
 	return apitypes.VolcTenantSpec{
-		AppId:          tenant.AppId,
 		CredentialName: tenant.CredentialName,
 		Description:    tenant.Description,
 		Endpoint:       tenant.Endpoint,
@@ -298,7 +297,6 @@ func volcTenantSpec(tenant apitypes.VolcTenant) apitypes.VolcTenantSpec {
 
 func volcTenantUpsert(resource apitypes.VolcTenantResource) adminservice.VolcTenantUpsert {
 	return adminservice.VolcTenantUpsert{
-		AppId:          resource.Spec.AppId,
 		CredentialName: resource.Spec.CredentialName,
 		Description:    resource.Spec.Description,
 		Endpoint:       resource.Spec.Endpoint,

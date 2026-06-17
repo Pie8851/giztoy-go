@@ -106,6 +106,26 @@ func TestPeerStreamPushWritesEventsAndOpus(t *testing.T) {
 	}
 }
 
+func TestPeerStreamEventToChunkPreservesAudioEOSMIME(t *testing.T) {
+	streamID := "s1"
+	mimeType := "audio/opus"
+	chunk, err := peerStreamEventToChunk(apitypes.PeerStreamEvent{
+		Type:     apitypes.PeerStreamEventTypeEos,
+		StreamId: &streamID,
+		MimeType: &mimeType,
+	})
+	if err != nil {
+		t.Fatalf("peerStreamEventToChunk() error = %v", err)
+	}
+	if chunk.Ctrl == nil || !chunk.Ctrl.EndOfStream || chunk.Ctrl.StreamID != streamID {
+		t.Fatalf("chunk ctrl = %#v, want EOS stream", chunk.Ctrl)
+	}
+	blob, ok := chunk.Part.(*genx.Blob)
+	if !ok || blob.MIMEType != mimeType || len(blob.Data) != 0 {
+		t.Fatalf("chunk part = %#v, want empty audio blob", chunk.Part)
+	}
+}
+
 func TestPeerStreamPushSkipsNilAndOggDirectPacket(t *testing.T) {
 	clientSide, serverSide := net.Pipe()
 	defer clientSide.Close()
@@ -180,6 +200,56 @@ func TestPeerStreamNextReadsEventsAndOpus(t *testing.T) {
 	blob := chunk.Part.(*genx.Blob)
 	if blob.MIMEType != "audio/opus" || !bytes.Equal(blob.Data, []byte{0x04, 0x05}) || chunk.Ctrl.Timestamp != 456 {
 		t.Fatalf("packet chunk = %#v", chunk)
+	}
+}
+
+func TestClientTransformBridgesInputToPeerStream(t *testing.T) {
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
+	peer := &PeerStream{
+		out:  make(chan *genx.MessageChunk, 2),
+		done: make(chan struct{}),
+	}
+	var pushed []*genx.MessageChunk
+	peer.push = func(_ context.Context, chunk *genx.MessageChunk) error {
+		pushed = append(pushed, chunk.Clone())
+		if text, ok := chunk.Part.(genx.Text); ok {
+			peer.out <- &genx.MessageChunk{Part: genx.Text("echo:" + string(text))}
+		}
+		return nil
+	}
+	client := &Client{
+		openPeerStream: func(int) (*PeerStream, error) {
+			return peer, nil
+		},
+	}
+	output, err := client.Transform(context.Background(), "", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(&genx.MessageChunk{Part: genx.Text("hello")}); err != nil {
+		t.Fatalf("input Add() error = %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input Done() error = %v", err)
+	}
+	chunk, err := output.Next()
+	if err != nil {
+		t.Fatalf("output Next() error = %v", err)
+	}
+	if got := string(chunk.Part.(genx.Text)); got != "echo:hello" {
+		t.Fatalf("output text = %q", got)
+	}
+	deadline := time.After(time.Second)
+	for len(pushed) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for pushed input")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if got := string(pushed[0].Part.(genx.Text)); got != "hello" {
+		t.Fatalf("pushed text = %q", got)
 	}
 }
 

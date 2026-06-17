@@ -166,9 +166,6 @@
             "example": "primary openai credential",
             "type": "string"
           },
-          "method": {
-            "$ref": "#/components/schemas/CredentialMethod"
-          },
           "name": {
             "type": "string"
           },
@@ -183,7 +180,6 @@
         "required": [
           "name",
           "provider",
-          "method",
           "body",
           "created_at",
           "updated_at"
@@ -191,11 +187,24 @@
         "type": "object"
       },
       "CredentialBody": {
-        "additionalProperties": true,
-        "example": {
-          "api_key": "sk-..."
-        },
-        "type": "object"
+        "description": "Provider-specific credential payload. The shape is selected by Credential.provider.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OpenAICredentialBody"
+          },
+          {
+            "$ref": "#/components/schemas/GeminiCredentialBody"
+          },
+          {
+            "$ref": "#/components/schemas/DashScopeCredentialBody"
+          },
+          {
+            "$ref": "#/components/schemas/MiniMaxCredentialBody"
+          },
+          {
+            "$ref": "#/components/schemas/VolcCredentialBody"
+          }
+        ]
       },
       "CredentialCreateRequest": {
         "$ref": "#/components/schemas/Credential"
@@ -270,15 +279,6 @@
         ],
         "type": "object"
       },
-      "CredentialMethod": {
-        "description": "Credential authentication method",
-        "enum": [
-          "api_key",
-          "token",
-          "app_id_token"
-        ],
-        "type": "string"
-      },
       "CredentialPutRequest": {
         "additionalProperties": false,
         "properties": {
@@ -298,6 +298,25 @@
       },
       "CredentialPutResponse": {
         "$ref": "#/components/schemas/Credential"
+      },
+      "DashScopeCredentialBody": {
+        "additionalProperties": false,
+        "example": {
+          "api_key": "sk-..."
+        },
+        "minProperties": 1,
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "type": "object"
       },
       "DashScopeTenantModelProviderData": {
         "properties": {
@@ -1224,6 +1243,25 @@
         ],
         "type": "string"
       },
+      "GeminiCredentialBody": {
+        "additionalProperties": false,
+        "example": {
+          "api_key": "..."
+        },
+        "minProperties": 1,
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "GeminiTenantModelProviderData": {
         "properties": {
           "upstream_model": {
@@ -1253,6 +1291,31 @@
             "type": "string"
           },
           "model": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MiniMaxCredentialBody": {
+        "additionalProperties": false,
+        "example": {
+          "api_key": "sk-..."
+        },
+        "minProperties": 1,
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "minimax_voice_base_url": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "voice_base_url": {
             "type": "string"
           }
         },
@@ -1524,6 +1587,31 @@
         "required": [
           "supported"
         ],
+        "type": "object"
+      },
+      "OpenAICredentialBody": {
+        "additionalProperties": false,
+        "example": {
+          "api_key": "sk-..."
+        },
+        "minProperties": 1,
+        "properties": {
+          "api_key": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "OpenAITenantModelProviderData": {
@@ -2924,6 +3012,65 @@
         ],
         "type": "object"
       },
+      "VolcCredentialBody": {
+        "additionalProperties": false,
+        "example": {
+          "api_key": "...",
+          "app_id": "123456"
+        },
+        "minProperties": 1,
+        "properties": {
+          "access_key": {
+            "type": "string"
+          },
+          "access_key_id": {
+            "type": "string"
+          },
+          "access_token": {
+            "type": "string"
+          },
+          "ak": {
+            "type": "string"
+          },
+          "api_key": {
+            "type": "string"
+          },
+          "app_id": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "bearer_token": {
+            "type": "string"
+          },
+          "sauc_access_key": {
+            "type": "string"
+          },
+          "secret_access_key": {
+            "type": "string"
+          },
+          "secret_key": {
+            "type": "string"
+          },
+          "session_token": {
+            "type": "string"
+          },
+          "sk": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "voice_base_url": {
+            "type": "string"
+          },
+          "x_api_key": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "VolcTenantModelProviderData": {
         "properties": {
           "api_mode": {
@@ -2937,8 +3084,41 @@
           "auth_mode": {
             "type": "string"
           },
+          "default_thinking_level": {
+            "type": "string"
+          },
           "resource_id": {
             "type": "string"
+          },
+          "support_json_output": {
+            "type": "boolean"
+          },
+          "support_text_only": {
+            "type": "boolean"
+          },
+          "support_thinking": {
+            "type": "boolean"
+          },
+          "support_tool_calls": {
+            "type": "boolean"
+          },
+          "thinking_level_param": {
+            "type": "string"
+          },
+          "thinking_levels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "thinking_param": {
+            "type": "string"
+          },
+          "upstream_model": {
+            "type": "string"
+          },
+          "use_system_role": {
+            "type": "boolean"
           }
         },
         "type": "object"

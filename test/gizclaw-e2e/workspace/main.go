@@ -151,9 +151,32 @@ func ensureWorkspace(ctx context.Context, client runControlClient, cfg config) e
 func workflowDocument(cfg config) rpcapi.WorkflowCreateRequest {
 	description := cfg.Workflow.Description
 	if description == "" {
-		description = "Doubao realtime e2e workspace workflow"
+		description = "Workspace e2e workflow"
 	}
-	spec := map[string]interface{}{
+	spec := workflowSpec(cfg)
+	return rpcapi.WorkflowCreateRequest{
+		ApiVersion: "gizclaw.flowcraft/v1alpha1",
+		Kind:       "FlowcraftWorkflow",
+		Metadata: rpcapi.WorkflowMetadata{
+			Name:        cfg.Workflow.Name,
+			Description: &description,
+		},
+		Spec: spec,
+	}
+}
+
+func workflowSpec(cfg config) map[string]interface{} {
+	if cfg.isFlowcraftAgent() {
+		return map[string]interface{}{
+			"flowcraft": cfg.Workflow.Flowcraft,
+			"voice_adapter": map[string]interface{}{
+				"asr_model":     cfg.Workflow.VoiceAdapter.ASRModel,
+				"default_voice": cfg.Workflow.VoiceAdapter.DefaultVoice,
+				"node_voices":   cfg.Workflow.VoiceAdapter.NodeVoices,
+			},
+		}
+	}
+	return map[string]interface{}{
 		"realtime_model": cfg.Workflow.RealtimeModel,
 		"realtime": map[string]interface{}{
 			"session": map[string]interface{}{
@@ -169,21 +192,12 @@ func workflowDocument(cfg config) rpcapi.WorkflowCreateRequest {
 			},
 		},
 	}
-	return rpcapi.WorkflowCreateRequest{
-		ApiVersion: "gizclaw.flowcraft/v1alpha1",
-		Kind:       "FlowcraftWorkflow",
-		Metadata: rpcapi.WorkflowMetadata{
-			Name:        cfg.Workflow.Name,
-			Description: &description,
-		},
-		Spec: spec,
-	}
 }
 
 func workspaceDocument(cfg config) rpcapi.WorkspaceCreateRequest {
-	params := map[string]interface{}{
-		"agent_type":     cfg.Agent,
-		"realtime_model": cfg.Workflow.RealtimeModel,
+	params := map[string]interface{}{"agent_type": cfg.Agent}
+	if !cfg.isFlowcraftAgent() {
+		params["realtime_model"] = cfg.Workflow.RealtimeModel
 	}
 	for key, value := range cfg.Workflow.Parameters {
 		params[key] = value
@@ -249,7 +263,7 @@ func selectAndReloadAgent(ctx context.Context, client runControlClient, cfg conf
 func printRunSummary(cfg config, stats []roundStats) {
 	fmt.Printf("server=%s workflow=%s workspace=%s agent=%s rounds=%d output_dir=%s\n", cfg.Server.Addr, cfg.Workflow.Name, cfg.Workspace, cfg.Agent, cfg.Rounds, cfg.OutputDir)
 	for _, stat := range stats {
-		fmt.Printf("round=%d user_chars=%d transcript_chars=%d assistant_chars=%d input_packets=%d input_bytes=%d downlink_packets=%d downlink_bytes=%d events=%d workspace_uplink_send=%s after_eos_transcript_first_chunk=%s transcript_first_before_eos=%t after_eos_text_first_chunk=%s after_eos_audio_first_chunk=%s after_eos_complete=%s workspace_total=%s\n",
+		fmt.Printf("round=%d user_chars=%d transcript_chars=%d assistant_chars=%d input_packets=%d input_bytes=%d downlink_packets=%d downlink_bytes=%d events=%d workspace_uplink_send=%s after_eos_transcript_start=%s after_eos_transcript_done=%s transcript_first_before_eos=%t after_eos_text_first_chunk=%s text_first_after_transcript_done=%s after_eos_audio_first_chunk=%s after_eos_complete=%s workspace_total=%s\n",
 			stat.Index,
 			runeCount(stat.UserText),
 			runeCount(stat.Transcript),
@@ -261,16 +275,19 @@ func printRunSummary(cfg config, stats []roundStats) {
 			stat.EventCount,
 			stat.UplinkSend.Round(time.Millisecond),
 			stat.FirstTranscriptChunk.Round(time.Millisecond),
+			stat.TranscriptDone.Round(time.Millisecond),
 			stat.FirstTranscriptBeforeEOS,
 			stat.FirstAssistantTextChunk.Round(time.Millisecond),
+			textAfterTranscriptDone(stat).Round(time.Millisecond),
 			stat.FirstAudioChunk.Round(time.Millisecond),
 			stat.ResponseTotal.Round(time.Millisecond),
 			stat.WorkspaceTotal.Round(time.Millisecond),
 		)
 		fmt.Printf("round_detail=%s\n", encodeJSONLine(map[string]string{
-			"user":       stat.UserText,
-			"transcript": stat.Transcript,
-			"assistant":  stat.AssistantText,
+			"user":                  stat.UserText,
+			"transcript":            stat.Transcript,
+			"assistant_first_delta": stat.FirstAssistantText,
+			"assistant":             stat.AssistantText,
 		}))
 	}
 	fmt.Printf("timing_summary=%s\n", encodeJSONLine(roundTimingSummary(stats)))
@@ -287,13 +304,27 @@ type timingSummary struct {
 
 func roundTimingSummary(stats []roundStats) map[string]timingSummary {
 	return map[string]timingSummary{
-		"workspace_uplink_send":          summarizeDurations(stats, func(s roundStats) time.Duration { return s.UplinkSend }),
-		"after_eos_transcript_first":     summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstTranscriptChunk }),
-		"after_eos_text_first":           summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstAssistantTextChunk }),
-		"after_eos_audio_first":          summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstAudioChunk }),
-		"after_eos_complete":             summarizeDurations(stats, func(s roundStats) time.Duration { return s.ResponseTotal }),
-		"workspace_total_including_send": summarizeDurations(stats, func(s roundStats) time.Duration { return s.WorkspaceTotal }),
+		"workspace_uplink_send":            summarizeDurations(stats, func(s roundStats) time.Duration { return s.UplinkSend }),
+		"after_eos_transcript_first":       summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstTranscriptChunk }),
+		"after_eos_transcript_start":       summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstTranscriptChunk }),
+		"after_eos_transcript_done":        summarizeDurations(stats, func(s roundStats) time.Duration { return s.TranscriptDone }),
+		"after_eos_text_first":             summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstAssistantTextChunk }),
+		"text_first_after_transcript_done": summarizeDurations(stats, textAfterTranscriptDone),
+		"after_eos_audio_first":            summarizeDurations(stats, func(s roundStats) time.Duration { return s.FirstAudioChunk }),
+		"after_eos_complete":               summarizeDurations(stats, func(s roundStats) time.Duration { return s.ResponseTotal }),
+		"workspace_total_including_send":   summarizeDurations(stats, func(s roundStats) time.Duration { return s.WorkspaceTotal }),
 	}
+}
+
+func textAfterTranscriptDone(stat roundStats) time.Duration {
+	if stat.TranscriptDone <= 0 || stat.FirstAssistantTextChunk <= 0 {
+		return 0
+	}
+	delta := stat.FirstAssistantTextChunk - stat.TranscriptDone
+	if delta <= 0 {
+		return 0
+	}
+	return delta
 }
 
 func summarizeDurations(stats []roundStats, pick func(roundStats) time.Duration) timingSummary {

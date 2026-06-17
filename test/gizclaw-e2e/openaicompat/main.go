@@ -2,12 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,6 +18,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/GizClaw/gizclaw-go/pkg/audio/codec/opus"
+	"github.com/GizClaw/gizclaw-go/pkg/audio/codecconv"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/shared"
@@ -28,6 +33,20 @@ type opStats struct {
 	Events    int
 	Bytes     int
 	Chars     int
+}
+
+type chainStats struct {
+	Name  string
+	Total time.Duration
+	Ops   []opStats
+}
+
+type chainResult struct {
+	Stats         chainStats
+	Completion    string
+	SpeechPath    string
+	SpeechBytes   int
+	Transcription string
 }
 
 func main() {
@@ -52,89 +71,141 @@ func run(args []string) error {
 		option.WithHTTPClient(httpClient),
 	)
 
-	var stats []opStats
+	var chains []chainStats
 	fail := func(err error) error {
-		if len(stats) > 0 {
-			printStats(stats)
+		if len(chains) > 0 {
+			printChains(chains)
 		}
 		return err
-	}
-	completion, stat, err := runChat(ctx, client, cfg.ModelID)
-	stats = append(stats, stat)
-	if err != nil {
-		return fail(err)
-	}
-	streamingCompletion, stat, err := runStreamingChat(ctx, client, cfg.ModelID)
-	stats = append(stats, stat)
-	if err != nil {
-		return fail(err)
 	}
 
 	voiceID := cfg.VoiceID
 	if voiceID == "" {
+		var err error
 		voiceID, err = firstVoiceID(ctx, httpClient, cfg)
 		if err != nil {
 			return fail(err)
 		}
 	}
 
-	speechPath, speechBytes, stat, err := runSpeech(ctx, client, cfg.OutputDir, cfg.TTSModelID, voiceID, "speech.mp3", completion)
-	stats = append(stats, stat)
+	nonStream, err := runNonStreamingChain(ctx, client, cfg, voiceID)
+	chains = append(chains, nonStream.Stats)
 	if err != nil {
 		return fail(err)
 	}
-	streamPath, streamBytes, stat, err := runSpeechStream(ctx, client, cfg.OutputDir, cfg.TTSModelID, voiceID, "speech-stream.mp3", streamingCompletion)
-	stats = append(stats, stat)
+
+	stream, err := runStreamingChain(ctx, httpClient, client, cfg, voiceID)
+	chains = append(chains, stream.Stats)
 	if err != nil {
 		return fail(err)
-	}
-	var transcription string
-	var streamingTranscription string
-	if cfg.ASRModelID != "" {
-		transcription, stat, err = runTranscription(ctx, client, cfg.ASRModelID, speechPath)
-		stats = append(stats, stat)
-		if err != nil {
-			return fail(err)
-		}
-		if err := assertTranscriptionMatches("non-stream", completion, transcription); err != nil {
-			return fail(err)
-		}
-		streamingTranscription, stat, err = runTranscriptionStream(ctx, client, cfg.ASRModelID, streamPath)
-		stats = append(stats, stat)
-		if err != nil {
-			return fail(err)
-		}
-		if err := assertTranscriptionSimilar("stream", streamingCompletion, streamingTranscription, 0.85); err != nil {
-			return fail(err)
-		}
 	}
 
 	fmt.Printf("base_url=%s\n", cfg.BaseURL)
 	fmt.Printf("model=%s\n", cfg.ModelID)
 	fmt.Printf("tts_model=%s\n", cfg.TTSModelID)
 	fmt.Printf("voice=%s\n", voiceID)
-	fmt.Printf("chat=%q\n", strings.TrimSpace(completion))
-	fmt.Printf("chat_stream=%q\n", strings.TrimSpace(streamingCompletion))
-	fmt.Printf("speech=%s bytes=%d\n", speechPath, speechBytes)
-	fmt.Printf("speech_stream=%s bytes=%d\n", streamPath, streamBytes)
+	fmt.Printf("non_stream_chat=%q\n", strings.TrimSpace(nonStream.Completion))
+	fmt.Printf("stream_chat=%q\n", strings.TrimSpace(stream.Completion))
+	fmt.Printf("non_stream_speech=%s bytes=%d\n", nonStream.SpeechPath, nonStream.SpeechBytes)
+	fmt.Printf("stream_speech=%s bytes=%d\n", stream.SpeechPath, stream.SpeechBytes)
 	if cfg.ASRModelID != "" {
 		fmt.Printf("asr_model=%s\n", cfg.ASRModelID)
-		fmt.Printf("transcription=%q\n", strings.TrimSpace(transcription))
-		fmt.Printf("transcription_stream=%q\n", strings.TrimSpace(streamingTranscription))
+		fmt.Printf("non_stream_transcription=%q\n", strings.TrimSpace(nonStream.Transcription))
+		fmt.Printf("stream_transcription=%q\n", strings.TrimSpace(stream.Transcription))
 	}
-	printStats(stats)
+	printChains(chains)
 	return nil
 }
 
-func runChat(ctx context.Context, client openai.Client, modelID string) (string, opStats, error) {
+func runNonStreamingChain(ctx context.Context, client openai.Client, cfg config, voiceID string) (chainResult, error) {
 	start := time.Now()
-	completion, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	result := chainResult{Stats: chainStats{Name: "non_stream"}}
+
+	completion, stat, err := runChat(ctx, client, cfg.ModelID, cfg.Thinking)
+	result.Stats.Ops = append(result.Stats.Ops, stat)
+	if err != nil {
+		result.Stats.Total = time.Since(start)
+		return result, err
+	}
+	result.Completion = completion
+
+	speechPath, speechBytes, stat, err := runSpeech(ctx, client, cfg.OutputDir, cfg.TTSModelID, voiceID, "speech.mp3", completion)
+	result.Stats.Ops = append(result.Stats.Ops, stat)
+	if err != nil {
+		result.Stats.Total = time.Since(start)
+		return result, err
+	}
+	result.SpeechPath = speechPath
+	result.SpeechBytes = speechBytes
+
+	if cfg.ASRModelID != "" {
+		transcription, stat, err := runTranscription(ctx, client, cfg.ASRModelID, speechPath)
+		result.Stats.Ops = append(result.Stats.Ops, stat)
+		if err != nil {
+			result.Stats.Total = time.Since(start)
+			return result, err
+		}
+		if err := assertTranscriptionMatches("non-stream", completion, transcription); err != nil {
+			result.Stats.Total = time.Since(start)
+			return result, err
+		}
+		result.Transcription = transcription
+	}
+
+	result.Stats.Total = time.Since(start)
+	return result, nil
+}
+
+func runStreamingChain(ctx context.Context, httpClient *http.Client, client openai.Client, cfg config, voiceID string) (chainResult, error) {
+	start := time.Now()
+	result := chainResult{Stats: chainStats{Name: "stream"}}
+
+	completion, stat, err := runStreamingChat(ctx, client, cfg.ModelID, cfg.Thinking)
+	result.Stats.Ops = append(result.Stats.Ops, stat)
+	if err != nil {
+		result.Stats.Total = time.Since(start)
+		return result, err
+	}
+	result.Completion = completion
+
+	speechPath, speechBytes, stat, err := runSpeechStream(ctx, client, cfg.OutputDir, cfg.TTSModelID, voiceID, "speech-stream.mp3", completion)
+	result.Stats.Ops = append(result.Stats.Ops, stat)
+	if err != nil {
+		result.Stats.Total = time.Since(start)
+		return result, err
+	}
+	result.SpeechPath = speechPath
+	result.SpeechBytes = speechBytes
+
+	if cfg.ASRModelID != "" {
+		transcription, stat, err := runTranscriptionStream(ctx, httpClient, cfg, speechPath)
+		result.Stats.Ops = append(result.Stats.Ops, stat)
+		if err != nil {
+			result.Stats.Total = time.Since(start)
+			return result, err
+		}
+		if err := assertTranscriptionSimilar("stream", completion, transcription, 0.85); err != nil {
+			result.Stats.Total = time.Since(start)
+			return result, err
+		}
+		result.Transcription = transcription
+	}
+
+	result.Stats.Total = time.Since(start)
+	return result, nil
+}
+
+func runChat(ctx context.Context, client openai.Client, modelID string, thinking thinkingConfig) (string, opStats, error) {
+	start := time.Now()
+	params := openai.ChatCompletionNewParams{
 		Model: shared.ChatModel(modelID),
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage("You are a smoke test endpoint. Follow the user instruction exactly."),
 			openai.UserMessage("Reply with this exact Chinese sentence only, no punctuation: 小猫今天开心跑步"),
 		},
-	})
+	}
+	applyThinking(&params, thinking)
+	completion, err := client.Chat.Completions.New(ctx, params)
 	stat := opStats{Name: "chat", Total: time.Since(start)}
 	if err != nil {
 		return "", stat, fmt.Errorf("chat completion with model %q: %w", modelID, err)
@@ -150,15 +221,17 @@ func runChat(ctx context.Context, client openai.Client, modelID string) (string,
 	return text, stat, nil
 }
 
-func runStreamingChat(ctx context.Context, client openai.Client, modelID string) (string, opStats, error) {
+func runStreamingChat(ctx context.Context, client openai.Client, modelID string, thinking thinkingConfig) (string, opStats, error) {
 	start := time.Now()
-	stream := client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+	params := openai.ChatCompletionNewParams{
 		Model: shared.ChatModel(modelID),
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage("You are a smoke test endpoint. Write concise Simplified Chinese without markdown."),
-			openai.UserMessage("讲一个适合语音播放的小故事，120 到 180 个汉字，只有正文，不要标题。"),
+			openai.SystemMessage("You are a smoke test endpoint. Follow the user instruction exactly."),
+			openai.UserMessage("Reply with this exact Chinese sentence only, no punctuation: 小猫今天开心跑步"),
 		},
-	})
+	}
+	applyThinking(&params, thinking)
+	stream := client.Chat.Completions.NewStreaming(ctx, params)
 	defer stream.Close()
 
 	var completion strings.Builder
@@ -186,6 +259,23 @@ func runStreamingChat(ctx context.Context, client openai.Client, modelID string)
 	return completion.String(), stat, nil
 }
 
+func applyThinking(params *openai.ChatCompletionNewParams, thinking thinkingConfig) {
+	if params == nil {
+		return
+	}
+	body := map[string]any{}
+	if thinking.Enabled != nil {
+		body["enabled"] = *thinking.Enabled
+	}
+	if strings.TrimSpace(thinking.Level) != "" {
+		body["level"] = strings.TrimSpace(thinking.Level)
+	}
+	if len(body) == 0 {
+		return
+	}
+	params.SetExtraFields(map[string]any{"thinking": body})
+}
+
 func runSpeech(ctx context.Context, client openai.Client, outputDir, modelID, voiceID, filename, input string) (string, int, opStats, error) {
 	start := time.Now()
 	speech, err := client.Audio.Speech.New(ctx, openai.AudioSpeechNewParams{
@@ -211,6 +301,7 @@ func runSpeech(ctx context.Context, client openai.Client, outputDir, modelID, vo
 	if len(audio) == 0 {
 		return "", 0, stat, fmt.Errorf("speech with model %q voice %q returned empty audio", modelID, voiceID)
 	}
+	filename = audioFilename(filename, speech.Header.Get("Content-Type"), audio)
 	path := filepath.Join(outputDir, filename)
 	if err := os.WriteFile(path, audio, 0o644); err != nil {
 		return "", 0, stat, fmt.Errorf("write speech audio: %w", err)
@@ -245,6 +336,7 @@ func runSpeechStream(ctx context.Context, client openai.Client, outputDir, model
 	if err != nil {
 		return "", 0, stat, err
 	}
+	filename = audioFilename(filename, "", audio)
 	path := filepath.Join(outputDir, filename)
 	if err := os.WriteFile(path, audio, 0o644); err != nil {
 		return "", 0, stat, fmt.Errorf("write streamed speech audio: %w", err)
@@ -275,53 +367,189 @@ func runTranscription(ctx context.Context, client openai.Client, modelID, audioP
 	return transcription.Text, stat, nil
 }
 
-func runTranscriptionStream(ctx context.Context, client openai.Client, modelID, audioPath string) (string, opStats, error) {
-	file, err := os.Open(audioPath)
-	if err != nil {
-		return "", opStats{Name: "transcription_stream"}, fmt.Errorf("open streaming transcription audio: %w", err)
-	}
-	defer file.Close()
-
+func runTranscriptionStream(ctx context.Context, httpClient *http.Client, cfg config, audioPath string) (string, opStats, error) {
 	start := time.Now()
-	stream := client.Audio.Transcriptions.NewStreaming(ctx, openai.AudioTranscriptionNewParams{
-		File:  file,
-		Model: openai.AudioModel(modelID),
-	})
-	defer stream.Close()
-
-	var delta strings.Builder
-	var doneText string
 	stat := opStats{Name: "transcription_stream", FirstName: "first_delta"}
-	for stream.Next() {
-		stat.Events++
-		event := stream.Current()
-		switch event.Type {
-		case "transcript.text.delta":
-			if event.Delta != "" && stat.First == 0 {
-				stat.First = time.Since(start)
-			}
-			delta.WriteString(event.Delta)
-		case "transcript.text.done":
-			doneText = event.Text
-		default:
-			stat.Total = time.Since(start)
-			return "", stat, fmt.Errorf("unexpected transcription stream event type %q", event.Type)
-		}
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
+	writeDone := make(chan transcriptionUploadResult, 1)
+	go writeStreamingTranscriptionRequest(pw, writer, cfg.ASRModelID, audioPath, writeDone)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL+"/audio/transcriptions", pr)
+	if err != nil {
+		_ = pr.CloseWithError(err)
+		stat.Total = time.Since(start)
+		return "", stat, fmt.Errorf("create streaming transcription request: %w", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		_ = pr.CloseWithError(err)
+		stat.Total = time.Since(start)
+		return "", stat, fmt.Errorf("streaming transcription with model %q: %w", cfg.ASRModelID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		stat.Total = time.Since(start)
+		return "", stat, fmt.Errorf("streaming transcription with model %q status %d: %s", cfg.ASRModelID, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
+		stat.Total = time.Since(start)
+		return "", stat, fmt.Errorf("streaming transcription content type = %q, want text/event-stream", got)
+	}
+
+	text, events, firstDelta, err := readTranscriptionSSE(resp.Body, start)
+	upload := <-writeDone
 	stat.Total = time.Since(start)
-	if err := stream.Err(); err != nil {
-		return "", stat, fmt.Errorf("streaming transcription with model %q: %w", modelID, err)
+	stat.First = firstDelta
+	stat.Events = events
+	stat.Bytes = upload.Bytes
+	if upload.Err != nil {
+		return "", stat, fmt.Errorf("upload streaming transcription audio: %w", upload.Err)
 	}
-	if strings.TrimSpace(doneText) != "" {
-		stat.Chars = utf8.RuneCountInString(doneText)
-		return doneText, stat, nil
+	if err != nil {
+		return "", stat, err
 	}
-	text := delta.String()
 	if strings.TrimSpace(text) == "" {
-		return "", stat, fmt.Errorf("streaming transcription with model %q returned empty text", modelID)
+		return "", stat, fmt.Errorf("streaming transcription with model %q returned empty text", cfg.ASRModelID)
 	}
 	stat.Chars = utf8.RuneCountInString(text)
 	return text, stat, nil
+}
+
+type transcriptionUploadResult struct {
+	Bytes int
+	Err   error
+}
+
+func writeStreamingTranscriptionRequest(pw *io.PipeWriter, writer *multipart.Writer, modelID, audioPath string, done chan<- transcriptionUploadResult) {
+	finish := func(bytes int, err error) {
+		if err != nil {
+			_ = pw.CloseWithError(err)
+		} else {
+			_ = pw.Close()
+		}
+		done <- transcriptionUploadResult{Bytes: bytes, Err: err}
+	}
+	if err := writer.WriteField("model", modelID); err != nil {
+		finish(0, err)
+		return
+	}
+	if err := writer.WriteField("stream", "true"); err != nil {
+		finish(0, err)
+		return
+	}
+	audio, contentType, err := openStreamingTranscriptionAudio(audioPath)
+	if err != nil {
+		finish(0, err)
+		return
+	}
+	defer audio.Close()
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filepath.Base(audioPath)))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		finish(0, err)
+		return
+	}
+	n, err := io.Copy(part, audio)
+	if err != nil {
+		finish(int(n), err)
+		return
+	}
+	if err := writer.Close(); err != nil {
+		finish(int(n), err)
+		return
+	}
+	finish(int(n), nil)
+}
+
+func openStreamingTranscriptionAudio(path string) (io.ReadCloser, string, error) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ogg", ".opus":
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, "", err
+		}
+		defer file.Close()
+		var pcm bytes.Buffer
+		if _, err := codecconv.OggToPCM(&pcm, file, opus.SampleRate16K); err != nil {
+			return nil, "", fmt.Errorf("decode streamed speech ogg to pcm: %w", err)
+		}
+		return io.NopCloser(bytes.NewReader(pcm.Bytes())), "audio/pcm", nil
+	default:
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, "", err
+		}
+		return file, audioContentType(path), nil
+	}
+}
+
+func audioContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ogg", ".opus":
+		return "audio/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".flac":
+		return "audio/flac"
+	case ".m4a", ".mp4":
+		return "audio/mp4"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+func audioFilename(filename, contentType string, data []byte) string {
+	ext := audioExtension(contentType, data)
+	if ext == "" {
+		return filename
+	}
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if base == "" {
+		base = "audio"
+	}
+	return base + ext
+}
+
+func audioExtension(contentType string, data []byte) string {
+	contentType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	switch contentType {
+	case "audio/ogg", "application/ogg":
+		return ".ogg"
+	case "audio/mpeg", "audio/mp3":
+		return ".mp3"
+	case "audio/wav", "audio/wave", "audio/x-wav":
+		return ".wav"
+	case "audio/flac":
+		return ".flac"
+	case "audio/mp4", "audio/m4a":
+		return ".m4a"
+	}
+	switch {
+	case len(data) >= 4 && string(data[:4]) == "OggS":
+		return ".ogg"
+	case len(data) >= 3 && string(data[:3]) == "ID3":
+		return ".mp3"
+	case len(data) >= 2 && data[0] == 0xff && data[1]&0xe0 == 0xe0:
+		return ".mp3"
+	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WAVE":
+		return ".wav"
+	case len(data) >= 4 && string(data[:4]) == "fLaC":
+		return ".flac"
+	case len(data) >= 12 && string(data[4:8]) == "ftyp":
+		return ".m4a"
+	default:
+		return ""
+	}
 }
 
 func assertTranscriptionMatches(name, expected, actual string) error {
@@ -444,6 +672,52 @@ func readSpeechSSE(r io.Reader, start time.Time) ([]byte, int, time.Duration, er
 	return audio, deltaCount, firstDelta, nil
 }
 
+func readTranscriptionSSE(r io.Reader, start time.Time) (string, int, time.Duration, error) {
+	var delta strings.Builder
+	var doneText string
+	var eventCount int
+	var firstDelta time.Duration
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "[DONE]" {
+			break
+		}
+		var event struct {
+			Delta string `json:"delta"`
+			Text  string `json:"text"`
+			Type  string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			return "", eventCount, firstDelta, fmt.Errorf("decode streaming transcription event %q: %w", line, err)
+		}
+		eventCount++
+		switch event.Type {
+		case "transcript.text.delta":
+			if event.Delta != "" && firstDelta == 0 {
+				firstDelta = time.Since(start)
+			}
+			delta.WriteString(event.Delta)
+		case "transcript.text.done":
+			doneText = event.Text
+		default:
+			return "", eventCount, firstDelta, fmt.Errorf("unexpected transcription stream event type %q", event.Type)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", eventCount, firstDelta, fmt.Errorf("read streaming transcription events: %w", err)
+	}
+	if strings.TrimSpace(doneText) != "" {
+		return doneText, eventCount, firstDelta, nil
+	}
+	return delta.String(), eventCount, firstDelta, nil
+}
+
 func readAllMeasured(r io.Reader, start time.Time) ([]byte, time.Duration, error) {
 	var out []byte
 	var firstByte time.Duration
@@ -465,25 +739,29 @@ func readAllMeasured(r io.Reader, start time.Time) ([]byte, time.Duration, error
 	}
 }
 
-func printStats(stats []opStats) {
-	fmt.Println("stats:")
-	var nonStream []opStats
-	var stream []opStats
-	for _, stat := range stats {
-		if strings.HasSuffix(stat.Name, "_stream") {
-			stream = append(stream, stat)
+func printChains(chains []chainStats) {
+	fmt.Println("chains:")
+	printChainSummary(chains)
+	for _, chain := range chains {
+		if len(chain.Ops) == 0 {
 			continue
 		}
-		nonStream = append(nonStream, stat)
+		fmt.Printf("%s:\n", chain.Name)
+		printStatsTable(chain.Ops)
 	}
-	if len(nonStream) > 0 {
-		fmt.Println("non-stream:")
-		printStatsTable(nonStream)
+}
+
+func printChainSummary(chains []chainStats) {
+	headers := []string{"chain", "total", "operations"}
+	rows := make([][]string, 0, len(chains))
+	for _, chain := range chains {
+		rows = append(rows, []string{
+			chain.Name,
+			chain.Total.Round(time.Millisecond).String(),
+			formatCount(len(chain.Ops)),
+		})
 	}
-	if len(stream) > 0 {
-		fmt.Println("stream:")
-		printStatsTable(stream)
-	}
+	printTable(headers, rows)
 }
 
 func printStatsTable(stats []opStats) {

@@ -19,7 +19,6 @@ func TestServerCredentialsCRUD(t *testing.T) {
 	createBody := mustCredentialUpsert(t, `{
 		"name": "openai-primary",
 		"provider": "openai",
-		"method": "api_key",
 		"description": "primary openai credential",
 		"body": {"api_key": "sk-test"}
 	}`)
@@ -31,10 +30,10 @@ func TestServerCredentialsCRUD(t *testing.T) {
 	if !ok {
 		t.Fatalf("CreateCredential() response = %#v", createResp)
 	}
-	if created.Name != "openai-primary" || created.Provider != "openai" || created.Method != apitypes.CredentialMethodApiKey {
+	if created.Name != "openai-primary" || created.Provider != "openai" {
 		t.Fatalf("CreateCredential() credential = %#v", created)
 	}
-	if created.Body["api_key"] != "sk-test" {
+	if apitypes.CredentialBodyString(created.Body, "api_key") != "sk-test" {
 		t.Fatalf("CreateCredential() body = %#v", created.Body)
 	}
 
@@ -49,14 +48,13 @@ func TestServerCredentialsCRUD(t *testing.T) {
 	if got.Description == nil || *got.Description != "primary openai credential" {
 		t.Fatalf("GetCredential() description = %#v", got.Description)
 	}
-	if got.Body["api_key"] != "sk-test" {
+	if apitypes.CredentialBodyString(got.Body, "api_key") != "sk-test" {
 		t.Fatalf("GetCredential() body = %#v", got.Body)
 	}
 
 	updateBody := mustCredentialUpsert(t, `{
 		"name": "openai-primary",
-		"provider": "minimax",
-		"method": "app_id_token",
+		"provider": "volc",
 		"description": "migrated credential",
 		"body": {"app_id": "app-123", "token": "tok-123"}
 	}`)
@@ -71,10 +69,10 @@ func TestServerCredentialsCRUD(t *testing.T) {
 	if !ok {
 		t.Fatalf("PutCredential() response = %#v", putResp)
 	}
-	if updated.Provider != "minimax" || updated.Method != apitypes.CredentialMethodAppIdToken {
+	if updated.Provider != "volc" {
 		t.Fatalf("PutCredential() credential = %#v", updated)
 	}
-	if updated.Body["app_id"] != "app-123" || updated.Body["token"] != "tok-123" {
+	if apitypes.CredentialBodyString(updated.Body, "app_id") != "app-123" || apitypes.CredentialBodyString(updated.Body, "token") != "tok-123" {
 		t.Fatalf("PutCredential() body = %#v", updated.Body)
 	}
 
@@ -93,7 +91,7 @@ func TestServerCredentialsCRUD(t *testing.T) {
 		t.Fatalf("ListCredentials(old provider) = %#v", oldList)
 	}
 
-	newProvider := string("minimax")
+	newProvider := string("volc")
 	newListResp, err := srv.ListCredentials(ctx, adminservice.ListCredentialsRequestObject{
 		Params: adminservice.ListCredentialsParams{Provider: &newProvider},
 	})
@@ -107,7 +105,7 @@ func TestServerCredentialsCRUD(t *testing.T) {
 	if len(newList.Items) != 1 || newList.Items[0].Name != "openai-primary" {
 		t.Fatalf("ListCredentials(new provider) = %#v", newList)
 	}
-	if newList.Items[0].Body["app_id"] != "app-123" {
+	if apitypes.CredentialBodyString(newList.Items[0].Body, "app_id") != "app-123" {
 		t.Fatalf("ListCredentials(new provider) body = %#v", newList.Items[0].Body)
 	}
 
@@ -135,9 +133,9 @@ func TestServerListCredentialsPaginationAndFilter(t *testing.T) {
 	ctx := context.Background()
 
 	for _, raw := range []string{
-		`{"name":"alpha","provider":"openai","method":"api_key","body":{"api_key":"a"}}`,
-		`{"name":"beta","provider":"openai","method":"api_key","body":{"api_key":"b"}}`,
-		`{"name":"gamma","provider":"minimax","method":"api_key","body":{"api_key":"c"}}`,
+		`{"name":"alpha","provider":"openai","body":{"api_key":"a"}}`,
+		`{"name":"beta","provider":"openai","body":{"api_key":"b"}}`,
+		`{"name":"gamma","provider":"minimax","body":{"api_key":"c"}}`,
 	} {
 		body := mustCredentialUpsert(t, raw)
 		if _, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &body}); err != nil {
@@ -182,7 +180,7 @@ func TestServerListCredentialsPaginationAndFilter(t *testing.T) {
 	if len(second.Items) != 1 || second.Items[0].Name == first.Items[0].Name || second.HasNext {
 		t.Fatalf("ListCredentials(second page) = %#v", second)
 	}
-	if _, ok := second.Items[0].Body["api_key"]; !ok {
+	if apitypes.CredentialBodyString(second.Items[0].Body, "api_key") == "" {
 		t.Fatalf("ListCredentials(second page) body = %#v", second.Items[0].Body)
 	}
 
@@ -209,8 +207,7 @@ func TestServerRejectsMissingBodyOnCreateAndNewPut(t *testing.T) {
 
 	createBody := mustCredentialUpsert(t, `{
 		"name": "alpha",
-		"provider": "openai",
-		"method": "api_key"
+		"provider": "openai"
 	}`)
 	createResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &createBody})
 	if err != nil {
@@ -222,8 +219,7 @@ func TestServerRejectsMissingBodyOnCreateAndNewPut(t *testing.T) {
 
 	putBody := mustCredentialUpsert(t, `{
 		"name": "beta",
-		"provider": "openai",
-		"method": "api_key"
+		"provider": "openai"
 	}`)
 	putResp, err := srv.PutCredential(ctx, adminservice.PutCredentialRequestObject{
 		Name: "beta",
@@ -253,6 +249,65 @@ func TestServerRejectsMissingBodyOnCreateAndNewPut(t *testing.T) {
 	}
 }
 
+func TestServerValidatesBodyForProvider(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t)
+	ctx := context.Background()
+
+	tokenOnly := mustCredentialUpsert(t, `{
+		"name": "token-only",
+		"provider": "openai",
+		"body": {"token": "tok-test"}
+	}`)
+	tokenResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &tokenOnly})
+	if err != nil {
+		t.Fatalf("CreateCredential(token body) error = %v", err)
+	}
+	if _, ok := tokenResp.(adminservice.CreateCredential200JSONResponse); !ok {
+		t.Fatalf("CreateCredential(token body) response = %#v", tokenResp)
+	}
+
+	wrongBody := mustCredentialUpsert(t, `{
+		"name": "wrong-body",
+		"provider": "openai",
+		"body": {"app_id": "app-test", "token": "tok-test"}
+	}`)
+	wrongResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &wrongBody})
+	if err != nil {
+		t.Fatalf("CreateCredential(wrong body) error = %v", err)
+	}
+	if _, ok := wrongResp.(adminservice.CreateCredential400JSONResponse); !ok {
+		t.Fatalf("CreateCredential(wrong body) response = %#v", wrongResp)
+	}
+
+	emptyObject := mustCredentialUpsert(t, `{
+		"name": "empty-body",
+		"provider": "volc",
+		"body": {}
+	}`)
+	emptyResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &emptyObject})
+	if err != nil {
+		t.Fatalf("CreateCredential(empty body) error = %v", err)
+	}
+	if _, ok := emptyResp.(adminservice.CreateCredential400JSONResponse); !ok {
+		t.Fatalf("CreateCredential(empty body) response = %#v", emptyResp)
+	}
+
+	unknownProvider := mustCredentialUpsert(t, `{
+		"name": "unknown-provider",
+		"provider": "custom",
+		"body": {"api_key": "sk-test"}
+	}`)
+	unknownResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &unknownProvider})
+	if err != nil {
+		t.Fatalf("CreateCredential(unknown provider) error = %v", err)
+	}
+	if _, ok := unknownResp.(adminservice.CreateCredential400JSONResponse); !ok {
+		t.Fatalf("CreateCredential(unknown provider) response = %#v", unknownResp)
+	}
+}
+
 func TestServerPutRetainsExistingSecretForSameMethod(t *testing.T) {
 	t.Parallel()
 
@@ -262,7 +317,6 @@ func TestServerPutRetainsExistingSecretForSameMethod(t *testing.T) {
 	createBody := mustCredentialUpsert(t, `{
 		"name": "alpha",
 		"provider": "openai",
-		"method": "api_key",
 		"description": "first",
 		"body": {"api_key": "sk-test"}
 	}`)
@@ -273,7 +327,6 @@ func TestServerPutRetainsExistingSecretForSameMethod(t *testing.T) {
 	putBody := mustCredentialUpsert(t, `{
 		"name": "alpha",
 		"provider": "openai",
-		"method": "api_key",
 		"description": "second"
 	}`)
 	putResp, err := srv.PutCredential(ctx, adminservice.PutCredentialRequestObject{
@@ -291,7 +344,7 @@ func TestServerPutRetainsExistingSecretForSameMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getCredentialRecord() error = %v", err)
 	}
-	if record.Body["api_key"] != "sk-test" {
+	if apitypes.CredentialBodyString(record.Body, "api_key") != "sk-test" {
 		t.Fatalf("stored credential = %#v", record)
 	}
 	if record.Description == nil || *record.Description != "second" {
@@ -308,7 +361,6 @@ func TestServerPutRejectsPathNameMismatch(t *testing.T) {
 	body := mustCredentialUpsert(t, `{
 		"name": "other",
 		"provider": "openai",
-		"method": "api_key",
 		"body": {"api_key": "sk-test"}
 	}`)
 	resp, err := srv.PutCredential(ctx, adminservice.PutCredentialRequestObject{
@@ -332,7 +384,6 @@ func TestServerCredentialValidationAndMissingPaths(t *testing.T) {
 	duplicate := mustCredentialUpsert(t, `{
 		"name": "alpha",
 		"provider": "openai",
-		"method": "api_key",
 		"body": {"api_key": "sk-test"}
 	}`)
 	if _, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &duplicate}); err != nil {
@@ -346,18 +397,16 @@ func TestServerCredentialValidationAndMissingPaths(t *testing.T) {
 		t.Fatalf("CreateCredential(duplicate) response = %#v", dupResp)
 	}
 
-	badMethod := mustCredentialUpsert(t, `{
+	missingProvider := mustCredentialUpsert(t, `{
 		"name": "bad",
-		"provider": "openai",
-		"method": "unknown",
 		"body": {"api_key": "sk-test"}
 	}`)
-	badResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &badMethod})
+	badResp, err := srv.CreateCredential(ctx, adminservice.CreateCredentialRequestObject{Body: &missingProvider})
 	if err != nil {
-		t.Fatalf("CreateCredential(bad method) error = %v", err)
+		t.Fatalf("CreateCredential(missing provider) error = %v", err)
 	}
 	if _, ok := badResp.(adminservice.CreateCredential400JSONResponse); !ok {
-		t.Fatalf("CreateCredential(bad method) response = %#v", badResp)
+		t.Fatalf("CreateCredential(missing provider) response = %#v", badResp)
 	}
 
 	missingDelete, err := srv.DeleteCredential(ctx, adminservice.DeleteCredentialRequestObject{Name: "missing"})

@@ -3,3 +3,7 @@ generate:
   fiber-server: true
   strict-server: true
   models: true
+output-options:
+  user-templates:
+    strict/strict-fiber.tmpl: ../adminservice/templates/strict/strict-fiber.tmpl
+    strict/strict-fiber-interface.tmpl: ../adminservice/templates/strict/strict-fiber-interface.tmpl

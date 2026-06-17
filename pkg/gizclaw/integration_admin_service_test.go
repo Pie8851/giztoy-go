@@ -153,7 +153,6 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	createBody := mustCredentialUpsert(t, `{
 		"name": "openai-primary",
 		"provider": "openai",
-		"method": "api_key",
 		"description": "primary openai credential",
 		"body": {"api_key": "sk-test"}
 	}`)
@@ -161,10 +160,10 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCredential error: %v", err)
 	}
-	if created.Name != "openai-primary" || created.Method != apitypes.CredentialMethodApiKey {
+	if created.Name != "openai-primary" {
 		t.Fatalf("CreateCredential = %#v", created)
 	}
-	if created.Body["api_key"] != "sk-test" {
+	if apitypes.CredentialBodyString(created.Body, "api_key") != "sk-test" {
 		t.Fatalf("CreateCredential body = %#v", created.Body)
 	}
 
@@ -183,14 +182,13 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	if got.Description == nil || *got.Description != "primary openai credential" {
 		t.Fatalf("GetCredential description = %#v", got.Description)
 	}
-	if got.Body["api_key"] != "sk-test" {
+	if apitypes.CredentialBodyString(got.Body, "api_key") != "sk-test" {
 		t.Fatalf("GetCredential body = %#v", got.Body)
 	}
 
 	updateBody := mustCredentialUpsert(t, `{
 		"name": "openai-primary",
-		"provider": "minimax",
-		"method": "app_id_token",
+		"provider": "volc",
 		"description": "migrated credential",
 		"body": {"app_id": "app-123", "token": "tok-123"}
 	}`)
@@ -198,14 +196,14 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutCredential error: %v", err)
 	}
-	if updated.Provider != "minimax" || updated.Method != apitypes.CredentialMethodAppIdToken {
+	if updated.Provider != "volc" {
 		t.Fatalf("PutCredential = %#v", updated)
 	}
-	if updated.Body["app_id"] != "app-123" || updated.Body["token"] != "tok-123" {
+	if apitypes.CredentialBodyString(updated.Body, "app_id") != "app-123" || apitypes.CredentialBodyString(updated.Body, "token") != "tok-123" {
 		t.Fatalf("PutCredential body = %#v", updated.Body)
 	}
 
-	provider := string("minimax")
+	provider := string("volc")
 	filtered, err := listCredentials(context.Background(), admin, &provider)
 	if err != nil {
 		t.Fatalf("ListCredentials(provider) error: %v", err)
@@ -213,7 +211,7 @@ func TestIntegrationAdminServiceCredentialLifecycle(t *testing.T) {
 	if len(filtered) != 1 || filtered[0].Name != "openai-primary" {
 		t.Fatalf("ListCredentials(provider) = %#v", filtered)
 	}
-	if filtered[0].Body["token"] != "tok-123" {
+	if apitypes.CredentialBodyString(filtered[0].Body, "token") != "tok-123" {
 		t.Fatalf("ListCredentials(provider) body = %#v", filtered[0].Body)
 	}
 

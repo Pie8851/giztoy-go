@@ -50,6 +50,8 @@ type workflowConfig struct {
 	Parameters    map[string]interface{} `json:"parameters,omitempty"`
 	Session       realtimeSessionConfig  `json:"session"`
 	Output        realtimeOutputConfig   `json:"output"`
+	Flowcraft     map[string]interface{} `json:"flowcraft,omitempty"`
+	VoiceAdapter  voiceAdapterConfig     `json:"voice_adapter,omitempty"`
 }
 
 type realtimeSessionConfig struct {
@@ -63,6 +65,12 @@ type realtimeSessionConfig struct {
 
 type realtimeOutputConfig struct {
 	Speaker string `json:"speaker,omitempty"`
+}
+
+type voiceAdapterConfig struct {
+	ASRModel     string            `json:"asr_model,omitempty"`
+	DefaultVoice string            `json:"default_voice,omitempty"`
+	NodeVoices   map[string]string `json:"node_voices,omitempty"`
 }
 
 type setupContextConfig struct {
@@ -175,6 +183,17 @@ func (c *config) validate() error {
 	c.Workflow.Session.ResourceID = strings.TrimSpace(c.Workflow.Session.ResourceID)
 	c.Workflow.Session.SystemRole = strings.TrimSpace(c.Workflow.Session.SystemRole)
 	c.Workflow.Output.Speaker = strings.TrimSpace(c.Workflow.Output.Speaker)
+	c.Workflow.VoiceAdapter.ASRModel = strings.TrimSpace(c.Workflow.VoiceAdapter.ASRModel)
+	c.Workflow.VoiceAdapter.DefaultVoice = strings.TrimSpace(c.Workflow.VoiceAdapter.DefaultVoice)
+	for rawNodeID, voice := range c.Workflow.VoiceAdapter.NodeVoices {
+		nodeID := strings.TrimSpace(rawNodeID)
+		voice = strings.TrimSpace(voice)
+		delete(c.Workflow.VoiceAdapter.NodeVoices, rawNodeID)
+		if nodeID == "" || voice == "" {
+			continue
+		}
+		c.Workflow.VoiceAdapter.NodeVoices[nodeID] = voice
+	}
 	c.Voice = strings.TrimSpace(c.Voice)
 	c.Timeout = strings.TrimSpace(c.Timeout)
 	c.Persona = strings.TrimSpace(c.Persona)
@@ -207,7 +226,7 @@ func (c *config) validate() error {
 	if c.Models.ASR == "" {
 		return fmt.Errorf("models.asr is required")
 	}
-	if c.Models.Realtime == "" {
+	if !c.isFlowcraftAgent() && c.Models.Realtime == "" {
 		return fmt.Errorf("models.realtime is required")
 	}
 	if c.Workflow.RealtimeModel == "" {
@@ -233,6 +252,20 @@ func (c *config) validate() error {
 	}
 	if c.Workflow.Output.Speaker == "" {
 		c.Workflow.Output.Speaker = "zh_female_vv_jupiter_bigtts"
+	}
+	if c.isFlowcraftAgent() {
+		if c.Workflow.VoiceAdapter.ASRModel == "" {
+			c.Workflow.VoiceAdapter.ASRModel = c.Models.ASR
+		}
+		if c.Workflow.VoiceAdapter.DefaultVoice == "" {
+			c.Workflow.VoiceAdapter.DefaultVoice = c.Voice
+		}
+		if c.Workflow.Parameters == nil {
+			c.Workflow.Parameters = map[string]interface{}{}
+		}
+		if _, ok := c.Workflow.Parameters["generate_model"]; !ok {
+			c.Workflow.Parameters["generate_model"] = c.Models.LLM
+		}
 	}
 	if c.Voice == "" {
 		return fmt.Errorf("voice is required")
@@ -261,6 +294,10 @@ func (c *config) validate() error {
 		return fmt.Errorf("client private key: %w", err)
 	}
 	return nil
+}
+
+func (c config) isFlowcraftAgent() bool {
+	return c.Agent == "flowcraft"
 }
 
 func normalizeCipherMode(mode string) string {

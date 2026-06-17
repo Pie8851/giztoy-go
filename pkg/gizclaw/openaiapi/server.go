@@ -230,11 +230,15 @@ func (s *Server) CreateTranscription(ctx context.Context, request openaiservice.
 	if err != nil {
 		return nil, err
 	}
+	if transcriptionAcceptsEventStream(request.Accept) {
+		form.stream = true
+	}
 	if s == nil || s.Transformer == nil {
 		return nil, errors.New("openaiapi: transformer is not configured")
 	}
-	stream, err := s.Transformer.Transform(ctx, "model/"+form.model, newBlobStream(form.mimeType, form.file))
+	stream, err := s.Transformer.Transform(ctx, "model/"+form.model, form.input)
 	if err != nil {
+		_ = form.input.CloseWithError(err)
 		return nil, err
 	}
 	if form.stream {
@@ -251,6 +255,19 @@ func (s *Server) CreateTranscription(ctx context.Context, request openaiservice.
 		return nil, err
 	}
 	return openaiservice.CreateTranscription200JSONResponse{Text: text}, nil
+}
+
+func transcriptionAcceptsEventStream(accept string) bool {
+	for _, part := range strings.Split(accept, ",") {
+		mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(part))
+		if err != nil {
+			continue
+		}
+		if strings.EqualFold(mediaType, "text/event-stream") {
+			return true
+		}
+	}
+	return false
 }
 
 func modelListFromResponse(resp adminservice.ListModelsResponseObject) (adminservice.ModelList, error) {
@@ -421,7 +438,7 @@ func speechPattern(body *openaiservice.CreateSpeechRequest) (string, error) {
 type transcriptionForm struct {
 	model    string
 	stream   bool
-	file     []byte
+	input    genx.Stream
 	mimeType string
 }
 
@@ -438,25 +455,41 @@ func parseTranscriptionForm(r *multipart.Reader) (transcriptionForm, error) {
 		if err != nil {
 			return transcriptionForm{}, err
 		}
-		body, err := io.ReadAll(part)
-		if err != nil {
-			return transcriptionForm{}, err
-		}
 		switch part.FormName() {
 		case "model":
+			body, err := io.ReadAll(part)
+			if err != nil {
+				return transcriptionForm{}, err
+			}
 			out.model = strings.TrimSpace(string(body))
 		case "stream":
+			body, err := io.ReadAll(part)
+			if err != nil {
+				return transcriptionForm{}, err
+			}
 			out.stream = strings.TrimSpace(string(body)) == "true"
 		case "file":
-			out.file = body
 			out.mimeType = part.Header.Get("Content-Type")
+			out.mimeType = transcriptionAudioMIME(out.mimeType, part.FileName(), nil)
+			if out.model != "" {
+				if out.mimeType == "" {
+					out.mimeType = "application/octet-stream"
+				}
+				out.input = newReaderBlobStream(part, out.mimeType, part.FileName())
+				return out, nil
+			}
+			body, err := io.ReadAll(part)
+			if err != nil {
+				return transcriptionForm{}, err
+			}
 			out.mimeType = transcriptionAudioMIME(out.mimeType, part.FileName(), body)
+			out.input = newBlobStream(out.mimeType, body)
 		}
 	}
 	if out.model == "" {
 		return transcriptionForm{}, errors.New("openaiapi: model is required")
 	}
-	if len(out.file) == 0 {
+	if out.input == nil {
 		return transcriptionForm{}, errors.New("openaiapi: file is required")
 	}
 	if out.mimeType == "" {
@@ -492,6 +525,72 @@ func transcriptionAudioMIME(contentType, filename string, data []byte) string {
 	default:
 		return contentType
 	}
+}
+
+type readerBlobStream struct {
+	reader   io.Reader
+	closer   io.Closer
+	mimeType string
+	filename string
+	buf      []byte
+	done     bool
+	err      error
+}
+
+func newReaderBlobStream(r io.Reader, mimeType, filename string) genx.Stream {
+	stream := &readerBlobStream{
+		reader:   r,
+		mimeType: mimeType,
+		filename: filename,
+		buf:      make([]byte, 32*1024),
+	}
+	if closer, ok := r.(io.Closer); ok {
+		stream.closer = closer
+	}
+	return stream
+}
+
+func (s *readerBlobStream) Next() (*genx.MessageChunk, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.done {
+		return nil, genx.ErrDone
+	}
+	for {
+		n, err := s.reader.Read(s.buf)
+		if n > 0 {
+			data := append([]byte(nil), s.buf[:n]...)
+			s.mimeType = transcriptionAudioMIME(s.mimeType, s.filename, data)
+			if s.mimeType == "" {
+				s.mimeType = "application/octet-stream"
+			}
+			return &genx.MessageChunk{Part: &genx.Blob{MIMEType: s.mimeType, Data: data}}, nil
+		}
+		if errors.Is(err, io.EOF) {
+			s.done = true
+			if s.mimeType == "" {
+				s.mimeType = "application/octet-stream"
+			}
+			return genx.NewEndOfStream(s.mimeType), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (s *readerBlobStream) Close() error {
+	s.done = true
+	if s.closer != nil {
+		return s.closer.Close()
+	}
+	return nil
+}
+
+func (s *readerBlobStream) CloseWithError(err error) error {
+	s.err = err
+	return s.Close()
 }
 
 func writeChatCompletionSSE(w io.Writer, stream genx.Stream, model string, now time.Time) error {

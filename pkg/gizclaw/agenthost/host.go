@@ -10,9 +10,10 @@ import (
 var _ genx.Transformer = (*Host)(nil)
 
 type Host struct {
-	Resolver    Resolver
-	Registry    *Registry
-	Coordinator Coordinator
+	Resolver       Resolver
+	Registry       *Registry
+	Coordinator    Coordinator
+	WorkspaceStore WorkspaceStore
 }
 
 func New(resolver Resolver) *Host {
@@ -61,6 +62,14 @@ func (h *Host) Transform(ctx context.Context, pattern string, input genx.Stream)
 
 	release := func() {
 		_ = lease.Release(context.Background())
+	}
+	if h.WorkspaceStore != nil {
+		runtime, err := h.WorkspaceStore.PrepareWorkspace(ctx, workspaceName)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		spec.Runtime = runtime
 	}
 	factory, ok := h.registry().Get(spec.AgentType)
 	if !ok {

@@ -118,18 +118,39 @@ func fiberHTTPHandler(app *fiber.App) http.Handler {
 			app.Handler()(&fctx)
 		}()
 
-		responseBody := fctx.Response.Body()
 		fctx.Response.Header.VisitAll(func(k, v []byte) {
 			w.Header().Add(string(k), string(v))
 		})
-		if len(responseBody) > 0 && w.Header().Get("Content-Length") == "" {
-			w.Header().Set("Content-Length", strconv.Itoa(len(responseBody)))
-		}
 		statusCode := fctx.Response.StatusCode()
 		if statusCode == 0 {
 			statusCode = http.StatusOK
 		}
+		if fctx.Response.IsBodyStream() {
+			w.WriteHeader(statusCode)
+			defer fctx.Response.CloseBodyStream()
+			writer := io.Writer(w)
+			if flusher, ok := w.(http.Flusher); ok {
+				writer = flushWriter{w: w, f: flusher}
+			}
+			_, _ = io.Copy(writer, fctx.Response.BodyStream())
+			return
+		}
+		responseBody := fctx.Response.Body()
+		if len(responseBody) > 0 && w.Header().Get("Content-Length") == "" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(responseBody)))
+		}
 		w.WriteHeader(statusCode)
 		_, _ = w.Write(responseBody)
 	})
+}
+
+type flushWriter struct {
+	w io.Writer
+	f http.Flusher
+}
+
+func (w flushWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	w.f.Flush()
+	return n, err
 }

@@ -1,14 +1,20 @@
 package transformers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"strings"
+	"time"
 
 	"github.com/GizClaw/doubao-speech-go"
+	"github.com/GizClaw/gizclaw-go/pkg/audio/codec/mp3"
+	"github.com/GizClaw/gizclaw-go/pkg/audio/codec/opus"
+	"github.com/GizClaw/gizclaw-go/pkg/audio/codecconv"
+	"github.com/GizClaw/gizclaw-go/pkg/audio/resampler"
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
 )
 
@@ -23,22 +29,24 @@ import (
 //   - When receiving an audio/* EoS marker, finish current ASR, emit results, then emit text/plain EoS
 //   - Non-audio chunks are passed through unchanged
 //
-// Note: The input audio format must match the configured format.
+// Note: The transformer adapts common audio containers/codecs to Doubao's
+// session format. MP3 and raw PCM input are sent through a PCM ASR session.
 type DoubaoASRSAUC struct {
-	client     *doubaospeech.Client
-	format     string
-	sampleRate int
-	channels   int
-	bits       int
-	language   string
-	enableITN  bool
-	enablePunc bool
-	hotwords   []string
-	resultType string // "single" (default) or "full"
-	resourceID string
-	chunkSize  int
+	client         *doubaospeech.Client
+	format         string
+	sampleRate     int
+	channels       int
+	bits           int
+	language       string
+	enableITN      bool
+	enablePunc     bool
+	hotwords       []string
+	resultType     string // "single" (default) or "full"
+	resourceID     string
+	chunkSize      int
+	realtimePacing bool
 
-	newSession func(context.Context) (doubaoASRSession, error)
+	newSession func(context.Context, doubaoASRSessionConfig) (doubaoASRSession, error)
 }
 
 var _ genx.Transformer = (*DoubaoASRSAUC)(nil)
@@ -47,6 +55,13 @@ type doubaoASRSession interface {
 	SendAudio(context.Context, []byte, bool) error
 	Recv() iter.Seq2[*doubaospeech.ASRV2Result, error]
 	Close() error
+}
+
+type doubaoASRSessionConfig struct {
+	format     string
+	sampleRate int
+	channels   int
+	bits       int
 }
 
 // DoubaoASRSAUCOption is a functional option for DoubaoASRSAUC.
@@ -130,6 +145,15 @@ func WithDoubaoASRSAUCChunkSize(chunkSize int) DoubaoASRSAUCOption {
 	}
 }
 
+// WithDoubaoASRSAUCRealtimePacing controls whether PCM frames are sent no
+// faster than their audio duration. Streaming ASR services can truncate or
+// delay results when long PCM files are uploaded as fast as memory allows.
+func WithDoubaoASRSAUCRealtimePacing(enabled bool) DoubaoASRSAUCOption {
+	return func(t *DoubaoASRSAUC) {
+		t.realtimePacing = enabled
+	}
+}
+
 // NewDoubaoASRSAUC creates a new DoubaoASRSAUC transformer.
 //
 // Parameters:
@@ -137,16 +161,17 @@ func WithDoubaoASRSAUCChunkSize(chunkSize int) DoubaoASRSAUCOption {
 //   - opts: Optional configuration
 func NewDoubaoASRSAUC(client *doubaospeech.Client, opts ...DoubaoASRSAUCOption) *DoubaoASRSAUC {
 	t := &DoubaoASRSAUC{
-		client:     client,
-		format:     string(doubaospeech.FormatOGG),
-		sampleRate: 16000,
-		channels:   1,
-		bits:       16,
-		language:   "zh-CN",
-		enableITN:  true,
-		enablePunc: true,
-		resultType: "single", // only definite results
-		resourceID: doubaospeech.ResourceASRStream,
+		client:         client,
+		format:         "pcm",
+		sampleRate:     16000,
+		channels:       1,
+		bits:           16,
+		language:       "zh-CN",
+		enableITN:      true,
+		enablePunc:     true,
+		resultType:     "single", // only definite results
+		resourceID:     doubaospeech.ResourceASRStream,
+		realtimePacing: true,
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -158,7 +183,6 @@ func NewDoubaoASRSAUC(client *doubaospeech.Client, opts ...DoubaoASRSAUCOption) 
 type doubaoASRSAUCCtxKey struct{}
 
 // DoubaoASRSAUCCtxOptions are runtime options passed via context.
-// TODO: Add fields as needed for runtime configuration.
 type DoubaoASRSAUCCtxOptions struct{}
 
 // WithDoubaoASRSAUCCtxOptions attaches runtime options to context.
@@ -194,18 +218,30 @@ func (t *DoubaoASRSAUC) transformLoop(input genx.Stream, output *bufferStream) {
 	var resultsDone chan error
 	var resultsForwarded chan struct{}
 	var pendingAudio []byte
+	var sessionConfig doubaoASRSessionConfig
+	var sessionStartedAt time.Time
+	var sentAudioDuration time.Duration
+	var rawOpusDecoder *opus.Decoder
+	defer func() {
+		if rawOpusDecoder != nil {
+			_ = rawOpusDecoder.Close()
+		}
+	}()
 
 	// Helper to start a new ASR session
-	startSession := func() error {
+	startSession := func(cfg doubaoASRSessionConfig) error {
 		var err error
 		openSession := t.openSession
 		if t.newSession != nil {
 			openSession = t.newSession
 		}
-		session, err = openSession(ctx)
+		session, err = openSession(ctx, cfg)
 		if err != nil {
 			return err
 		}
+		sessionConfig = cfg
+		sessionStartedAt = time.Time{}
+		sentAudioDuration = 0
 		resultsCh = make(chan *genx.MessageChunk, 100)
 		resultsDone = make(chan error, 1)
 		resultsForwarded = make(chan struct{})
@@ -220,20 +256,49 @@ func (t *DoubaoASRSAUC) transformLoop(input genx.Stream, output *bufferStream) {
 		return nil
 	}
 
+	sendAudio := func(data []byte, isLast bool) error {
+		if t.realtimePacing && len(data) > 0 && sessionConfig.isPCM() {
+			if sessionStartedAt.IsZero() {
+				sessionStartedAt = time.Now()
+			}
+			if delay := sessionStartedAt.Add(sentAudioDuration).Sub(time.Now()); delay > 0 {
+				timer := time.NewTimer(delay)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					return ctx.Err()
+				}
+			}
+		}
+		if err := session.SendAudio(ctx, data, isLast); err != nil {
+			return err
+		}
+		if len(data) > 0 && sessionConfig.isPCM() {
+			sentAudioDuration += audioDuration(data, sessionConfig)
+		}
+		return nil
+	}
+
 	// Helper to finish current session
 	finishSession := func() error {
 		if session == nil {
 			return nil
 		}
 		if len(pendingAudio) > 0 {
-			if err := session.SendAudio(ctx, pendingAudio, true); err != nil {
+			if err := sendAudio(pendingAudio, true); err != nil {
 				session.Close()
 				session = nil
 				pendingAudio = nil
 				return err
 			}
 			pendingAudio = nil
-		} else if err := session.SendAudio(ctx, nil, true); err != nil {
+		} else if err := sendAudio(nil, true); err != nil {
 			session.Close()
 			session = nil
 			return err
@@ -242,6 +307,7 @@ func (t *DoubaoASRSAUC) transformLoop(input genx.Stream, output *bufferStream) {
 		<-resultsForwarded
 		session.Close()
 		session = nil
+		sessionConfig = doubaoASRSessionConfig{}
 		return err
 	}
 
@@ -296,17 +362,29 @@ func (t *DoubaoASRSAUC) transformLoop(input genx.Stream, output *bufferStream) {
 
 		// Handle audio blob
 		if blob, ok := chunk.Part.(*genx.Blob); ok && isAudioMIME(blob.MIMEType) {
-			// Start session on first audio chunk
+			var target *doubaoASRSessionConfig
+			if session != nil {
+				target = &sessionConfig
+			}
+			audioData, cfg, err := t.prepareAudioBlob(blob, target, &rawOpusDecoder)
+			if err != nil {
+				if session != nil {
+					session.Close()
+				}
+				output.CloseWithError(err)
+				return
+			}
+			// Start session on first audio chunk after MIME-based format detection.
 			if session == nil {
-				if err := startSession(); err != nil {
+				if err := startSession(cfg); err != nil {
 					output.CloseWithError(err)
 					return
 				}
 			}
-			if len(blob.Data) > 0 {
-				for audio := range splitDoubaoASRAudio(blob.Data, t.audioChunkSize()) {
+			if len(audioData) > 0 {
+				for audio := range splitDoubaoASRAudio(audioData, t.audioChunkSize(cfg)) {
 					if len(pendingAudio) > 0 {
-						if err := session.SendAudio(ctx, pendingAudio, false); err != nil {
+						if err := sendAudio(pendingAudio, false); err != nil {
 							session.Close()
 							output.CloseWithError(err)
 							return
@@ -324,17 +402,84 @@ func (t *DoubaoASRSAUC) transformLoop(input genx.Stream, output *bufferStream) {
 	}
 }
 
-func (t *DoubaoASRSAUC) openSession(ctx context.Context) (doubaoASRSession, error) {
-	format := t.format
+func (t *DoubaoASRSAUC) prepareAudioBlob(blob *genx.Blob, target *doubaoASRSessionConfig, rawOpusDecoder **opus.Decoder) ([]byte, doubaoASRSessionConfig, error) {
+	cfg := t.defaultSessionConfig()
+	if target != nil {
+		cfg = *target
+	}
+	if blob == nil || len(blob.Data) == 0 {
+		return nil, cfg, nil
+	}
+
+	mimeType := baseAudioMIME(blob.MIMEType)
+	if isASRMP3MIME(mimeType) {
+		cfg = cfg.withPCM()
+		pcm, err := t.decodeMP3ToPCM(blob.Data, cfg)
+		if err != nil {
+			return nil, cfg, err
+		}
+		return pcm, cfg, nil
+	}
+	if isASRPCMMIME(mimeType) {
+		cfg = cfg.withPCM()
+		return blob.Data, cfg, nil
+	}
+	if cfg.isPCM() && isOggAudioMIME(mimeType) {
+		var pcm bytes.Buffer
+		if _, err := codecconv.OggToPCM(&pcm, bytes.NewReader(blob.Data), opus.OpusSampleRate(cfg.sampleRate)); err != nil {
+			return nil, cfg, fmt.Errorf("decode ogg opus for doubao asr pcm input: %w", err)
+		}
+		return pcm.Bytes(), cfg, nil
+	}
+	if cfg.isPCM() && isASROpusMIME(mimeType) {
+		pcm, err := decodeRawOpusToPCM(blob.Data, cfg, rawOpusDecoder)
+		if err != nil {
+			return nil, cfg, err
+		}
+		return pcm, cfg, nil
+	}
+	return blob.Data, cfg, nil
+}
+
+func (t *DoubaoASRSAUC) defaultSessionConfig() doubaoASRSessionConfig {
+	return doubaoASRSessionConfig{
+		format:     t.format,
+		sampleRate: t.sampleRate,
+		channels:   t.channels,
+		bits:       t.bits,
+	}
+}
+
+func (c doubaoASRSessionConfig) withPCM() doubaoASRSessionConfig {
+	c.format = "pcm"
+	if c.sampleRate <= 0 {
+		c.sampleRate = 16000
+	}
+	if c.channels <= 0 {
+		c.channels = 1
+	}
+	if c.bits <= 0 {
+		c.bits = 16
+	}
+	return c
+}
+
+func (c doubaoASRSessionConfig) isPCM() bool {
+	format := strings.ToLower(strings.TrimSpace(c.format))
+	return format == "pcm" || format == "pcm_s16le"
+}
+
+func (t *DoubaoASRSAUC) openSession(ctx context.Context, cfg doubaoASRSessionConfig) (doubaoASRSession, error) {
+	format := cfg.format
 	if format == "ogg" {
 		format = string(doubaospeech.FormatOGG)
 	}
 
 	config := &doubaospeech.ASRV2Config{
 		Format:     doubaospeech.AudioFormat(format),
-		SampleRate: doubaospeech.SampleRate(t.sampleRate),
-		Channels:   t.channels,
-		Bits:       t.bits,
+		SampleRate: doubaospeech.SampleRate(cfg.sampleRate),
+		Channels:   cfg.channels,
+		Bits:       cfg.bits,
 		Language:   doubaospeech.Language(t.language),
 		EnableITN:  t.enableITN,
 		EnablePunc: t.enablePunc,
@@ -345,26 +490,109 @@ func (t *DoubaoASRSAUC) openSession(ctx context.Context) (doubaoASRSession, erro
 	return t.client.ASRV2.OpenStreamSession(ctx, config)
 }
 
-func (t *DoubaoASRSAUC) audioChunkSize() int {
+func (t *DoubaoASRSAUC) audioChunkSize(cfg doubaoASRSessionConfig) int {
 	if t.chunkSize > 0 {
 		return t.chunkSize
 	}
-	if strings.EqualFold(t.format, "pcm") {
-		bytesPerSample := t.bits / 8
+	if cfg.isPCM() {
+		bytesPerSample := cfg.bits / 8
 		if bytesPerSample <= 0 {
 			bytesPerSample = 2
 		}
-		channels := t.channels
+		channels := cfg.channels
 		if channels <= 0 {
 			channels = 1
 		}
-		sampleRate := t.sampleRate
+		sampleRate := cfg.sampleRate
 		if sampleRate <= 0 {
 			sampleRate = 16000
 		}
 		return sampleRate * bytesPerSample * channels / 10
 	}
 	return 256
+}
+
+func audioDuration(data []byte, cfg doubaoASRSessionConfig) time.Duration {
+	bytesPerSample := cfg.bits / 8
+	if bytesPerSample <= 0 {
+		bytesPerSample = 2
+	}
+	channels := cfg.channels
+	if channels <= 0 {
+		channels = 1
+	}
+	sampleRate := cfg.sampleRate
+	if sampleRate <= 0 {
+		sampleRate = 16000
+	}
+	bytesPerSecond := sampleRate * channels * bytesPerSample
+	if bytesPerSecond <= 0 {
+		return 0
+	}
+	return time.Duration(len(data)) * time.Second / time.Duration(bytesPerSecond)
+}
+
+func (t *DoubaoASRSAUC) decodeMP3ToPCM(data []byte, cfg doubaoASRSessionConfig) ([]byte, error) {
+	decoded, sampleRate, channels, err := mp3.DecodeFull(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode mp3 for doubao asr pcm input: %w", err)
+	}
+	if sampleRate <= 0 {
+		return nil, fmt.Errorf("decode mp3 for doubao asr pcm input: invalid sample rate %d", sampleRate)
+	}
+	if channels != 1 && channels != 2 {
+		return nil, fmt.Errorf("decode mp3 for doubao asr pcm input: unsupported channels %d", channels)
+	}
+	if cfg.channels != 1 && cfg.channels != 2 {
+		return nil, fmt.Errorf("doubao asr unsupported target channels %d", cfg.channels)
+	}
+
+	srcFmt := resampler.Format{SampleRate: sampleRate, Stereo: channels == 2}
+	dstFmt := resampler.Format{SampleRate: cfg.sampleRate, Stereo: cfg.channels == 2}
+	if srcFmt == dstFmt {
+		return decoded, nil
+	}
+
+	rs, err := resampler.New(bytes.NewReader(decoded), srcFmt, dstFmt)
+	if err != nil {
+		return nil, fmt.Errorf("create mp3 pcm resampler for doubao asr: %w", err)
+	}
+	defer func() {
+		_ = rs.Close()
+	}()
+	pcm, err := io.ReadAll(rs)
+	if err != nil {
+		return nil, fmt.Errorf("resample mp3 pcm for doubao asr: %w", err)
+	}
+	return pcm, nil
+}
+
+func decodeRawOpusToPCM(data []byte, cfg doubaoASRSessionConfig, decoder **opus.Decoder) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	if cfg.sampleRate <= 0 {
+		cfg.sampleRate = 16000
+	}
+	if cfg.channels <= 0 {
+		cfg.channels = 1
+	}
+	if cfg.channels != 1 && cfg.channels != 2 {
+		return nil, fmt.Errorf("doubao asr unsupported raw opus target channels %d", cfg.channels)
+	}
+	if *decoder == nil {
+		dec, err := opus.NewDecoder(cfg.sampleRate, cfg.channels)
+		if err != nil {
+			return nil, fmt.Errorf("create raw opus decoder for doubao asr pcm input: %w", err)
+		}
+		*decoder = dec
+	}
+	frameSize := (cfg.sampleRate * 3) / 50
+	samples, err := (*decoder).Decode(data, frameSize, false)
+	if err != nil {
+		return nil, fmt.Errorf("decode raw opus for doubao asr pcm input: %w", err)
+	}
+	return pcm16LE(samples), nil
 }
 
 func splitDoubaoASRAudio(data []byte, chunkSize int) iter.Seq[[]byte] {
@@ -384,8 +612,9 @@ func splitDoubaoASRAudio(data []byte, chunkSize int) iter.Seq[[]byte] {
 func (t *DoubaoASRSAUC) receiveResults(session doubaoASRSession, lastChunk *genx.MessageChunk, resultsCh chan<- *genx.MessageChunk, done chan<- error) {
 	defer close(resultsCh)
 
-	// Track processed utterances by end time to avoid duplicates
-	lastEndTime := 0
+	// Track processed utterances by identity. SAUC utterance timestamps are not
+	// guaranteed to be globally monotonic across incremental frames.
+	seenUtterances := map[string]struct{}{}
 	resultCount := 0
 	textCount := 0
 	lastText := ""
@@ -406,7 +635,12 @@ func (t *DoubaoASRSAUC) receiveResults(session doubaoASRSession, lastChunk *genx
 		emittedResultText := false
 		if len(result.Utterances) > 0 {
 			for _, utt := range result.Utterances {
-				if utt.Definite && utt.EndTime > lastEndTime && utt.Text != "" {
+				if utt.Definite && utt.Text != "" {
+					key := fmt.Sprintf("%d:%d:%s", utt.StartTime, utt.EndTime, utt.Text)
+					if _, ok := seenUtterances[key]; ok {
+						continue
+					}
+					seenUtterances[key] = struct{}{}
 					outChunk := &genx.MessageChunk{
 						Part: genx.Text(utt.Text),
 					}
@@ -415,13 +649,12 @@ func (t *DoubaoASRSAUC) receiveResults(session doubaoASRSession, lastChunk *genx
 						outChunk.Name = lastChunk.Name
 					}
 					resultsCh <- outChunk
-					lastEndTime = utt.EndTime
 					textCount++
 					emittedResultText = true
 				}
 			}
 		}
-		if !emittedResultText && result.IsFinal && result.Text != "" {
+		if !emittedResultText && result.IsFinal && result.Text != "" && textCount == 0 {
 			outChunk := &genx.MessageChunk{
 				Part: genx.Text(result.Text),
 			}
@@ -442,5 +675,32 @@ func (t *DoubaoASRSAUC) receiveResults(session doubaoASRSession, lastChunk *genx
 
 // isAudioMIME checks if a MIME type is audio
 func isAudioMIME(mimeType string) bool {
-	return len(mimeType) >= 6 && mimeType[:6] == "audio/"
+	return strings.HasPrefix(baseAudioMIME(mimeType), "audio/")
+}
+
+func isOggAudioMIME(mimeType string) bool {
+	mimeType = baseAudioMIME(mimeType)
+	return mimeType == "audio/ogg" || mimeType == "application/ogg"
+}
+
+func isASRMP3MIME(mimeType string) bool {
+	mimeType = baseAudioMIME(mimeType)
+	return mimeType == "audio/mpeg" || mimeType == "audio/mp3" || mimeType == "audio/x-mpeg" || mimeType == "audio/x-mp3"
+}
+
+func isASRPCMMIME(mimeType string) bool {
+	mimeType = baseAudioMIME(mimeType)
+	return strings.HasPrefix(mimeType, "audio/l16") || mimeType == "audio/pcm" || mimeType == "audio/x-pcm"
+}
+
+func isASROpusMIME(mimeType string) bool {
+	return baseAudioMIME(mimeType) == "audio/opus"
+}
+
+func baseAudioMIME(mimeType string) string {
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	if i := strings.IndexByte(mimeType, ';'); i >= 0 {
+		mimeType = strings.TrimSpace(mimeType[:i])
+	}
+	return mimeType
 }

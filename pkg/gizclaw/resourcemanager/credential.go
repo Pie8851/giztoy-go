@@ -96,7 +96,6 @@ func credentialSpec(credential apitypes.Credential) apitypes.CredentialSpec {
 	return apitypes.CredentialSpec{
 		Body:        credential.Body,
 		Description: credential.Description,
-		Method:      credential.Method,
 		Provider:    credential.Provider,
 	}
 }
@@ -105,7 +104,6 @@ func credentialUpsert(resource apitypes.CredentialResource) adminservice.Credent
 	return adminservice.CredentialUpsert{
 		Body:        resource.Spec.Body,
 		Description: resource.Spec.Description,
-		Method:      resource.Spec.Method,
 		Name:        string(resource.Metadata.Name),
 		Provider:    resource.Spec.Provider,
 	}

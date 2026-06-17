@@ -7,6 +7,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/acl"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
@@ -28,7 +29,7 @@ func (a peerAuthorizer) Authorize(ctx context.Context, request acl.AuthorizeRequ
 	if a.ACL == nil {
 		return errors.New("acl service not configured")
 	}
-	err := a.ACL.Authorize(ctx, request)
+	err := a.authorizeWithCollectionFallback(ctx, request)
 	if err == nil || !errors.Is(err, acl.ErrDenied) || !a.shouldTryView(request) {
 		return err
 	}
@@ -37,7 +38,7 @@ func (a peerAuthorizer) Authorize(ctx context.Context, request acl.AuthorizeRequ
 		return err
 	}
 	request.Subject = acl.ViewSubject(view)
-	viewErr := a.ACL.Authorize(ctx, request)
+	viewErr := a.authorizeWithCollectionFallback(ctx, request)
 	if viewErr == nil {
 		return nil
 	}
@@ -45,6 +46,15 @@ func (a peerAuthorizer) Authorize(ctx context.Context, request acl.AuthorizeRequ
 		return err
 	}
 	return viewErr
+}
+
+func (a peerAuthorizer) authorizeWithCollectionFallback(ctx context.Context, request acl.AuthorizeRequest) error {
+	err := a.ACL.Authorize(ctx, request)
+	if err == nil || !errors.Is(err, acl.ErrDenied) || !isCollectionFallbackResource(request.Resource) {
+		return err
+	}
+	request.Resource.Id = acl.CollectionResourceID
+	return a.ACL.Authorize(ctx, request)
 }
 
 func (a peerAuthorizer) shouldTryView(request acl.AuthorizeRequest) bool {
@@ -65,4 +75,13 @@ func (a peerAuthorizer) peerView(ctx context.Context) (string, bool) {
 	}
 	view := strings.TrimSpace(*config.View)
 	return view, view != ""
+}
+
+func isCollectionFallbackResource(resource apitypes.ACLResource) bool {
+	switch resource.Kind {
+	case apitypes.ACLResourceKindWorkflow, apitypes.ACLResourceKindWorkspace:
+		return resource.Id != "" && resource.Id != acl.CollectionResourceID
+	default:
+		return false
+	}
 }

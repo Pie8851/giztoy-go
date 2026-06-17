@@ -213,7 +213,11 @@ func (s *Server) SyncVolcTenantVoices(ctx context.Context, request adminservice.
 	if err != nil {
 		return adminservice.SyncVolcTenantVoices400JSONResponse(apitypes.NewErrorResponse("INVALID_VOLC_TENANT", err.Error())), nil
 	}
-	upstream, err := listAllVolcSpeakers(ctx, client, tenant)
+	appID := strings.TrimSpace(apitypes.CredentialBodyString(credential.Body, "app_id"))
+	if appID == "" {
+		return adminservice.SyncVolcTenantVoices400JSONResponse(apitypes.NewErrorResponse("INVALID_VOLC_TENANT", fmt.Sprintf("credential %q missing app_id", tenant.CredentialName))), nil
+	}
+	upstream, err := listAllVolcSpeakers(ctx, client, tenant, appID)
 	if err != nil {
 		return adminservice.SyncVolcTenantVoices502JSONResponse(apitypes.NewErrorResponse("VOLC_SYNC_FAILED", err.Error())), nil
 	}
@@ -265,12 +269,7 @@ func normalizeVolcTenantUpsert(in adminservice.VolcTenantUpsert, expectedName st
 	if credentialName == "" {
 		return apitypes.VolcTenant{}, errors.New("credential_name is required")
 	}
-	appID := strings.TrimSpace(string(in.AppId))
-	if appID == "" {
-		return apitypes.VolcTenant{}, errors.New("app_id is required")
-	}
 	tenant := apitypes.VolcTenant{
-		AppId:          string(appID),
 		CredentialName: string(credentialName),
 		Name:           string(name),
 	}
@@ -607,10 +606,10 @@ func (p *volcMegaTTSTrainStatusPage) captureRawStatuses() error {
 	return nil
 }
 
-func listAllVolcSpeakers(ctx context.Context, client VolcSpeakerClient, tenant apitypes.VolcTenant) ([]volcSpeakerRecord, error) {
-	appID := strings.TrimSpace(string(tenant.AppId))
+func listAllVolcSpeakers(ctx context.Context, client VolcSpeakerClient, tenant apitypes.VolcTenant, appID string) ([]volcSpeakerRecord, error) {
+	appID = strings.TrimSpace(appID)
 	if appID == "" {
-		return nil, errors.New("Volcengine tenant app_id is required")
+		return nil, errors.New("Volcengine credential app_id is required")
 	}
 	resourceIDs := volcTenantResourceIDs(tenant)
 	resourceFilter := volcResourceIDSet(resourceIDs)
@@ -641,7 +640,7 @@ func listAllVolcSpeakers(ctx context.Context, client VolcSpeakerClient, tenant a
 				}
 			}
 			speakerCopy := speaker
-			byVoiceID[voiceType] = volcSpeakerRecord{appID: tenant.AppId, resourceID: resourceID, source: "speakers", speaker: &speakerCopy}
+			byVoiceID[voiceType] = volcSpeakerRecord{appID: appID, resourceID: resourceID, source: "speakers", speaker: &speakerCopy}
 		}
 		if page.Total == 0 || len(page.Speakers) == 0 || pageNumber*pageSize >= page.Total {
 			break
@@ -664,7 +663,7 @@ func listAllVolcSpeakers(ctx context.Context, client VolcSpeakerClient, tenant a
 				}
 			}
 			timbreCopy := timbre
-			byVoiceID[speakerID] = volcSpeakerRecord{appID: tenant.AppId, resourceID: resourceID, source: "timbres", timbre: &timbreCopy}
+			byVoiceID[speakerID] = volcSpeakerRecord{appID: appID, resourceID: resourceID, source: "timbres", timbre: &timbreCopy}
 		}
 	}
 	if len(resourceIDs) == 0 {
@@ -687,7 +686,7 @@ func listAllVolcSpeakers(ctx context.Context, client VolcSpeakerClient, tenant a
 				}
 			}
 			statusCopy := status
-			byVoiceID[speakerID] = volcSpeakerRecord{appID: tenant.AppId, resourceID: resourceID, source: "app", status: &statusCopy}
+			byVoiceID[speakerID] = volcSpeakerRecord{appID: appID, resourceID: resourceID, source: "app", status: &statusCopy}
 		}
 		if page.TotalCount == 0 || len(page.Statuses) == 0 || pageNumber*pageSize >= page.TotalCount {
 			break
@@ -810,7 +809,6 @@ func voiceFromVolc(tenantName string, upstream volcSpeakerRecord, now time.Time)
 			Name: string(tenantName),
 		},
 		ProviderData: voicecatalog.ProviderData(volcProviderKind, map[string]interface{}{
-			"app_id":      strings.TrimSpace(string(upstream.appID)),
 			"raw":         raw,
 			"resource_id": resourceID,
 			"state":       upstream.state(),

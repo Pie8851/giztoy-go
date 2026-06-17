@@ -92,6 +92,9 @@
       "VolcTenantModelProviderData": {
         "type": "object",
         "properties": {
+          "upstream_model": {
+            "type": "string"
+          },
           "api_mode": {
             "type": "string",
             "enum": [
@@ -104,6 +107,36 @@
             "type": "string"
           },
           "auth_mode": {
+            "type": "string"
+          },
+          "support_json_output": {
+            "type": "boolean"
+          },
+          "support_tool_calls": {
+            "type": "boolean"
+          },
+          "support_text_only": {
+            "type": "boolean"
+          },
+          "use_system_role": {
+            "type": "boolean"
+          },
+          "support_thinking": {
+            "type": "boolean"
+          },
+          "thinking_param": {
+            "type": "string"
+          },
+          "thinking_level_param": {
+            "type": "string"
+          },
+          "thinking_levels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default_thinking_level": {
             "type": "string"
           }
         }

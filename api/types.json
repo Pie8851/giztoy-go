@@ -116,9 +116,6 @@
       "RefreshIdentifiers": {
         "$ref": "./type/refresh_identifiers.json#/components/schemas/RefreshIdentifiers"
       },
-      "CredentialMethod": {
-        "$ref": "./type/credential_method.json#/components/schemas/CredentialMethod"
-      },
       "Credential": {
         "$ref": "./type/credential.json#/components/schemas/Credential"
       },

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 	"github.com/pion/webrtc/v4"
 )
@@ -91,6 +92,48 @@ func TestIsWebRTCRPCDataChannel(t *testing.T) {
 				t.Fatalf("isWebRTCRPCDataChannel(%q) = %t, want %t", tt.label, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsWebRTCEventDataChannel(t *testing.T) {
+	tests := []struct {
+		label string
+		want  bool
+	}{
+		{label: "event", want: true},
+		{label: "event:play-1", want: true},
+		{label: "event-bootstrap", want: false},
+		{label: "rpc", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			got := isWebRTCEventDataChannel(tt.label)
+			if got != tt.want {
+				t.Fatalf("isWebRTCEventDataChannel(%q) = %t, want %t", tt.label, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWebRTCPeerStreamEventFrameRoundTrip(t *testing.T) {
+	text := "hello"
+	streamID := "s1"
+	event := apitypes.PeerStreamEvent{
+		Type:     apitypes.PeerStreamEventTypeTextDelta,
+		StreamId: &streamID,
+		Text:     &text,
+	}
+	var buf bytes.Buffer
+	if err := writeWebRTCPeerStreamEvent(&buf, event); err != nil {
+		t.Fatalf("writeWebRTCPeerStreamEvent() error = %v", err)
+	}
+	got, err := readWebRTCPeerStreamEvent(&buf)
+	if err != nil {
+		t.Fatalf("readWebRTCPeerStreamEvent() error = %v", err)
+	}
+	if got.V != 1 || got.Type != event.Type || got.StreamId == nil || *got.StreamId != streamID || got.Text == nil || *got.Text != text {
+		t.Fatalf("round trip event = %+v", got)
 	}
 }
 

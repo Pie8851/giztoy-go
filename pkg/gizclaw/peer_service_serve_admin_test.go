@@ -44,7 +44,6 @@ func TestAdminServiceResourceMethodsHandleValidationAndManagerErrors(t *testing.
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)
@@ -120,7 +119,6 @@ func TestAdminResourceHelpers(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)
@@ -152,7 +150,6 @@ func TestResource200JSONResponseSerializesResourceUnion(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)

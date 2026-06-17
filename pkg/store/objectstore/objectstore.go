@@ -30,3 +30,9 @@ type ObjectStore interface {
 	// List returns all objects under the given prefix.
 	List(prefix string) ([]ObjectInfo, error)
 }
+
+// LocalDirProvider is implemented by object stores backed by a local
+// filesystem directory.
+type LocalDirProvider interface {
+	LocalDir() (string, bool)
+}

@@ -1,0 +1,70 @@
+{
+  "workspace": "flowcraft-voice",
+  "agent": "flowcraft",
+  "models": {
+    "llm": "e2e-chat",
+    "tts": "e2e-tts",
+    "asr": "e2e-asr"
+  },
+  "workflow": {
+    "name": "e2e-flowcraft-voice",
+    "description": "Workspace e2e Flowcraft voice adapter workflow",
+    "parameters": {
+      "e2e": true,
+      "generate_model": "e2e-doubao-2-lite-chat",
+      "extract_model": "e2e-doubao-2-lite-chat"
+    },
+    "flowcraft": {
+      "workspace": {
+        "memory_root": "memory",
+        "state_root": "state",
+        "history_root": "history"
+      },
+      "conversation": {
+        "starts": "peer",
+        "context_id": "e2e-flowcraft"
+      },
+      "history": {
+        "enabled": true,
+        "kind": "buffer",
+        "max_messages": 20
+      },
+      "memory": {
+        "enabled": true,
+        "write": {
+          "save_conversation": true,
+          "mode": "async_semantic",
+          "tier": "general"
+        },
+        "extract": {
+          "enabled": true,
+          "model": "extract_model",
+          "mode": "two_pass",
+          "temperature": 0,
+          "schema_name": "e2e_flowcraft_memory"
+        },
+        "embedding": {
+          "enabled": false
+        }
+      },
+      "agent": {
+        "id": "voice-adapter",
+        "name": "Voice Adapter",
+        "model": "generate_model",
+        "system_prompt": "你是一个简短、自然的中文语音聊天助手。直接回答用户，不要解释测试流程。",
+        "max_iterations": 4
+      }
+    },
+    "voice_adapter": {
+      "asr_model": "e2e-asr",
+      "default_voice": "volc-tenant:e2e-volc-tenant:zh_female_vv_uranus_bigtts",
+      "node_voices": {
+        "answer": "volc-tenant:e2e-volc-tenant:zh_female_vv_uranus_bigtts"
+      }
+    }
+  },
+  "voice": "volc-tenant:e2e-volc-tenant:zh_female_vv_uranus_bigtts",
+  "rounds": 3,
+  "timeout": "120s",
+  "persona": "You are a concise Chinese voice chat test user. Keep every utterance short and speech friendly."
+}

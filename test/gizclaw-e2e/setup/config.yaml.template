@@ -8,6 +8,10 @@ __ADMIN_PUBLIC_KEY_LINE__storage:
     kind: filesystem
     fs:
       dir: .
+  agenthost-files:
+    kind: objectstore
+    fs:
+      dir: data/agenthost
   acl-db:
     kind: sql
     sqlite:
@@ -29,6 +33,9 @@ stores:
     kind: keyvalue
     storage: memory
     prefix: firmwares
+  agenthost:
+    kind: objectstore
+    storage: agenthost-files
   minimax-tenants:
     kind: keyvalue
     storage: memory

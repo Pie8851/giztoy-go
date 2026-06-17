@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"testing"
 	"time"
 
@@ -249,6 +252,166 @@ func TestPeerConnOpenAIServiceWithOpenAISDK(t *testing.T) {
 	}
 	if transcriptionText != "sdk streaming transcription ok" {
 		t.Fatalf("streaming transcription text = %q, want sdk streaming transcription ok", transcriptionText)
+	}
+
+	_ = clientConn.Close()
+	_ = serverConn.Close()
+	select {
+	case err := <-serverErrCh:
+		if err != nil {
+			t.Fatalf("OpenAI gizhttp server error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("OpenAI gizhttp server did not stop")
+	}
+}
+
+func TestPeerConnOpenAIServiceStreamsChatThroughProxy(t *testing.T) {
+	serverKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(server) error = %v", err)
+	}
+	clientKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(client) error = %v", err)
+	}
+
+	serverListener, err := (&giznet.ListenConfig{
+		Addr: "127.0.0.1:0",
+		SecurityPolicy: testGiznetSecurityPolicy{allowService: func(giznet.PublicKey, uint64) bool {
+			return true
+		}},
+	}).Listen(serverKey)
+	if err != nil {
+		t.Fatalf("Listen(server) error = %v", err)
+	}
+	defer serverListener.Close()
+	go drainUDP(serverListener.UDP())
+
+	clientListener, err := (&giznet.ListenConfig{
+		Addr: "127.0.0.1:0",
+		SecurityPolicy: testGiznetSecurityPolicy{allowService: func(giznet.PublicKey, uint64) bool {
+			return true
+		}},
+	}).Listen(clientKey)
+	if err != nil {
+		t.Fatalf("Listen(client) error = %v", err)
+	}
+	defer clientListener.Close()
+	go drainUDP(clientListener.UDP())
+
+	acceptCh := make(chan *giznet.Conn, 1)
+	acceptErrCh := make(chan error, 1)
+	go func() {
+		conn, err := serverListener.Accept()
+		if err != nil {
+			acceptErrCh <- err
+			return
+		}
+		acceptCh <- conn
+	}()
+
+	clientConn, err := clientListener.Dial(serverKey.Public, serverListener.HostInfo().Addr)
+	if err != nil {
+		t.Fatalf("Dial error = %v", err)
+	}
+	defer clientConn.Close()
+
+	var serverConn *giznet.Conn
+	select {
+	case serverConn = <-acceptCh:
+	case err := <-acceptErrCh:
+		t.Fatalf("Accept error = %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept timeout")
+	}
+	defer serverConn.Close()
+
+	releaseSecond := make(chan struct{})
+	handler := newOpenAIHTTPHandler(&openaiapi.Server{
+		Caller: clientKey.Public,
+		Models: peerConnModelListerFunc(func(context.Context, adminservice.ListModelsRequestObject) (adminservice.ListModelsResponseObject, error) {
+			return adminservice.ListModels200JSONResponse(adminservice.ModelList{Items: []apitypes.Model{{
+				Id: "chat",
+				Provider: apitypes.ModelProvider{
+					Kind: apitypes.ModelProviderKindOpenaiTenant,
+					Name: "test",
+				},
+			}}}), nil
+		}),
+		Authorizer: peerConnAuthorizerFunc(func(context.Context, acl.AuthorizeRequest) error { return nil }),
+		Generator: openAISDKGeneratorFunc(func(_ context.Context, pattern string, mctx genx.ModelContext) (genx.Stream, error) {
+			if pattern != "model/chat" {
+				t.Fatalf("generator pattern = %q, want model/chat", pattern)
+			}
+			sb := genx.NewStreamBuilder(mctx, 2)
+			go func() {
+				_ = sb.Add(&genx.MessageChunk{Role: genx.RoleModel, Part: genx.Text("first")})
+				<-releaseSecond
+				_ = sb.Add(&genx.MessageChunk{Role: genx.RoleModel, Part: genx.Text("second")})
+				_ = sb.Done(genx.Usage{})
+			}()
+			return sb.Stream(), nil
+		}),
+	})
+	server := gizhttp.NewServer(serverConn, ServiceOpenAI, handler)
+	defer server.Shutdown(context.Background())
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- server.Serve()
+	}()
+
+	target := &url.URL{Scheme: "http", Host: "gizclaw"}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = gizhttp.NewRoundTripper(clientConn, ServiceOpenAI)
+	proxyServer := httptest.NewServer(proxy)
+	defer proxyServer.Close()
+	sdk := openai.NewClient(
+		option.WithAPIKey("test"),
+		option.WithBaseURL(proxyServer.URL+"/v1"),
+		option.WithHTTPClient(proxyServer.Client()),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	stream := sdk.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+		Model:    shared.ChatModel("chat"),
+		Messages: []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hello chat")},
+	})
+	defer stream.Close()
+
+	first := make(chan string, 1)
+	go func() {
+		for stream.Next() {
+			for _, choice := range stream.Current().Choices {
+				if choice.Delta.Content != "" {
+					first <- choice.Delta.Content
+					return
+				}
+			}
+		}
+		first <- ""
+	}()
+
+	select {
+	case got := <-first:
+		if got != "first" {
+			t.Fatalf("first stream delta = %q, want first", got)
+		}
+	case <-time.After(time.Second):
+		close(releaseSecond)
+		t.Fatal("timed out waiting for first stream delta through proxy")
+	}
+	close(releaseSecond)
+	var rest string
+	for stream.Next() {
+		for _, choice := range stream.Current().Choices {
+			rest += choice.Delta.Content
+		}
+	}
+	requireNoOpenAISDKError(t, stream.Err())
+	if rest != "second" {
+		t.Fatalf("remaining stream delta = %q, want second", rest)
 	}
 
 	_ = clientConn.Close()

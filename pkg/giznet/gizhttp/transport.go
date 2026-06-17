@@ -43,8 +43,6 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		_ = stream.Close()
 		return nil, fmt.Errorf("gizhttp: read response: %w", err)
 	}
-	bodyCtrl.abort()
-	_ = stream.SetWriteDeadline(time.Now())
 	resp.Body = &readCloser{
 		ReadCloser: resp.Body,
 		closeFn: func() error {

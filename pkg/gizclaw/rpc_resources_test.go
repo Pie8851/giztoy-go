@@ -315,7 +315,6 @@ func resourceCredential(name string) rpcapi.Credential {
 	return rpcapi.Credential{
 		Name:     name,
 		Provider: "openai",
-		Method:   rpcapi.CredentialMethodApiKey,
-		Body:     rpcapi.CredentialBody{"api_key": "sk-test"},
+		Body:     rpcapi.NewOpenAICredentialBody("sk-test"),
 	}
 }

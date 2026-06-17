@@ -49,6 +49,7 @@ type roundStats struct {
 	InputASR                 string
 	Transcript               string
 	AssistantText            string
+	FirstAssistantText       string
 	InputOpusPackets         int
 	InputOpusBytes           int
 	DownlinkPackets          int
@@ -56,6 +57,7 @@ type roundStats struct {
 	EventCount               int
 	UplinkSend               time.Duration
 	FirstTranscriptChunk     time.Duration
+	TranscriptDone           time.Duration
 	FirstTranscriptBeforeEOS bool
 	FirstAssistantTextChunk  time.Duration
 	FirstAudioChunk          time.Duration
@@ -175,13 +177,13 @@ func (d *personaDriver) runRound(ctx context.Context, index int) (roundStats, er
 	assistantAudioDone := false
 	var settle <-chan time.Time
 waitResponse:
-	for transcriptText == "" || stat.DownlinkPackets == 0 || !assistantAudioDone || settle != nil {
+	for transcriptText == "" || stat.TranscriptDone == 0 || stat.DownlinkPackets == 0 || !assistantAudioDone || settle != nil {
 		select {
 		case <-ctx.Done():
 			return stat, fmt.Errorf("round %d: wait response: %w", index, ctx.Err())
 		case <-settle:
 			settle = nil
-			if transcriptText != "" && stat.DownlinkPackets > 0 {
+			if transcriptText != "" && stat.TranscriptDone > 0 && stat.DownlinkPackets > 0 {
 				break waitResponse
 			}
 		case err := <-d.transport.errs:
@@ -198,21 +200,32 @@ waitResponse:
 				settle = time.After(700 * time.Millisecond)
 				continue
 			}
-			if event.Text == nil || strings.TrimSpace(*event.Text) == "" {
-				continue
-			}
 			textLatency := afterStartLatency(received.receivedAt, responseStart)
 			switch label {
 			case "transcript":
+				if isTranscriptDoneEvent(event) && stat.TranscriptDone == 0 {
+					stat.TranscriptDone = textLatency
+				}
+				if event.Text == nil || strings.TrimSpace(*event.Text) == "" {
+					continue
+				}
 				if stat.FirstTranscriptChunk == 0 {
 					stat.FirstTranscriptChunk, stat.FirstTranscriptBeforeEOS = afterStartLatencyStatus(received.receivedAt, responseStart)
 				}
 				transcriptText = mergeTranscriptText(transcriptText, *event.Text)
 			case "assistant":
+				if event.Text == nil || strings.TrimSpace(*event.Text) == "" {
+					continue
+				}
 				if stat.FirstAssistantTextChunk == 0 {
 					stat.FirstAssistantTextChunk = textLatency
+					stat.FirstAssistantText = *event.Text
 				}
 				assistant.WriteString(*event.Text)
+			default:
+				if event.Text == nil || strings.TrimSpace(*event.Text) == "" {
+					continue
+				}
 			}
 		case packet := <-d.transport.opusPackets:
 			downlinkFrames = append(downlinkFrames, append([]byte(nil), packet.frame...))
@@ -256,6 +269,15 @@ waitResponse:
 		return stat, fmt.Errorf("round %d: missing downlink audio", index)
 	}
 	return stat, nil
+}
+
+func isTranscriptDoneEvent(event apitypes.PeerStreamEvent) bool {
+	switch event.Type {
+	case apitypes.PeerStreamEventTypeTextDone, apitypes.PeerStreamEventTypeEos:
+		return true
+	default:
+		return false
+	}
 }
 
 func (d *personaDriver) nextUtterance(ctx context.Context, index int) (string, error) {
@@ -805,6 +827,7 @@ func (t *chatTransport) readChunks(packets chan<- timedPeerPacket) {
 func (t *chatTransport) sendAudioTurn(ctx context.Context, streamID string, packets [][]byte) error {
 	label := "workspacetest"
 	if err := t.stream.Push(ctx, &genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/opus"},
 		Ctrl: &genx.StreamCtrl{StreamID: streamID, Label: label, BeginOfStream: true},
 	}); err != nil {
 		return err
@@ -832,6 +855,7 @@ func (t *chatTransport) sendAudioTurn(ctx context.Context, streamID string, pack
 		}
 	}
 	return t.stream.Push(ctx, &genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/opus"},
 		Ctrl: &genx.StreamCtrl{StreamID: streamID, Label: label, EndOfStream: true},
 	})
 }

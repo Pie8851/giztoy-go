@@ -2,7 +2,7 @@
   "apiVersion": "gizclaw.admin/v1alpha1",
   "kind": "ACLPolicyBinding",
   "metadata": {
-    "name": "view-${GIZCLAW_E2E_ACL_VIEW:-e2e-client}-workflow"
+    "name": "view-${GIZCLAW_E2E_ACL_VIEW:-e2e-client}-workflow-collection"
   },
   "spec": {
     "subject": {
@@ -11,7 +11,7 @@
     },
     "resource": {
       "kind": "workflow",
-      "id": "${GIZCLAW_E2E_WORKFLOW:-e2e-doubao-realtime}"
+      "id": "__collection__"
     },
     "role": "${GIZCLAW_E2E_CLIENT_ROLE:-e2e-client}"
   }

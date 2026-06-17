@@ -511,7 +511,7 @@ func sanitizePlayCredentialList(result *rpcapi.CredentialListResponse) *rpcapi.C
 	out := *result
 	out.Items = append([]rpcapi.Credential(nil), result.Items...)
 	for i := range out.Items {
-		out.Items[i].Body = nil
+		out.Items[i].Body = rpcapi.CredentialBody{}
 	}
 	return &out
 }
@@ -658,6 +658,9 @@ func createPlayWebRTCAnswer(ctx context.Context, client ClientProvider, req clie
 	if err != nil {
 		return clientservice.WebRTCSessionDescription{}, playWebRTCError("get client failed", err, http.StatusServiceUnavailable), false
 	}
+	if err := reloadPlayRunForWebRTC(ctx, c); err != nil {
+		return clientservice.WebRTCSessionDescription{}, playWebRTCError("reload peer run failed", err, http.StatusBadGateway), false
+	}
 
 	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -713,6 +716,17 @@ func createPlayWebRTCAnswer(ctx context.Context, client ClientProvider, req clie
 		Sdp:  local.SDP,
 		Type: clientservice.WebRTCSessionDescriptionType(local.Type.String()),
 	}, playHTTPErrorResponse{}, true
+}
+
+func reloadPlayRunForWebRTC(ctx context.Context, c *gizcli.Client) error {
+	_, err := c.ReloadServerRun(ctx, "play-webrtc-reload")
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "not configured") {
+		return nil
+	}
+	return err
 }
 
 func playWebRTCError(message string, err error, status int) playHTTPErrorResponse {

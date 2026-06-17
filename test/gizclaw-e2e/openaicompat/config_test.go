@@ -48,6 +48,7 @@ func TestLoadConfigUsesFileConfig(t *testing.T) {
   "tts_model": "setup-tts",
   "asr_model": "setup-asr",
   "voice": "setup-voice",
+  "thinking": {"enabled": false},
   "timeout": "3s"
 }`)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -60,6 +61,9 @@ func TestLoadConfigUsesFileConfig(t *testing.T) {
 	if cfg.ModelID != "flag-chat" || cfg.TTSModelID != "setup-tts" || cfg.ASRModelID != "setup-asr" || cfg.VoiceID != "setup-voice" {
 		t.Fatalf("file config = %#v", cfg)
 	}
+	if cfg.Thinking.Enabled == nil || *cfg.Thinking.Enabled {
+		t.Fatalf("thinking config = %#v, want enabled=false", cfg.Thinking)
+	}
 	if cfg.Timeout != 3*time.Second {
 		t.Fatalf("timeout = %s", cfg.Timeout)
 	}
@@ -70,11 +74,19 @@ func TestRunAgainstFakeOpenAICompatServer(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/chat/completions":
 			var body struct {
-				Stream bool `json:"stream"`
+				Stream   bool `json:"stream"`
+				Thinking *struct {
+					Enabled *bool `json:"enabled"`
+				} `json:"thinking"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Errorf("decode chat request: %v", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if body.Thinking == nil || body.Thinking.Enabled == nil || *body.Thinking.Enabled {
+				t.Errorf("thinking = %#v, want enabled=false", body.Thinking)
+				http.Error(w, "missing thinking.enabled=false", http.StatusBadRequest)
 				return
 			}
 			if body.Stream {
@@ -140,12 +152,17 @@ func TestRunAgainstFakeOpenAICompatServer(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"thinking":{"enabled":false}}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 	if err := run([]string{
 		"--base-url", server.URL + "/v1",
 		"--model", "chat",
 		"--tts-model", "tts",
 		"--asr-model", "asr",
 		"--voice", "voice",
+		"--config", configPath,
 		"--output-dir", t.TempDir(),
 	}); err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -240,6 +257,49 @@ func TestTranscriptionAssertions(t *testing.T) {
 	}
 	if err := assertTranscriptionSimilar("different", "abcdef", "uvwxyz", 0.5); err == nil {
 		t.Fatal("assertTranscriptionSimilar(different) error = nil")
+	}
+}
+
+func TestAudioFilenameUsesActualFormat(t *testing.T) {
+	tests := []struct {
+		name        string
+		filename    string
+		contentType string
+		data        []byte
+		want        string
+	}{
+		{
+			name:        "content type ogg overrides mp3 name",
+			filename:    "speech.mp3",
+			contentType: "audio/ogg; codecs=opus",
+			want:        "speech.ogg",
+		},
+		{
+			name:     "sniffs ogg",
+			filename: "speech-stream.mp3",
+			data:     []byte("OggS\x00\x02"),
+			want:     "speech-stream.ogg",
+		},
+		{
+			name:        "keeps mp3",
+			filename:    "speech.mp3",
+			contentType: "audio/mpeg",
+			want:        "speech.mp3",
+		},
+		{
+			name:     "unknown keeps original",
+			filename: "speech.mp3",
+			data:     []byte{1, 2, 3},
+			want:     "speech.mp3",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := audioFilename(tc.filename, tc.contentType, tc.data); got != tc.want {
+				t.Fatalf("audioFilename() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

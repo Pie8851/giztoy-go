@@ -17,19 +17,26 @@ type config struct {
 	TTSModelID string
 	ASRModelID string
 	VoiceID    string
+	Thinking   thinkingConfig
 	OutputDir  string
 	Timeout    time.Duration
 }
 
 type fileConfig struct {
-	APIKey    string `json:"api_key"`
-	BaseURL   string `json:"base_url"`
-	Model     string `json:"model"`
-	TTSModel  string `json:"tts_model"`
-	ASRModel  string `json:"asr_model"`
-	Voice     string `json:"voice"`
-	OutputDir string `json:"output_dir"`
-	Timeout   string `json:"timeout"`
+	APIKey    string          `json:"api_key"`
+	BaseURL   string          `json:"base_url"`
+	Model     string          `json:"model"`
+	TTSModel  string          `json:"tts_model"`
+	ASRModel  string          `json:"asr_model"`
+	Voice     string          `json:"voice"`
+	Thinking  *thinkingConfig `json:"thinking"`
+	OutputDir string          `json:"output_dir"`
+	Timeout   string          `json:"timeout"`
+}
+
+type thinkingConfig struct {
+	Enabled *bool  `json:"enabled"`
+	Level   string `json:"level"`
 }
 
 func loadConfig(args []string) (config, error) {
@@ -143,6 +150,9 @@ func applyFileConfig(cfg *config, path string) error {
 	}
 	if fileCfg.Voice != "" {
 		cfg.VoiceID = fileCfg.Voice
+	}
+	if fileCfg.Thinking != nil {
+		cfg.Thinking = *fileCfg.Thinking
 	}
 	if fileCfg.OutputDir != "" {
 		cfg.OutputDir = fileCfg.OutputDir

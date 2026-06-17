@@ -22,7 +22,6 @@ func TestAdminResourceCLIUserStoryApplyThenShow(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)
@@ -156,7 +155,6 @@ func TestAdminResourceApplyExpandsProcessEnv(t *testing.T) {
 		"metadata": {"name": "${GIZCLAW_TEST_CREDENTIAL:-fallback-credential}"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "${GIZCLAW_TEST_SECRET}"}
 		}
 	}`), 0o644); err != nil {
@@ -182,7 +180,7 @@ func TestAdminResourceApplyExpandsProcessEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applied resource is not credential: %v", err)
 	}
-	if got := credential.Spec.Body["api_key"]; got != "env-\"secret\"\\line\nnext" {
+	if got := apitypes.CredentialBodyString(credential.Spec.Body, "api_key"); got != "env-\"secret\"\\line\nnext" {
 		t.Fatalf("expanded secret = %#v", got)
 	}
 }
@@ -192,13 +190,12 @@ func TestAdminResourceApplyRejectsMissingEnv(t *testing.T) {
 	if err := os.WriteFile(resourceFile, []byte(`{
 		"apiVersion": "gizclaw.admin/v1alpha1",
 		"kind": "Credential",
-		"metadata": {"name": "env-credential"},
-		"spec": {
-			"provider": "minimax",
-			"method": "api_key",
-			"body": {"api_key": "${GIZCLAW_TEST_MISSING_SECRET}"}
-		}
-	}`), 0o644); err != nil {
+			"metadata": {"name": "env-credential"},
+			"spec": {
+				"provider": "minimax",
+				"body": {"api_key": "${GIZCLAW_TEST_MISSING_SECRET}"}
+			}
+		}`), 0o644); err != nil {
 		t.Fatalf("write resource: %v", err)
 	}
 
@@ -286,7 +283,6 @@ func TestResourceClientBridgeApplyAndGet(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`)
@@ -360,7 +356,6 @@ func TestResourceClientBridgeStructuredErrors(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`))
@@ -392,7 +387,6 @@ func TestResourceClientBridgePropagatesAPIErrors(t *testing.T) {
 		"metadata": {"name": "minimax-main"},
 		"spec": {
 			"provider": "minimax",
-			"method": "api_key",
 			"body": {"api_key": "secret"}
 		}
 	}`))

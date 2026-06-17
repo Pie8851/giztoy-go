@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,19 +40,17 @@ type CredentialAdminService interface {
 var _ CredentialAdminService = (*Server)(nil)
 
 type credentialRecord struct {
-	Body        apitypes.CredentialBody   `json:"body"`
-	CreatedAt   time.Time                 `json:"created_at"`
-	Description *string                   `json:"description,omitempty"`
-	Method      apitypes.CredentialMethod `json:"method"`
-	Name        string                    `json:"name"`
-	Provider    string                    `json:"provider"`
-	UpdatedAt   time.Time                 `json:"updated_at"`
+	Body        apitypes.CredentialBody `json:"body"`
+	CreatedAt   time.Time               `json:"created_at"`
+	Description *string                 `json:"description,omitempty"`
+	Name        string                  `json:"name"`
+	Provider    string                  `json:"provider"`
+	UpdatedAt   time.Time               `json:"updated_at"`
 }
 
 type normalizedCredentialUpsert struct {
 	Body        apitypes.CredentialBody
 	Description *string
-	Method      apitypes.CredentialMethod
 	Name        string
 	Provider    string
 }
@@ -98,8 +97,11 @@ func (s *Server) CreateCredential(ctx context.Context, request adminservice.Crea
 	if err != nil {
 		return adminservice.CreateCredential400JSONResponse(apitypes.NewErrorResponse("INVALID_CREDENTIAL", err.Error())), nil
 	}
-	if upsert.Body == nil {
+	if apitypes.IsZeroCredentialBody(upsert.Body) {
 		return adminservice.CreateCredential400JSONResponse(apitypes.NewErrorResponse("INVALID_CREDENTIAL", "body is required")), nil
+	}
+	if err := validateCredentialBody(upsert.Provider, upsert.Body); err != nil {
+		return adminservice.CreateCredential400JSONResponse(apitypes.NewErrorResponse("INVALID_CREDENTIAL", err.Error())), nil
 	}
 	if _, err := store.Get(ctx, credentialKey(string(upsert.Name))); err == nil {
 		return adminservice.CreateCredential409JSONResponse(apitypes.NewErrorResponse("CREDENTIAL_ALREADY_EXISTS", fmt.Sprintf("credential %q already exists", upsert.Name))), nil
@@ -111,7 +113,6 @@ func (s *Server) CreateCredential(ctx context.Context, request adminservice.Crea
 		Body:        cloneBody(upsert.Body),
 		CreatedAt:   now,
 		Description: cloneString(upsert.Description),
-		Method:      upsert.Method,
 		Name:        upsert.Name,
 		Provider:    upsert.Provider,
 		UpdatedAt:   now,
@@ -191,7 +192,6 @@ func (s *Server) PutCredential(ctx context.Context, request adminservice.PutCred
 		Body:        cloneBody(upsert.Body),
 		CreatedAt:   now,
 		Description: cloneString(upsert.Description),
-		Method:      upsert.Method,
 		Name:        upsert.Name,
 		Provider:    upsert.Provider,
 		UpdatedAt:   now,
@@ -199,14 +199,17 @@ func (s *Server) PutCredential(ctx context.Context, request adminservice.PutCred
 	var previousPtr *credentialRecord
 	if err == nil {
 		record.CreatedAt = previous.CreatedAt
-		if record.Body == nil && record.Method == previous.Method {
+		if apitypes.IsZeroCredentialBody(record.Body) {
 			record.Body = cloneBody(previous.Body)
 		}
 		previousCopy := previous
 		previousPtr = &previousCopy
 	}
-	if record.Body == nil {
+	if apitypes.IsZeroCredentialBody(record.Body) {
 		return adminservice.PutCredential400JSONResponse(apitypes.NewErrorResponse("INVALID_CREDENTIAL", "body is required")), nil
+	}
+	if err := validateCredentialBody(record.Provider, record.Body); err != nil {
+		return adminservice.PutCredential400JSONResponse(apitypes.NewErrorResponse("INVALID_CREDENTIAL", err.Error())), nil
 	}
 	if err := writeCredential(ctx, store, record, previousPtr); err != nil {
 		return adminservice.PutCredential500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
@@ -219,7 +222,6 @@ func credentialFromRecord(record credentialRecord) apitypes.Credential {
 		Body:        cloneBody(record.Body),
 		CreatedAt:   record.CreatedAt,
 		Description: cloneString(record.Description),
-		Method:      record.Method,
 		Name:        record.Name,
 		Provider:    record.Provider,
 		UpdatedAt:   record.UpdatedAt,
@@ -316,16 +318,8 @@ func normalizeCredentialUpsert(in adminservice.CredentialUpsert, expectedName st
 	if provider == "" {
 		return normalizedCredentialUpsert{}, errors.New("provider is required")
 	}
-	method := apitypes.CredentialMethod(strings.TrimSpace(string(in.Method)))
-	if method == "" {
-		return normalizedCredentialUpsert{}, errors.New("method is required")
-	}
-	if !method.Valid() {
-		return normalizedCredentialUpsert{}, fmt.Errorf("unsupported method %q", method)
-	}
 	out := normalizedCredentialUpsert{
 		Body:     cloneBody(in.Body),
-		Method:   method,
 		Name:     string(name),
 		Provider: string(provider),
 	}
@@ -336,6 +330,97 @@ func normalizeCredentialUpsert(in adminservice.CredentialUpsert, expectedName st
 		}
 	}
 	return out, nil
+}
+
+var (
+	openAICredentialBodyKeys  = credentialBodyKeySet("api_key", "token", "base_url", "organization", "project")
+	geminiCredentialBodyKeys  = credentialBodyKeySet("api_key", "token", "base_url")
+	dashScopeCredentialKeys   = credentialBodyKeySet("api_key", "token", "base_url")
+	miniMaxCredentialBodyKeys = credentialBodyKeySet("api_key", "token", "base_url", "voice_base_url", "minimax_voice_base_url")
+	volcCredentialBodyKeys    = credentialBodyKeySet(
+		"app_id",
+		"api_key",
+		"x_api_key",
+		"sauc_access_key",
+		"token",
+		"bearer_token",
+		"access_token",
+		"access_key_id",
+		"access_key",
+		"ak",
+		"secret_access_key",
+		"secret_key",
+		"sk",
+		"session_token",
+		"base_url",
+		"voice_base_url",
+	)
+)
+
+func validateCredentialBody(provider string, body apitypes.CredentialBody) error {
+	values := apitypes.CredentialBodyMap(body)
+	if len(values) == 0 {
+		return errors.New("body is required")
+	}
+	allowed, err := credentialBodyKeysForProvider(provider)
+	if err != nil {
+		return err
+	}
+	unknown := make([]string, 0)
+	nonEmpty := false
+	for key, value := range values {
+		if !allowed[key] {
+			unknown = append(unknown, key)
+			continue
+		}
+		if credentialBodyValueNonEmpty(value) {
+			nonEmpty = true
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return fmt.Errorf("body has unsupported field(s) for provider %q: %s", provider, strings.Join(unknown, ", "))
+	}
+	if !nonEmpty {
+		return errors.New("body must include at least one non-empty credential field")
+	}
+	return nil
+}
+
+func credentialBodyKeysForProvider(provider string) (map[string]bool, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "openai":
+		return openAICredentialBodyKeys, nil
+	case "gemini":
+		return geminiCredentialBodyKeys, nil
+	case "dashscope":
+		return dashScopeCredentialKeys, nil
+	case "minimax":
+		return miniMaxCredentialBodyKeys, nil
+	case "volc", "volcengine":
+		return volcCredentialBodyKeys, nil
+	default:
+		return nil, fmt.Errorf("unsupported credential provider %q", provider)
+	}
+}
+
+func credentialBodyKeySet(keys ...string) map[string]bool {
+	out := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		out[key] = true
+	}
+	return out
+}
+
+func credentialBodyValueNonEmpty(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) != ""
+	case nil:
+		return false
+	default:
+		return true
+	}
 }
 
 func credentialKey(name string) kv.Key {
@@ -406,14 +491,7 @@ func paginateEntries(entries []kv.Entry, limit int) ([]kv.Entry, bool, *string) 
 }
 
 func cloneBody(in apitypes.CredentialBody) apitypes.CredentialBody {
-	if in == nil {
-		return nil
-	}
-	out := make(apitypes.CredentialBody, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
+	return apitypes.CloneCredentialBody(in)
 }
 
 func cloneString(in *string) *string {

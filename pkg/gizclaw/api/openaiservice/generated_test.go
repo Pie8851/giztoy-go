@@ -389,8 +389,8 @@ func TestGeneratedHandlerErrorPaths(t *testing.T) {
 		app := fiber.New()
 		RegisterHandlersWithOptions(app, NewStrictHandler(&badBodyServer{}, nil), FiberServerOptions{BaseURL: "/v1"})
 
-		assertStatus(t, app, newJSONRequest(http.MethodPost, "/v1/audio/speech", `{"model":"m","input":"x","voice":"v"}`), http.StatusBadRequest)
-		assertStatus(t, app, newJSONRequest(http.MethodPost, "/v1/chat/completions", `{"model":"m","messages":[],"stream":true}`), http.StatusBadRequest)
+		assertRequestError(t, app, newJSONRequest(http.MethodPost, "/v1/audio/speech", `{"model":"m","input":"x","voice":"v"}`), "read failed")
+		assertRequestError(t, app, newJSONRequest(http.MethodPost, "/v1/chat/completions", `{"model":"m","messages":[],"stream":true}`), "read failed")
 	})
 
 	t.Run("transcription event stream", func(t *testing.T) {
@@ -466,6 +466,14 @@ func assertStatus(t *testing.T, app *fiber.App, req *http.Request, want int) {
 	}
 	if resp.StatusCode != want {
 		t.Fatalf("%s %s status = %d, want %d", req.Method, req.URL.Path, resp.StatusCode, want)
+	}
+}
+
+func assertRequestError(t *testing.T, app *fiber.App, req *http.Request, want string) {
+	t.Helper()
+	_, err := app.Test(req)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("request error = %v, want containing %q", err, want)
 	}
 }
 

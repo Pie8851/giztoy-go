@@ -33,6 +33,10 @@ type ModelGetter interface {
 	GetModel(context.Context, adminservice.GetModelRequestObject) (adminservice.GetModelResponseObject, error)
 }
 
+type ModelLister interface {
+	ListModels(context.Context, adminservice.ListModelsRequestObject) (adminservice.ListModelsResponseObject, error)
+}
+
 type VoiceGetter interface {
 	GetVoice(context.Context, adminservice.GetVoiceRequestObject) (adminservice.GetVoiceResponseObject, error)
 }

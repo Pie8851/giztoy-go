@@ -123,7 +123,7 @@ func TestServerAllowedCRUD(t *testing.T) {
 		Name: "credential-a",
 		Body: rpcCredential("credential-a", "sk-b"),
 	}))
-	if got := mustResult(t, credentialPut.Result.AsCredentialPutResponse).Body["api_key"]; got != "sk-b" {
+	if got := rpcapi.CredentialBodyString(mustResult(t, credentialPut.Result.AsCredentialPutResponse).Body, "api_key"); got != "sk-b" {
 		t.Fatalf("credential.put body api_key = %#v", got)
 	}
 
@@ -180,6 +180,36 @@ func TestServerACLBoundaries(t *testing.T) {
 
 	if got := auth.count(ctx, acl.ResourceKindWorkflow, "flow-a", apitypes.ACLPermissionWorkflowUse); got == 0 {
 		t.Fatal("workspace.create did not check workflow.use")
+	}
+}
+
+func TestServerWorkspaceWorkflowCreateUsesCollectionACL(t *testing.T) {
+	ctx := context.Background()
+	auth := newRuleAuthorizer()
+	srv := newTestResourceServer()
+	srv.ACL = auth
+
+	auth.allow(acl.ResourceKindWorkflow, acl.CollectionResourceID, apitypes.ACLPermissionWorkflowAdmin)
+	auth.allow(acl.ResourceKindWorkflow, acl.CollectionResourceID, apitypes.ACLPermissionWorkflowUse)
+	auth.allow(acl.ResourceKindWorkspace, acl.CollectionResourceID, apitypes.ACLPermissionWorkspaceAdmin)
+
+	requireNoRPCError(t, callRPC(t, srv, "workflow-create", rpcapi.RPCMethodServerWorkflowCreate, rpcParams(t, (*rpcapi.RPCRequest_Params).FromWorkflowCreateRequest, workflowDoc("flow-dynamic"))))
+	requireNoRPCError(t, callRPC(t, srv, "workspace-create", rpcapi.RPCMethodServerWorkspaceCreate, rpcParams(t, (*rpcapi.RPCRequest_Params).FromWorkspaceCreateRequest, rpcapi.WorkspaceCreateRequest{
+		Name:         "workspace-dynamic",
+		WorkflowName: "flow-dynamic",
+	})))
+
+	if got := auth.count(ctx, acl.ResourceKindWorkflow, "flow-dynamic", apitypes.ACLPermissionWorkflowAdmin); got == 0 {
+		t.Fatal("workflow.create did not first check concrete workflow")
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkflow, acl.CollectionResourceID, apitypes.ACLPermissionWorkflowAdmin); got == 0 {
+		t.Fatal("workflow.create did not fallback to workflow collection")
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkspace, acl.CollectionResourceID, apitypes.ACLPermissionWorkspaceAdmin); got == 0 {
+		t.Fatal("workspace.create did not fallback to workspace collection")
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkflow, acl.CollectionResourceID, apitypes.ACLPermissionWorkflowUse); got == 0 {
+		t.Fatal("workspace.create did not fallback to workflow collection use")
 	}
 }
 
@@ -704,8 +734,7 @@ func rpcCredential(name, key string) rpcapi.Credential {
 	return rpcapi.Credential{
 		Name:     name,
 		Provider: "openai",
-		Method:   rpcapi.CredentialMethodApiKey,
-		Body:     rpcapi.CredentialBody{"api_key": key},
+		Body:     rpcapi.NewOpenAICredentialBody(key),
 	}
 }
 

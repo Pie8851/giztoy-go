@@ -705,11 +705,26 @@ func (s *Server) authorizeErr(ctx context.Context, resource apitypes.ACLResource
 	if s == nil || s.ACL == nil {
 		return errors.New("acl service not configured")
 	}
-	return s.ACL.Authorize(ctx, acl.AuthorizeRequest{
+	request := acl.AuthorizeRequest{
 		Subject:    acl.PublicKeySubject(s.Caller.String()),
 		Resource:   resource,
 		Permission: permission,
-	})
+	}
+	err := s.ACL.Authorize(ctx, request)
+	if err == nil || !errors.Is(err, acl.ErrDenied) || !isCollectionFallbackResource(resource) {
+		return err
+	}
+	request.Resource.Id = acl.CollectionResourceID
+	return s.ACL.Authorize(ctx, request)
+}
+
+func isCollectionFallbackResource(resource apitypes.ACLResource) bool {
+	switch resource.Kind {
+	case apitypes.ACLResourceKindWorkflow, apitypes.ACLResourceKindWorkspace:
+		return resource.Id != "" && resource.Id != acl.CollectionResourceID
+	default:
+		return false
+	}
 }
 
 func adminRPCResponse[T any](id string, visit func(*fiber.Ctx) error, encode func(*rpcapi.RPCResponse_Result, T) error) *rpcapi.RPCResponse {

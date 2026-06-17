@@ -68,6 +68,9 @@ func TestNewWithLayeredStorageConfig(t *testing.T) {
 	if srv.FirmwareAssets == nil {
 		t.Fatalf("firmware assets store not wired: %+v", srv.Server)
 	}
+	if srv.AgentHostStore == nil {
+		t.Fatalf("agenthost store not wired: %+v", srv.Server)
+	}
 	if srv.PetSpeciesStore == nil || srv.PetSpeciesAssets == nil || srv.BadgeStore == nil || srv.BadgeAssets == nil || srv.PetStore == nil || srv.RewardStore == nil || srv.WalletDB == nil {
 		t.Fatalf("business stores not wired: %+v", srv.Server)
 	}
@@ -113,6 +116,12 @@ func TestNewWithLayeredStorageReportsStoreErrors(t *testing.T) {
 	badFirmwareAssetsCfg.Stores["firmware-assets"] = stores.Config{Kind: stores.KindKeyValue, Storage: "memory", Prefix: "firmware-assets"}
 	if _, err := New(badFirmwareAssetsCfg); err == nil || !strings.Contains(err.Error(), "server: firmwares assets store:") {
 		t.Fatalf("New(bad firmware assets store) = %v", err)
+	}
+
+	badAgentHostCfg := validLayeredConfig(dir)
+	badAgentHostCfg.Stores["agenthost"] = stores.Config{Kind: stores.KindKeyValue, Storage: "memory", Prefix: "agenthost"}
+	if _, err := New(badAgentHostCfg); err == nil || !strings.Contains(err.Error(), "server: agenthost store:") {
+		t.Fatalf("New(bad agenthost store) = %v", err)
 	}
 
 	badPetSpeciesAssetsCfg := validLayeredConfig(dir)
@@ -471,6 +480,7 @@ func validLayeredConfig(dir string) Config {
 			"credentials":                 {Kind: stores.KindKeyValue, Storage: "memory", Prefix: "credentials"},
 			"firmwares":                   {Kind: stores.KindKeyValue, Storage: "memory", Prefix: "firmwares"},
 			"firmware-assets":             {Kind: stores.KindObjectStore, Storage: "local-files", Prefix: "firmwares"},
+			"agenthost":                   {Kind: stores.KindObjectStore, Storage: "local-files", Prefix: "agenthost"},
 			"minimax-tenants":             {Kind: stores.KindKeyValue, Storage: "memory", Prefix: "minimax-tenants"},
 			"voices":                      {Kind: stores.KindKeyValue, Storage: "memory", Prefix: "voices"},
 			"workspaces":                  {Kind: stores.KindKeyValue, Storage: "memory", Prefix: "workspaces"},

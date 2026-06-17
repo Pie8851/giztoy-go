@@ -7,19 +7,23 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/GizClaw/gizclaw-go/pkg/audio/stampedopus"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 )
 
 const (
-	WebRTCDataChannelRPCLabel = "rpc"
+	WebRTCDataChannelRPCLabel   = "rpc"
+	WebRTCDataChannelEventLabel = "event"
 
 	webRTCAudioTrackID    = "gizclaw-audio"
 	webRTCAudioStreamID   = "gizclaw"
@@ -151,18 +155,120 @@ func (r *ClientWebRTCRegistration) Close() error {
 }
 
 func (r *ClientWebRTCRegistration) registerDataChannel(dc *webrtc.DataChannel) {
-	if r == nil || dc == nil || !isWebRTCRPCDataChannel(dc.Label()) {
+	if r == nil || dc == nil {
 		return
 	}
-	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		go func() {
-			r.handleRPCDataChannelMessage(dc, msg)
-		}()
-	})
+	switch {
+	case isWebRTCRPCDataChannel(dc.Label()):
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			go func() {
+				r.handleRPCDataChannelMessage(dc, msg)
+			}()
+		})
+	case isWebRTCEventDataChannel(dc.Label()):
+		r.registerEventDataChannel(dc)
+	}
 }
 
 func isWebRTCRPCDataChannel(label string) bool {
 	return label == WebRTCDataChannelRPCLabel || strings.HasPrefix(label, WebRTCDataChannelRPCLabel+":")
+}
+
+func isWebRTCEventDataChannel(label string) bool {
+	return label == WebRTCDataChannelEventLabel || strings.HasPrefix(label, WebRTCDataChannelEventLabel+":")
+}
+
+func (r *ClientWebRTCRegistration) registerEventDataChannel(dc *webrtc.DataChannel) {
+	var (
+		mu     sync.Mutex
+		stream net.Conn
+		once   sync.Once
+	)
+	closeStream := func() {
+		once.Do(func() {
+			mu.Lock()
+			defer mu.Unlock()
+			if stream != nil {
+				_ = stream.Close()
+				stream = nil
+			}
+		})
+	}
+	dc.OnOpen(func() {
+		conn := r.client.PeerConn()
+		if conn == nil {
+			_ = dc.Close()
+			return
+		}
+		eventStream, err := conn.Dial(ServiceEvent)
+		if err != nil {
+			slog.Debug("gizclaw: dial event stream for webrtc failed", "error", err)
+			_ = dc.Close()
+			return
+		}
+		mu.Lock()
+		stream = eventStream
+		mu.Unlock()
+		go func() {
+			defer func() {
+				closeStream()
+				_ = dc.Close()
+			}()
+			r.forwardPeerEventsToWebRTC(dc, eventStream)
+		}()
+	})
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		mu.Lock()
+		eventStream := stream
+		mu.Unlock()
+		if eventStream == nil {
+			return
+		}
+		var event apitypes.PeerStreamEvent
+		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Debug("gizclaw: decode webrtc event failed", "error", err)
+			return
+		}
+		if err := writeWebRTCPeerStreamEvent(eventStream, event); err != nil {
+			slog.Debug("gizclaw: write webrtc event to peer failed", "error", err)
+			closeStream()
+			_ = dc.Close()
+		}
+	})
+	dc.OnClose(closeStream)
+}
+
+func (r *ClientWebRTCRegistration) forwardPeerEventsToWebRTC(dc *webrtc.DataChannel, stream net.Conn) {
+	for {
+		if err := r.ctx.Err(); err != nil {
+			return
+		}
+		event, err := readWebRTCPeerStreamEvent(stream)
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+				return
+			}
+			slog.Debug("gizclaw: read peer event for webrtc failed", "error", err)
+			return
+		}
+		data, err := json.Marshal(event)
+		if err != nil {
+			slog.Debug("gizclaw: marshal peer event for webrtc failed", "error", err)
+			return
+		}
+		if err := dc.SendText(string(data)); err != nil {
+			slog.Debug("gizclaw: send peer event to webrtc failed", "error", err)
+			return
+		}
+	}
+}
+
+func writeWebRTCPeerStreamEvent(w io.Writer, event apitypes.PeerStreamEvent) error {
+	return WritePeerStreamEvent(w, event)
+}
+
+func readWebRTCPeerStreamEvent(r io.Reader) (apitypes.PeerStreamEvent, error) {
+	return ReadPeerStreamEvent(r)
 }
 
 func (r *ClientWebRTCRegistration) handleRPCDataChannelMessage(dc *webrtc.DataChannel, msg webrtc.DataChannelMessage) {

@@ -87,6 +87,10 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 		return s.setErrorStatus(selection.WorkspaceName, err), err
 	}
 	s.setStatus(apitypes.PeerRunStatusStateStarting, selection.WorkspaceName, nil, nil)
+	previous := s.swap(nil)
+	if err := previous.stop(ctx); err != nil {
+		return s.setErrorStatus(selection.WorkspaceName, fmt.Errorf("agenthost: stop previous runtime: %w", err)), err
+	}
 
 	input, err := s.Source.OpenAgentInput(ctx)
 	if err != nil {
@@ -124,12 +128,9 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 		workspace: selection.WorkspaceName,
 		startedAt: now,
 	}
-	previous := s.swap(next)
+	_ = s.swap(next)
 	status := s.setStatus(apitypes.PeerRunStatusStateRunning, selection.WorkspaceName, nil, &now)
 	go s.consume(runCtx, next)
-	if err := previous.stop(ctx); err != nil {
-		return s.setErrorStatus(selection.WorkspaceName, fmt.Errorf("agenthost: stop previous runtime: %w", err)), err
-	}
 	return status, nil
 }
 
