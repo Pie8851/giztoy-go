@@ -58,6 +58,52 @@
       "ServerSetRunAgentResponse": {
         "$ref": "../type/peer_run_agent.json#/components/schemas/PeerRunAgent"
       },
+      "ServerGetRunWorkspaceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "ServerGetRunWorkspaceResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunWorkspaceState"
+      },
+      "ServerSetRunWorkspaceRequest": {
+        "$ref": "../type/agent_selection.json#/components/schemas/AgentSelection"
+      },
+      "ServerSetRunWorkspaceResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunWorkspaceState"
+      },
+      "ServerReloadRunWorkspaceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "ServerReloadRunWorkspaceResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunWorkspaceState"
+      },
+      "ServerListRunWorkspaceHistoryRequest": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunHistoryListRequest"
+      },
+      "ServerListRunWorkspaceHistoryResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunHistoryListResponse"
+      },
+      "ServerPlayRunWorkspaceHistoryRequest": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunHistoryPlayRequest"
+      },
+      "ServerPlayRunWorkspaceHistoryResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunHistoryPlayResponse"
+      },
+      "ServerGetRunWorkspaceMemoryStatsRequest": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunMemoryStatsRequest"
+      },
+      "ServerGetRunWorkspaceMemoryStatsResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunMemoryStatsResponse"
+      },
+      "ServerRunWorkspaceRecallRequest": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunRecallRequest"
+      },
+      "ServerRunWorkspaceRecallResponse": {
+        "$ref": "../type/peer_run_workspace.json#/components/schemas/PeerRunRecallResponse"
+      },
       "ServerReloadRunRequest": {
         "type": "object",
         "additionalProperties": false,

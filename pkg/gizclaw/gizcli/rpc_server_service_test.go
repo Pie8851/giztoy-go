@@ -32,6 +32,27 @@ func TestRPCServerServiceClientWrappers(t *testing.T) {
 	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunAgentSet, rpcapi.ServerSetRunAgentResponse{}, (*rpcapi.RPCResponse_Result).FromServerSetRunAgentResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerSetRunAgentResponse, error) {
 		return client.SetServerRunAgent(ctx, conn, "server-run-agent-set", rpcapi.ServerSetRunAgentRequest{})
 	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceGet, rpcapi.ServerGetRunWorkspaceResponse{RuntimeState: rpcapi.PeerRunStatusStateStopped}, (*rpcapi.RPCResponse_Result).FromServerGetRunWorkspaceResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerGetRunWorkspaceResponse, error) {
+		return client.GetServerRunWorkspace(ctx, conn, "server-run-workspace-get")
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceSet, rpcapi.ServerSetRunWorkspaceResponse{RuntimeState: rpcapi.PeerRunStatusStateStopped}, (*rpcapi.RPCResponse_Result).FromServerSetRunWorkspaceResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerSetRunWorkspaceResponse, error) {
+		return client.SetServerRunWorkspace(ctx, conn, "server-run-workspace-set", rpcapi.ServerSetRunWorkspaceRequest{WorkspaceName: "demo"})
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceReload, rpcapi.ServerReloadRunWorkspaceResponse{RuntimeState: rpcapi.PeerRunStatusStateRunning}, (*rpcapi.RPCResponse_Result).FromServerReloadRunWorkspaceResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerReloadRunWorkspaceResponse, error) {
+		return client.ReloadServerRunWorkspace(ctx, conn, "server-run-workspace-reload")
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceHistory, rpcapi.ServerListRunWorkspaceHistoryResponse{Available: true, Items: []rpcapi.PeerRunHistoryEntry{}, HasNext: false}, (*rpcapi.RPCResponse_Result).FromServerListRunWorkspaceHistoryResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerListRunWorkspaceHistoryResponse, error) {
+		return client.ListServerRunWorkspaceHistory(ctx, conn, "server-run-workspace-history", rpcapi.ServerListRunWorkspaceHistoryRequest{})
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceHistoryPlay, rpcapi.ServerPlayRunWorkspaceHistoryResponse{Accepted: true, HistoryId: "h1", State: "playing"}, (*rpcapi.RPCResponse_Result).FromServerPlayRunWorkspaceHistoryResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerPlayRunWorkspaceHistoryResponse, error) {
+		return client.PlayServerRunWorkspaceHistory(ctx, conn, "server-run-workspace-history-play", rpcapi.ServerPlayRunWorkspaceHistoryRequest{HistoryId: "h1"})
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceMemoryStats, rpcapi.ServerGetRunWorkspaceMemoryStatsResponse{Available: true, Enabled: true, ItemCount: 1, StorageBytes: 2}, (*rpcapi.RPCResponse_Result).FromServerGetRunWorkspaceMemoryStatsResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerGetRunWorkspaceMemoryStatsResponse, error) {
+		return client.GetServerRunWorkspaceMemoryStats(ctx, conn, "server-run-workspace-memory", rpcapi.ServerGetRunWorkspaceMemoryStatsRequest{})
+	})
+	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunWorkspaceRecall, rpcapi.ServerRunWorkspaceRecallResponse{Available: true, Hits: []rpcapi.PeerRunRecallHit{}}, (*rpcapi.RPCResponse_Result).FromServerRunWorkspaceRecallResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerRunWorkspaceRecallResponse, error) {
+		return client.ServerRunWorkspaceRecall(ctx, conn, "server-run-workspace-recall", rpcapi.ServerRunWorkspaceRecallRequest{Query: "hello"})
+	})
 	runRPCResultWrapperTest(t, rpcapi.RPCMethodServerRunReload, rpcapi.ServerReloadRunResponse{}, (*rpcapi.RPCResponse_Result).FromServerReloadRunResponse, func(ctx context.Context, conn net.Conn) (*rpcapi.ServerReloadRunResponse, error) {
 		return client.ReloadServerRun(ctx, conn, "server-run-reload")
 	})

@@ -91,6 +91,90 @@ func (c *rpcClient) SetServerRunAgent(ctx context.Context, conn net.Conn, id str
 	return result, nil
 }
 
+func (c *rpcClient) GetServerRunWorkspace(ctx context.Context, conn net.Conn, id string) (*rpcapi.ServerGetRunWorkspaceResponse, error) {
+	params, err := newRPCRequestParams(rpcapi.ServerGetRunWorkspaceRequest{}, (*rpcapi.RPCRequest_Params).FromServerGetRunWorkspaceRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceGet, params), rpcapi.RPCResponse_Result.AsServerGetRunWorkspaceResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) SetServerRunWorkspace(ctx context.Context, conn net.Conn, id string, selection rpcapi.ServerSetRunWorkspaceRequest) (*rpcapi.ServerSetRunWorkspaceResponse, error) {
+	params, err := newRPCRequestParams(selection, (*rpcapi.RPCRequest_Params).FromServerSetRunWorkspaceRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceSet, params), rpcapi.RPCResponse_Result.AsServerSetRunWorkspaceResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) ReloadServerRunWorkspace(ctx context.Context, conn net.Conn, id string) (*rpcapi.ServerReloadRunWorkspaceResponse, error) {
+	params, err := newRPCRequestParams(rpcapi.ServerReloadRunWorkspaceRequest{}, (*rpcapi.RPCRequest_Params).FromServerReloadRunWorkspaceRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceReload, params), rpcapi.RPCResponse_Result.AsServerReloadRunWorkspaceResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace reload", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) ListServerRunWorkspaceHistory(ctx context.Context, conn net.Conn, id string, request rpcapi.ServerListRunWorkspaceHistoryRequest) (*rpcapi.ServerListRunWorkspaceHistoryResponse, error) {
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromServerListRunWorkspaceHistoryRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceHistory, params), rpcapi.RPCResponse_Result.AsServerListRunWorkspaceHistoryResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace history", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) PlayServerRunWorkspaceHistory(ctx context.Context, conn net.Conn, id string, request rpcapi.ServerPlayRunWorkspaceHistoryRequest) (*rpcapi.ServerPlayRunWorkspaceHistoryResponse, error) {
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromServerPlayRunWorkspaceHistoryRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceHistoryPlay, params), rpcapi.RPCResponse_Result.AsServerPlayRunWorkspaceHistoryResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace history play", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) GetServerRunWorkspaceMemoryStats(ctx context.Context, conn net.Conn, id string, request rpcapi.ServerGetRunWorkspaceMemoryStatsRequest) (*rpcapi.ServerGetRunWorkspaceMemoryStatsResponse, error) {
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromServerGetRunWorkspaceMemoryStatsRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceMemoryStats, params), rpcapi.RPCResponse_Result.AsServerGetRunWorkspaceMemoryStatsResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace memory stats", err)
+	}
+	return result, nil
+}
+
+func (c *rpcClient) ServerRunWorkspaceRecall(ctx context.Context, conn net.Conn, id string, request rpcapi.ServerRunWorkspaceRecallRequest) (*rpcapi.ServerRunWorkspaceRecallResponse, error) {
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromServerRunWorkspaceRecallRequest)
+	if err != nil {
+		return nil, err
+	}
+	result, err := callRPCResult(ctx, conn, newRPCRequest(id, rpcapi.RPCMethodServerRunWorkspaceRecall, params), rpcapi.RPCResponse_Result.AsServerRunWorkspaceRecallResponse)
+	if err != nil {
+		return nil, wrapRPCResultError("peer run workspace recall", err)
+	}
+	return result, nil
+}
+
 func (c *rpcClient) ReloadServerRun(ctx context.Context, conn net.Conn, id string) (*rpcapi.ServerReloadRunResponse, error) {
 	params, err := newRPCRequestParams(rpcapi.ServerReloadRunRequest{}, (*rpcapi.RPCRequest_Params).FromServerReloadRunRequest)
 	if err != nil {

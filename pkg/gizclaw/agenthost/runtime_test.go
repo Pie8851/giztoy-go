@@ -182,6 +182,167 @@ func TestServiceValidationAndDefaultStatus(t *testing.T) {
 	}
 }
 
+func TestServiceWorkspaceFeatureResponsesWithoutActiveWorkspace(t *testing.T) {
+	svc := &Service{}
+	ctx := context.Background()
+
+	state, err := svc.WorkspaceState(ctx)
+	if err != nil {
+		t.Fatalf("WorkspaceState() error = %v", err)
+	}
+	if state.RuntimeState != apitypes.PeerRunStatusStateStopped {
+		t.Fatalf("WorkspaceState() = %+v", state)
+	}
+
+	history, err := svc.ListWorkspaceHistory(ctx, apitypes.PeerRunHistoryListRequest{})
+	if err != nil {
+		t.Fatalf("ListWorkspaceHistory() error = %v", err)
+	}
+	if history.Available || history.Message == nil || !strings.Contains(*history.Message, ErrNoActiveWorkspace.Error()) {
+		t.Fatalf("ListWorkspaceHistory() = %+v", history)
+	}
+
+	play, err := svc.PlayWorkspaceHistory(ctx, apitypes.PeerRunHistoryPlayRequest{HistoryId: "h1"})
+	if err != nil {
+		t.Fatalf("PlayWorkspaceHistory() error = %v", err)
+	}
+	if play.Accepted || play.State != "unavailable" || play.Message == nil || !strings.Contains(*play.Message, ErrNoActiveWorkspace.Error()) {
+		t.Fatalf("PlayWorkspaceHistory() = %+v", play)
+	}
+
+	memory, err := svc.WorkspaceMemoryStats(ctx, apitypes.PeerRunMemoryStatsRequest{})
+	if err != nil {
+		t.Fatalf("WorkspaceMemoryStats() error = %v", err)
+	}
+	if memory.Available || memory.Message == nil || !strings.Contains(*memory.Message, ErrNoActiveWorkspace.Error()) {
+		t.Fatalf("WorkspaceMemoryStats() = %+v", memory)
+	}
+
+	recall, err := svc.WorkspaceRecall(ctx, apitypes.PeerRunRecallRequest{Query: "hello"})
+	if err != nil {
+		t.Fatalf("WorkspaceRecall() error = %v", err)
+	}
+	if recall.Available || recall.Message == nil || !strings.Contains(*recall.Message, ErrNoActiveWorkspace.Error()) {
+		t.Fatalf("WorkspaceRecall() = %+v", recall)
+	}
+}
+
+func TestTransformerAgentDefaults(t *testing.T) {
+	agent := asAgent(fixedTransformer{text: "ok"})
+	if agent == nil {
+		t.Fatal("asAgent() = nil")
+	}
+	state, err := agent.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if state.RuntimeState != apitypes.PeerRunStatusStateRunning || state.HistoryAvailable == nil || *state.HistoryAvailable || state.MemoryStatsAvailable == nil || *state.MemoryStatsAvailable || state.RecallAvailable == nil || *state.RecallAvailable {
+		t.Fatalf("Status() = %+v", state)
+	}
+	history, err := agent.ListHistory(context.Background(), apitypes.PeerRunHistoryListRequest{})
+	if err != nil {
+		t.Fatalf("ListHistory() error = %v", err)
+	}
+	if history.Available || len(history.Items) != 0 || history.Message == nil || !strings.Contains(*history.Message, unsupportedMessage) {
+		t.Fatalf("ListHistory() = %+v", history)
+	}
+	play, err := agent.PlayHistory(context.Background(), apitypes.PeerRunHistoryPlayRequest{HistoryId: "h1"})
+	if err != nil {
+		t.Fatalf("PlayHistory() error = %v", err)
+	}
+	if play.Accepted || play.HistoryId != "h1" || play.State != "unsupported" || play.Message == nil || !strings.Contains(*play.Message, unsupportedMessage) {
+		t.Fatalf("PlayHistory() = %+v", play)
+	}
+	memory, err := agent.MemoryStats(context.Background(), apitypes.PeerRunMemoryStatsRequest{})
+	if err != nil {
+		t.Fatalf("MemoryStats() error = %v", err)
+	}
+	if memory.Available || memory.Message == nil || !strings.Contains(*memory.Message, unsupportedMessage) {
+		t.Fatalf("MemoryStats() = %+v", memory)
+	}
+	recall, err := agent.Recall(context.Background(), apitypes.PeerRunRecallRequest{Query: "hello"})
+	if err != nil {
+		t.Fatalf("Recall() error = %v", err)
+	}
+	if recall.Available || len(recall.Hits) != 0 || recall.Message == nil || !strings.Contains(*recall.Message, unsupportedMessage) {
+		t.Fatalf("Recall() = %+v", recall)
+	}
+}
+
+func TestServiceWorkspaceStateMergesOpenAgentStatus(t *testing.T) {
+	ctx := context.Background()
+	publicKey := testPublicKey(t)
+	store := &peerrun.Server{Store: kv.NewMemory(nil)}
+	if _, err := store.SetRunAgent(ctx, publicKey, apitypes.AgentSelection{WorkspaceName: "demo"}); err != nil {
+		t.Fatalf("SetRunAgent() error = %v", err)
+	}
+	available := true
+	workflowName := "chat"
+	agentType := "flowcraft"
+	output := newBlockingStream()
+	agent := &runtimeTestAgent{
+		output: output,
+		state: apitypes.PeerRunWorkspaceState{
+			RuntimeState:         apitypes.PeerRunStatusStateRunning,
+			WorkflowName:         &workflowName,
+			AgentType:            &agentType,
+			HistoryAvailable:     &available,
+			MemoryStatsAvailable: &available,
+			RecallAvailable:      &available,
+		},
+	}
+	host := &runtimeTestOpenAgentHost{agent: agent}
+	input := NewInputStream(1)
+	svc := &Service{
+		Host:      host,
+		PeerRun:   store,
+		PublicKey: publicKey,
+		Source: StreamSourceFunc(func(context.Context) (genx.Stream, error) {
+			return input, nil
+		}),
+		Consumer: StreamConsumerFunc(func(ctx context.Context, stream genx.Stream) error {
+			for {
+				_, err := stream.Next()
+				if IsStreamDone(err) || errors.Is(err, io.ErrClosedPipe) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+			}
+		}),
+		Now: fixedClock(time.Unix(100, 0)),
+	}
+	if _, err := svc.Reload(ctx); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if host.pattern != "workspaces/demo" || agent.pattern != "workspaces/demo" {
+		t.Fatalf("patterns host=%q agent=%q", host.pattern, agent.pattern)
+	}
+	state, err := svc.WorkspaceState(ctx)
+	if err != nil {
+		t.Fatalf("WorkspaceState() error = %v", err)
+	}
+	if state.WorkspaceName != "demo" || state.ActiveWorkspaceName == nil || *state.ActiveWorkspaceName != "demo" {
+		t.Fatalf("WorkspaceState() workspace = %+v", state)
+	}
+	if state.WorkflowName == nil || *state.WorkflowName != workflowName || state.AgentType == nil || *state.AgentType != agentType {
+		t.Fatalf("WorkspaceState() agent fields = %+v", state)
+	}
+	if state.HistoryAvailable == nil || !*state.HistoryAvailable || state.MemoryStatsAvailable == nil || !*state.MemoryStatsAvailable || state.RecallAvailable == nil || !*state.RecallAvailable {
+		t.Fatalf("WorkspaceState() availability = %+v", state)
+	}
+	if _, err := svc.Stop(ctx); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if host.releaseCalls != 1 {
+		t.Fatalf("release calls = %d, want 1", host.releaseCalls)
+	}
+}
+
 func TestServiceReloadSourceAndOutputErrors(t *testing.T) {
 	ctx := context.Background()
 	publicKey := testPublicKey(t)
@@ -247,15 +408,29 @@ func TestServiceConsumerErrorSetsStatus(t *testing.T) {
 	}
 	consumerErr := errors.New("consumer failed")
 	done := make(chan struct{})
+	hookCh := make(chan struct {
+		workspace string
+		err       error
+	}, 1)
 	svc := testService(t, publicKey, store, &fakeHost{output: &sliceStream{doneErr: genx.ErrDone}})
 	svc.Consumer = StreamConsumerFunc(func(context.Context, genx.Stream) error {
 		defer close(done)
 		return consumerErr
 	})
+	svc.OnConsumerError = func(_ context.Context, workspace string, err error) {
+		hookCh <- struct {
+			workspace string
+			err       error
+		}{workspace: workspace, err: err}
+	}
 	if _, err := svc.Reload(ctx); err != nil {
 		t.Fatalf("Reload() error = %v", err)
 	}
 	<-done
+	hook := <-hookCh
+	if hook.workspace != "demo" || !errors.Is(hook.err, consumerErr) {
+		t.Fatalf("OnConsumerError() = workspace=%q err=%v, want demo/%v", hook.workspace, hook.err, consumerErr)
+	}
 	deadline := time.After(time.Second)
 	for {
 		status, err := svc.Status(ctx)
@@ -271,6 +446,36 @@ func TestServiceConsumerErrorSetsStatus(t *testing.T) {
 		default:
 			time.Sleep(time.Millisecond)
 		}
+	}
+}
+
+func TestServiceClosesInputWhenOutputEnds(t *testing.T) {
+	ctx := context.Background()
+	publicKey := testPublicKey(t)
+	store := &peerrun.Server{Store: kv.NewMemory(nil)}
+	if _, err := store.SetRunAgent(ctx, publicKey, apitypes.AgentSelection{WorkspaceName: "demo"}); err != nil {
+		t.Fatalf("SetRunAgent() error = %v", err)
+	}
+	input := NewInputStream(1)
+	done := make(chan struct{})
+	svc := &Service{
+		Host:      &fakeHost{output: &sliceStream{doneErr: io.EOF}},
+		PeerRun:   store,
+		PublicKey: publicKey,
+		Source: StreamSourceFunc(func(context.Context) (genx.Stream, error) {
+			return input, nil
+		}),
+		Consumer: StreamConsumerFunc(func(context.Context, genx.Stream) error {
+			defer close(done)
+			return nil
+		}),
+	}
+	if _, err := svc.Reload(ctx); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	<-done
+	if !input.closed() {
+		t.Fatal("input stream was not closed after output ended")
 	}
 }
 
@@ -432,6 +637,57 @@ type fakeAuthorizer struct {
 
 func (a fakeAuthorizer) Authorize(context.Context, acl.AuthorizeRequest) error {
 	return a.err
+}
+
+type runtimeTestOpenAgentHost struct {
+	agent        Agent
+	pattern      string
+	releaseCalls int
+}
+
+func (h *runtimeTestOpenAgentHost) Transform(context.Context, string, genx.Stream) (genx.Stream, error) {
+	return nil, errors.New("unexpected Transform call")
+}
+
+func (h *runtimeTestOpenAgentHost) OpenAgent(_ context.Context, pattern string) (Agent, func(), error) {
+	h.pattern = pattern
+	return h.agent, func() {
+		h.releaseCalls++
+	}, nil
+}
+
+type runtimeTestAgent struct {
+	output  genx.Stream
+	state   apitypes.PeerRunWorkspaceState
+	pattern string
+}
+
+func (a *runtimeTestAgent) Transform(_ context.Context, pattern string, input genx.Stream) (genx.Stream, error) {
+	a.pattern = pattern
+	if input == nil {
+		return nil, errors.New("input required")
+	}
+	return a.output, nil
+}
+
+func (a *runtimeTestAgent) Status(context.Context) (apitypes.PeerRunWorkspaceState, error) {
+	return a.state, nil
+}
+
+func (a *runtimeTestAgent) ListHistory(context.Context, apitypes.PeerRunHistoryListRequest) (apitypes.PeerRunHistoryListResponse, error) {
+	return apitypes.PeerRunHistoryListResponse{}, nil
+}
+
+func (a *runtimeTestAgent) PlayHistory(context.Context, apitypes.PeerRunHistoryPlayRequest) (apitypes.PeerRunHistoryPlayResponse, error) {
+	return apitypes.PeerRunHistoryPlayResponse{}, nil
+}
+
+func (a *runtimeTestAgent) MemoryStats(context.Context, apitypes.PeerRunMemoryStatsRequest) (apitypes.PeerRunMemoryStatsResponse, error) {
+	return apitypes.PeerRunMemoryStatsResponse{}, nil
+}
+
+func (a *runtimeTestAgent) Recall(context.Context, apitypes.PeerRunRecallRequest) (apitypes.PeerRunRecallResponse, error) {
+	return apitypes.PeerRunRecallResponse{}, nil
 }
 
 type blockingStream struct {

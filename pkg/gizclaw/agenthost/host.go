@@ -39,25 +39,45 @@ func (h *Host) Transform(ctx context.Context, pattern string, input genx.Stream)
 	if input == nil {
 		return nil, fmt.Errorf("agenthost: input stream is required")
 	}
+	agent, release, err := h.OpenAgent(ctx, pattern)
+	if err != nil {
+		return nil, err
+	}
+	output, err := agent.Transform(ctx, pattern, input)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	if output == nil {
+		release()
+		return nil, fmt.Errorf("agenthost: agent returned nil stream")
+	}
+	return &leaseStream{Stream: output, release: release}, nil
+}
+
+func (h *Host) OpenAgent(ctx context.Context, pattern string) (Agent, func(), error) {
+	if h == nil {
+		return nil, nil, fmt.Errorf("agenthost: host is nil")
+	}
 	if h.Resolver == nil {
-		return nil, fmt.Errorf("agenthost: resolver is required")
+		return nil, nil, fmt.Errorf("agenthost: resolver is required")
 	}
 
 	spec, err := h.Resolver.Resolve(ctx, pattern)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	coordinator := h.coordinator()
 	if coordinator == nil {
-		return nil, fmt.Errorf("agenthost: coordinator is required")
+		return nil, nil, fmt.Errorf("agenthost: coordinator is required")
 	}
 	workspaceName := string(spec.Workspace.Name)
 	if workspaceName == "" {
-		return nil, fmt.Errorf("agenthost: resolved workspace name is required")
+		return nil, nil, fmt.Errorf("agenthost: resolved workspace name is required")
 	}
 	lease, err := coordinator.Acquire(ctx, workspaceName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	release := func() {
@@ -67,34 +87,26 @@ func (h *Host) Transform(ctx context.Context, pattern string, input genx.Stream)
 		runtime, err := h.WorkspaceStore.PrepareWorkspace(ctx, workspaceName)
 		if err != nil {
 			release()
-			return nil, err
+			return nil, nil, err
 		}
 		spec.Runtime = runtime
 	}
 	factory, ok := h.registry().Get(spec.AgentType)
 	if !ok {
 		release()
-		return nil, fmt.Errorf("agenthost: agent factory not found for %q", spec.AgentType)
+		return nil, nil, fmt.Errorf("agenthost: agent factory not found for %q", spec.AgentType)
 	}
-	agent, err := factory.NewAgent(ctx, spec)
+	transformer, err := factory.NewAgent(ctx, spec)
 	if err != nil {
 		release()
-		return nil, err
+		return nil, nil, err
 	}
+	agent := asAgent(transformer)
 	if agent == nil {
 		release()
-		return nil, fmt.Errorf("agenthost: factory %q returned nil agent", spec.AgentType)
+		return nil, nil, fmt.Errorf("agenthost: factory %q returned nil agent", spec.AgentType)
 	}
-	output, err := agent.Transform(ctx, pattern, input)
-	if err != nil {
-		release()
-		return nil, err
-	}
-	if output == nil {
-		release()
-		return nil, fmt.Errorf("agenthost: agent %q returned nil stream", spec.AgentType)
-	}
-	return &leaseStream{Stream: output, release: release}, nil
+	return agent, release, nil
 }
 
 func (h *Host) registry() *Registry {

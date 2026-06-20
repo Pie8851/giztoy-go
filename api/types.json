@@ -362,6 +362,45 @@
       "PeerRunStatusState": {
         "$ref": "./type/peer_run_status.json#/components/schemas/PeerRunStatusState"
       },
+      "PeerRunWorkspaceState": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunWorkspaceState"
+      },
+      "PeerRunHistoryChunk": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryChunk"
+      },
+      "PeerRunHistoryEntry": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryEntry"
+      },
+      "PeerRunHistoryListRequest": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryListRequest"
+      },
+      "PeerRunHistoryListResponse": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryListResponse"
+      },
+      "PeerRunHistoryPlayOptions": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryPlayOptions"
+      },
+      "PeerRunHistoryPlayRequest": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryPlayRequest"
+      },
+      "PeerRunHistoryPlayResponse": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunHistoryPlayResponse"
+      },
+      "PeerRunMemoryStatsRequest": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunMemoryStatsRequest"
+      },
+      "PeerRunMemoryStatsResponse": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunMemoryStatsResponse"
+      },
+      "PeerRunRecallRequest": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunRecallRequest"
+      },
+      "PeerRunRecallHit": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunRecallHit"
+      },
+      "PeerRunRecallResponse": {
+        "$ref": "./type/peer_run_workspace.json#/components/schemas/PeerRunRecallResponse"
+      },
       "PeerStatus": {
         "$ref": "./type/peer_status.json#/components/schemas/PeerStatus"
       },

@@ -61,6 +61,27 @@
                 "$ref": "./rpc/server.json#/components/schemas/ServerSetRunAgentRequest"
               },
               {
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunWorkspaceRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerSetRunWorkspaceRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunWorkspaceRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerListRunWorkspaceHistoryRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerPlayRunWorkspaceHistoryRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunWorkspaceMemoryStatsRequest"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerRunWorkspaceRecallRequest"
+              },
+              {
                 "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunRequest"
               },
               {
@@ -305,6 +326,27 @@
                 "$ref": "./rpc/server.json#/components/schemas/ServerSetRunAgentResponse"
               },
               {
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunWorkspaceResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerSetRunWorkspaceResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunWorkspaceResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerListRunWorkspaceHistoryResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerPlayRunWorkspaceHistoryResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerGetRunWorkspaceMemoryStatsResponse"
+              },
+              {
+                "$ref": "./rpc/server.json#/components/schemas/ServerRunWorkspaceRecallResponse"
+              },
+              {
                 "$ref": "./rpc/server.json#/components/schemas/ServerReloadRunResponse"
               },
               {
@@ -517,6 +559,13 @@
           "server.status.put",
           "server.run.agent.get",
           "server.run.agent.set",
+          "server.run.workspace.get",
+          "server.run.workspace.set",
+          "server.run.workspace.reload",
+          "server.run.workspace.history",
+          "server.run.workspace.history.play",
+          "server.run.workspace.memory.stats",
+          "server.run.workspace.recall",
           "server.run.reload",
           "server.run.status",
           "server.run.stop",

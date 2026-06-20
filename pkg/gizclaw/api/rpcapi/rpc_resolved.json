@@ -2055,6 +2055,341 @@
         },
         "type": "object"
       },
+      "PeerRunHistoryChunk": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "asset_uri": {
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "transcript",
+              "text",
+              "audio"
+            ],
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "PeerRunHistoryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "audio_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "audio_chunk_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "audio_mime_type": {
+            "type": "string"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/PeerRunHistoryChunk"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "replay_available": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          },
+          "transcript": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "replay_available"
+        ],
+        "type": "object"
+      },
+      "PeerRunHistoryListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PeerRunHistoryListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "has_next": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PeerRunHistoryEntry"
+            },
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "items",
+          "has_next"
+        ],
+        "type": "object"
+      },
+      "PeerRunHistoryPlayOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "include_audio": {
+            "type": "boolean"
+          },
+          "include_text": {
+            "type": "boolean"
+          },
+          "speed": {
+            "format": "double",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "PeerRunHistoryPlayRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "history_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/PeerRunHistoryPlayOptions"
+          }
+        },
+        "required": [
+          "history_id"
+        ],
+        "type": "object"
+      },
+      "PeerRunHistoryPlayResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "history_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "history_id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "PeerRunMemoryStatsRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "PeerRunMemoryStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "embedding_enabled": {
+            "type": "boolean"
+          },
+          "embedding_status": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "index_status": {
+            "type": "string"
+          },
+          "item_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "storage_bytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "enabled",
+          "item_count",
+          "storage_bytes"
+        ],
+        "type": "object"
+      },
+      "PeerRunRecallHit": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "score",
+          "snippet"
+        ],
+        "type": "object"
+      },
+      "PeerRunRecallRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "filters": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "limit": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "PeerRunRecallResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/PeerRunRecallHit"
+            },
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "hits"
+        ],
+        "type": "object"
+      },
       "PeerRunStatus": {
         "additionalProperties": false,
         "properties": {
@@ -2093,6 +2428,57 @@
           "error"
         ],
         "type": "string"
+      },
+      "PeerRunWorkspaceState": {
+        "additionalProperties": false,
+        "properties": {
+          "active_workspace_name": {
+            "type": "string"
+          },
+          "agent_type": {
+            "type": "string"
+          },
+          "history_available": {
+            "type": "boolean"
+          },
+          "memory_stats_available": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "pending_workspace_name": {
+            "type": "string"
+          },
+          "recall_available": {
+            "type": "boolean"
+          },
+          "runtime_state": {
+            "$ref": "#/components/schemas/PeerRunStatusState"
+          },
+          "selected_workspace_name": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workflow_name": {
+            "type": "string"
+          },
+          "workspace_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtime_state",
+          "workspace_name"
+        ],
+        "type": "object"
       },
       "PeerStatus": {
         "additionalProperties": false,
@@ -2470,6 +2856,13 @@
           "server.status.put",
           "server.run.agent.get",
           "server.run.agent.set",
+          "server.run.workspace.get",
+          "server.run.workspace.set",
+          "server.run.workspace.reload",
+          "server.run.workspace.history",
+          "server.run.workspace.history.play",
+          "server.run.workspace.memory.stats",
+          "server.run.workspace.recall",
           "server.run.reload",
           "server.run.status",
           "server.run.stop",
@@ -2579,6 +2972,27 @@
               },
               {
                 "$ref": "#/components/schemas/ServerSetRunAgentRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetRunWorkspaceRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerSetRunWorkspaceRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerReloadRunWorkspaceRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerListRunWorkspaceHistoryRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerPlayRunWorkspaceHistoryRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetRunWorkspaceMemoryStatsRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ServerRunWorkspaceRecallRequest"
               },
               {
                 "$ref": "#/components/schemas/ServerReloadRunRequest"
@@ -2827,6 +3241,27 @@
               },
               {
                 "$ref": "#/components/schemas/ServerSetRunAgentResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetRunWorkspaceResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerSetRunWorkspaceResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerReloadRunWorkspaceResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerListRunWorkspaceHistoryResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerPlayRunWorkspaceHistoryResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerGetRunWorkspaceMemoryStatsResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ServerRunWorkspaceRecallResponse"
               },
               {
                 "$ref": "#/components/schemas/ServerReloadRunResponse"
@@ -3246,6 +3681,20 @@
       "ServerGetRunStatusResponse": {
         "$ref": "#/components/schemas/PeerRunStatus"
       },
+      "ServerGetRunWorkspaceMemoryStatsRequest": {
+        "$ref": "#/components/schemas/PeerRunMemoryStatsRequest"
+      },
+      "ServerGetRunWorkspaceMemoryStatsResponse": {
+        "$ref": "#/components/schemas/PeerRunMemoryStatsResponse"
+      },
+      "ServerGetRunWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerGetRunWorkspaceResponse": {
+        "$ref": "#/components/schemas/PeerRunWorkspaceState"
+      },
       "ServerGetRuntimeRequest": {
         "additionalProperties": false,
         "properties": {},
@@ -3261,6 +3710,18 @@
       },
       "ServerGetStatusResponse": {
         "$ref": "#/components/schemas/PeerStatus"
+      },
+      "ServerListRunWorkspaceHistoryRequest": {
+        "$ref": "#/components/schemas/PeerRunHistoryListRequest"
+      },
+      "ServerListRunWorkspaceHistoryResponse": {
+        "$ref": "#/components/schemas/PeerRunHistoryListResponse"
+      },
+      "ServerPlayRunWorkspaceHistoryRequest": {
+        "$ref": "#/components/schemas/PeerRunHistoryPlayRequest"
+      },
+      "ServerPlayRunWorkspaceHistoryResponse": {
+        "$ref": "#/components/schemas/PeerRunHistoryPlayResponse"
       },
       "ServerPutInfoRequest": {
         "$ref": "#/components/schemas/DeviceInfo"
@@ -3281,6 +3742,14 @@
       },
       "ServerReloadRunResponse": {
         "$ref": "#/components/schemas/PeerRunStatus"
+      },
+      "ServerReloadRunWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "ServerReloadRunWorkspaceResponse": {
+        "$ref": "#/components/schemas/PeerRunWorkspaceState"
       },
       "ServerRunSayRequest": {
         "additionalProperties": false,
@@ -3316,11 +3785,23 @@
         ],
         "type": "object"
       },
+      "ServerRunWorkspaceRecallRequest": {
+        "$ref": "#/components/schemas/PeerRunRecallRequest"
+      },
+      "ServerRunWorkspaceRecallResponse": {
+        "$ref": "#/components/schemas/PeerRunRecallResponse"
+      },
       "ServerSetRunAgentRequest": {
         "$ref": "#/components/schemas/AgentSelection"
       },
       "ServerSetRunAgentResponse": {
         "$ref": "#/components/schemas/PeerRunAgent"
+      },
+      "ServerSetRunWorkspaceRequest": {
+        "$ref": "#/components/schemas/AgentSelection"
+      },
+      "ServerSetRunWorkspaceResponse": {
+        "$ref": "#/components/schemas/PeerRunWorkspaceState"
       },
       "ServerStopRunRequest": {
         "additionalProperties": false,

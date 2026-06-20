@@ -10,6 +10,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peergenx"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peerrun"
 )
 
 func (s *rpcServer) handleGetInfo(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
@@ -162,6 +163,262 @@ func (s *rpcServer) handleSetRunAgent(ctx context.Context, req *rpcapi.RPCReques
 		return nil, err
 	}
 	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerSetRunAgentResponse)
+}
+
+func (s *rpcServer) handleGetRunWorkspace(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if err := validateRPCParams(req.Params, rpcapi.RPCRequest_Params.AsServerGetRunWorkspaceRequest); err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	state, resp := s.runWorkspaceState(ctx, req.Id, nil, nil)
+	if resp != nil {
+		return resp, nil
+	}
+	result, err := convertRPCType[rpcapi.ServerGetRunWorkspaceResponse](state)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerGetRunWorkspaceResponse)
+}
+
+func (s *rpcServer) handleSetRunWorkspace(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if req.Params == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInvalidParams, Message: "missing params"}.RPCResponse(), nil
+	}
+	params, err := req.Params.AsServerSetRunWorkspaceRequest()
+	if err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	selection, err := convertRPCType[apitypes.AgentSelection](params)
+	if err != nil {
+		return nil, err
+	}
+	if s.peerRun == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run service not configured"}.RPCResponse(), nil
+	}
+	agent, err := s.peerRun.SetRunAgent(ctx, s.callerPublicKey, selection)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	state, resp := s.runWorkspaceState(ctx, req.Id, &agent, nil)
+	if resp != nil {
+		return resp, nil
+	}
+	result, err := convertRPCType[rpcapi.ServerSetRunWorkspaceResponse](state)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerSetRunWorkspaceResponse)
+}
+
+func (s *rpcServer) handleReloadRunWorkspace(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if err := validateRPCParams(req.Params, rpcapi.RPCRequest_Params.AsServerReloadRunWorkspaceRequest); err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	if s.peerRunRuntime == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run runtime not configured"}.RPCResponse(), nil
+	}
+	status, err := s.peerRunRuntime.Reload(ctx)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	state, resp := s.runWorkspaceState(ctx, req.Id, nil, &status)
+	if resp != nil {
+		return resp, nil
+	}
+	result, err := convertRPCType[rpcapi.ServerReloadRunWorkspaceResponse](state)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerReloadRunWorkspaceResponse)
+}
+
+func (s *rpcServer) handleListRunWorkspaceHistory(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if req.Params == nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	params, err := req.Params.AsServerListRunWorkspaceHistoryRequest()
+	if err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	if s.peerRunRuntime == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run runtime not configured"}.RPCResponse(), nil
+	}
+	request, err := convertRPCType[apitypes.PeerRunHistoryListRequest](params)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.peerRunRuntime.ListWorkspaceHistory(ctx, request)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	result, err := convertRPCType[rpcapi.ServerListRunWorkspaceHistoryResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerListRunWorkspaceHistoryResponse)
+}
+
+func (s *rpcServer) handlePlayRunWorkspaceHistory(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if req.Params == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInvalidParams, Message: "missing params"}.RPCResponse(), nil
+	}
+	params, err := req.Params.AsServerPlayRunWorkspaceHistoryRequest()
+	if err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	if s.peerRunRuntime == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run runtime not configured"}.RPCResponse(), nil
+	}
+	request, err := convertRPCType[apitypes.PeerRunHistoryPlayRequest](params)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.peerRunRuntime.PlayWorkspaceHistory(ctx, request)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	result, err := convertRPCType[rpcapi.ServerPlayRunWorkspaceHistoryResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerPlayRunWorkspaceHistoryResponse)
+}
+
+func (s *rpcServer) handleGetRunWorkspaceMemoryStats(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if req.Params == nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	params, err := req.Params.AsServerGetRunWorkspaceMemoryStatsRequest()
+	if err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	if s.peerRunRuntime == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run runtime not configured"}.RPCResponse(), nil
+	}
+	request, err := convertRPCType[apitypes.PeerRunMemoryStatsRequest](params)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.peerRunRuntime.WorkspaceMemoryStats(ctx, request)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	result, err := convertRPCType[rpcapi.ServerGetRunWorkspaceMemoryStatsResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerGetRunWorkspaceMemoryStatsResponse)
+}
+
+func (s *rpcServer) handleRunWorkspaceRecall(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+	if req.Params == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInvalidParams, Message: "missing params"}.RPCResponse(), nil
+	}
+	params, err := req.Params.AsServerRunWorkspaceRecallRequest()
+	if err != nil {
+		return rpcInvalidParams(req.Id), nil
+	}
+	if s.peerRunRuntime == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run runtime not configured"}.RPCResponse(), nil
+	}
+	request, err := convertRPCType[apitypes.PeerRunRecallRequest](params)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.peerRunRuntime.WorkspaceRecall(ctx, request)
+	if err != nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse(), nil
+	}
+	result, err := convertRPCType[rpcapi.ServerRunWorkspaceRecallResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return newRPCResultResponse(req.Id, result, (*rpcapi.RPCResponse_Result).FromServerRunWorkspaceRecallResponse)
+}
+
+func (s *rpcServer) runWorkspaceState(ctx context.Context, requestID string, agent *apitypes.PeerRunAgent, status *apitypes.PeerRunStatus) (apitypes.PeerRunWorkspaceState, *rpcapi.RPCResponse) {
+	if s.peerRun == nil {
+		return apitypes.PeerRunWorkspaceState{}, rpcapi.Error{RequestID: requestID, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer run service not configured"}.RPCResponse()
+	}
+	if agent == nil {
+		got, err := s.peerRun.GetRunAgent(ctx, s.callerPublicKey)
+		if err != nil {
+			return apitypes.PeerRunWorkspaceState{}, rpcapi.Error{RequestID: requestID, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse()
+		}
+		agent = &got
+	}
+	state := apitypes.PeerRunWorkspaceState{RuntimeState: apitypes.PeerRunStatusStateStopped}
+	if s.peerRunRuntime != nil {
+		runtimeState, err := s.peerRunRuntime.WorkspaceState(ctx)
+		if err != nil {
+			if errors.Is(err, peerrun.ErrRunAgentNotConfigured) {
+				state = apitypes.PeerRunWorkspaceState{RuntimeState: apitypes.PeerRunStatusStateStopped}
+			} else {
+				return apitypes.PeerRunWorkspaceState{}, rpcapi.Error{RequestID: requestID, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse()
+			}
+		} else {
+			state = runtimeState
+			if state.RuntimeState == "" {
+				state.RuntimeState = apitypes.PeerRunStatusStateStopped
+			}
+		}
+	}
+	if status != nil {
+		mergeRunWorkspaceStatus(&state, *status)
+	}
+	mergeRunWorkspaceAgent(&state, *agent)
+	return state, nil
+}
+
+func mergeRunWorkspaceAgent(state *apitypes.PeerRunWorkspaceState, agent apitypes.PeerRunAgent) {
+	if agent.Active != nil {
+		value := strings.TrimSpace(agent.Active.WorkspaceName)
+		if value != "" {
+			state.ActiveWorkspaceName = &value
+		}
+	}
+	if agent.Pending != nil {
+		value := strings.TrimSpace(agent.Pending.WorkspaceName)
+		if value != "" {
+			state.PendingWorkspaceName = &value
+		}
+	}
+	selected := ""
+	if state.PendingWorkspaceName != nil {
+		selected = *state.PendingWorkspaceName
+	}
+	if selected == "" && state.ActiveWorkspaceName != nil {
+		selected = *state.ActiveWorkspaceName
+	}
+	if selected == "" {
+		selected = strings.TrimSpace(state.WorkspaceName)
+	}
+	state.WorkspaceName = selected
+	if selected != "" {
+		state.SelectedWorkspaceName = &selected
+	}
+}
+
+func mergeRunWorkspaceStatus(state *apitypes.PeerRunWorkspaceState, status apitypes.PeerRunStatus) {
+	if status.State != "" {
+		state.RuntimeState = status.State
+	}
+	if status.WorkspaceName != nil && strings.TrimSpace(*status.WorkspaceName) != "" {
+		active := strings.TrimSpace(*status.WorkspaceName)
+		state.ActiveWorkspaceName = &active
+		if state.WorkspaceName == "" {
+			state.WorkspaceName = active
+		}
+	}
+	if status.Message != nil {
+		state.Message = status.Message
+	}
+	if status.StartedAt != nil {
+		state.StartedAt = status.StartedAt
+	}
+	if status.UpdatedAt != nil {
+		state.UpdatedAt = status.UpdatedAt
+	}
 }
 
 func (s *rpcServer) handleReloadRun(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {

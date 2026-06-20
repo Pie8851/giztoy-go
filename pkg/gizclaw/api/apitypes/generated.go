@@ -735,6 +735,27 @@ func (e PeerRole) Valid() bool {
 	}
 }
 
+// Defines values for PeerRunHistoryChunkKind.
+const (
+	PeerRunHistoryChunkKindAudio      PeerRunHistoryChunkKind = "audio"
+	PeerRunHistoryChunkKindText       PeerRunHistoryChunkKind = "text"
+	PeerRunHistoryChunkKindTranscript PeerRunHistoryChunkKind = "transcript"
+)
+
+// Valid indicates whether the value is a known member of the PeerRunHistoryChunkKind enum.
+func (e PeerRunHistoryChunkKind) Valid() bool {
+	switch e {
+	case PeerRunHistoryChunkKindAudio:
+		return true
+	case PeerRunHistoryChunkKindText:
+		return true
+	case PeerRunHistoryChunkKindTranscript:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PeerRunStatusState.
 const (
 	PeerRunStatusStateError    PeerRunStatusState = "error"
@@ -1997,6 +2018,118 @@ type PeerRunAgent struct {
 	Pending *AgentSelection `json:"pending,omitempty"`
 }
 
+// PeerRunHistoryChunk defines model for PeerRunHistoryChunk.
+type PeerRunHistoryChunk struct {
+	Actor      *string                 `json:"actor,omitempty"`
+	AssetUri   *string                 `json:"asset_uri,omitempty"`
+	At         *time.Time              `json:"at,omitempty"`
+	Bytes      *int64                  `json:"bytes,omitempty"`
+	DurationMs *int64                  `json:"duration_ms,omitempty"`
+	Kind       PeerRunHistoryChunkKind `json:"kind"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+	MimeType   *string                 `json:"mime_type,omitempty"`
+	Text       *string                 `json:"text,omitempty"`
+}
+
+// PeerRunHistoryChunkKind defines model for PeerRunHistoryChunk.Kind.
+type PeerRunHistoryChunkKind string
+
+// PeerRunHistoryEntry defines model for PeerRunHistoryEntry.
+type PeerRunHistoryEntry struct {
+	Actor           *string                 `json:"actor,omitempty"`
+	AudioBytes      *int64                  `json:"audio_bytes,omitempty"`
+	AudioChunkCount *int64                  `json:"audio_chunk_count,omitempty"`
+	AudioMimeType   *string                 `json:"audio_mime_type,omitempty"`
+	Chunks          *[]PeerRunHistoryChunk  `json:"chunks,omitempty"`
+	CreatedAt       time.Time               `json:"created_at"`
+	DurationMs      *int64                  `json:"duration_ms,omitempty"`
+	EndedAt         *time.Time              `json:"ended_at,omitempty"`
+	Id              string                  `json:"id"`
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
+	ReplayAvailable bool                    `json:"replay_available"`
+	Text            *string                 `json:"text,omitempty"`
+	Transcript      *string                 `json:"transcript,omitempty"`
+}
+
+// PeerRunHistoryListRequest defines model for PeerRunHistoryListRequest.
+type PeerRunHistoryListRequest struct {
+	Cursor *string `json:"cursor,omitempty"`
+	Limit  *int    `json:"limit,omitempty"`
+}
+
+// PeerRunHistoryListResponse defines model for PeerRunHistoryListResponse.
+type PeerRunHistoryListResponse struct {
+	Available  bool                  `json:"available"`
+	HasNext    bool                  `json:"has_next"`
+	Items      []PeerRunHistoryEntry `json:"items"`
+	Message    *string               `json:"message,omitempty"`
+	NextCursor *string               `json:"next_cursor,omitempty"`
+}
+
+// PeerRunHistoryPlayOptions defines model for PeerRunHistoryPlayOptions.
+type PeerRunHistoryPlayOptions struct {
+	IncludeAudio *bool    `json:"include_audio,omitempty"`
+	IncludeText  *bool    `json:"include_text,omitempty"`
+	Speed        *float64 `json:"speed,omitempty"`
+}
+
+// PeerRunHistoryPlayRequest defines model for PeerRunHistoryPlayRequest.
+type PeerRunHistoryPlayRequest struct {
+	HistoryId string                     `json:"history_id"`
+	Options   *PeerRunHistoryPlayOptions `json:"options,omitempty"`
+}
+
+// PeerRunHistoryPlayResponse defines model for PeerRunHistoryPlayResponse.
+type PeerRunHistoryPlayResponse struct {
+	Accepted  bool    `json:"accepted"`
+	HistoryId string  `json:"history_id"`
+	Message   *string `json:"message,omitempty"`
+	State     string  `json:"state"`
+}
+
+// PeerRunMemoryStatsRequest defines model for PeerRunMemoryStatsRequest.
+type PeerRunMemoryStatsRequest = map[string]interface{}
+
+// PeerRunMemoryStatsResponse defines model for PeerRunMemoryStatsResponse.
+type PeerRunMemoryStatsResponse struct {
+	Available        bool                    `json:"available"`
+	Backend          *string                 `json:"backend,omitempty"`
+	EmbeddingEnabled *bool                   `json:"embedding_enabled,omitempty"`
+	EmbeddingStatus  *string                 `json:"embedding_status,omitempty"`
+	Enabled          bool                    `json:"enabled"`
+	IndexStatus      *string                 `json:"index_status,omitempty"`
+	ItemCount        int64                   `json:"item_count"`
+	LastUpdatedAt    *time.Time              `json:"last_updated_at,omitempty"`
+	Message          *string                 `json:"message,omitempty"`
+	Metadata         *map[string]interface{} `json:"metadata,omitempty"`
+	StorageBytes     int64                   `json:"storage_bytes"`
+}
+
+// PeerRunRecallHit defines model for PeerRunRecallHit.
+type PeerRunRecallHit struct {
+	CreatedAt  *time.Time              `json:"created_at,omitempty"`
+	Id         string                  `json:"id"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+	Score      float64                 `json:"score"`
+	Snippet    string                  `json:"snippet"`
+	SourceId   *string                 `json:"source_id,omitempty"`
+	SourceType *string                 `json:"source_type,omitempty"`
+}
+
+// PeerRunRecallRequest defines model for PeerRunRecallRequest.
+type PeerRunRecallRequest struct {
+	Filters *map[string]interface{} `json:"filters,omitempty"`
+	Limit   *int                    `json:"limit,omitempty"`
+	Query   string                  `json:"query"`
+}
+
+// PeerRunRecallResponse defines model for PeerRunRecallResponse.
+type PeerRunRecallResponse struct {
+	Available bool               `json:"available"`
+	Hits      []PeerRunRecallHit `json:"hits"`
+	Message   *string            `json:"message,omitempty"`
+}
+
 // PeerRunStatus defines model for PeerRunStatus.
 type PeerRunStatus struct {
 	FriendOtp     *string            `json:"friend_otp,omitempty"`
@@ -2009,6 +2142,23 @@ type PeerRunStatus struct {
 
 // PeerRunStatusState defines model for PeerRunStatusState.
 type PeerRunStatusState string
+
+// PeerRunWorkspaceState defines model for PeerRunWorkspaceState.
+type PeerRunWorkspaceState struct {
+	ActiveWorkspaceName   *string            `json:"active_workspace_name,omitempty"`
+	AgentType             *string            `json:"agent_type,omitempty"`
+	HistoryAvailable      *bool              `json:"history_available,omitempty"`
+	MemoryStatsAvailable  *bool              `json:"memory_stats_available,omitempty"`
+	Message               *string            `json:"message,omitempty"`
+	PendingWorkspaceName  *string            `json:"pending_workspace_name,omitempty"`
+	RecallAvailable       *bool              `json:"recall_available,omitempty"`
+	RuntimeState          PeerRunStatusState `json:"runtime_state"`
+	SelectedWorkspaceName *string            `json:"selected_workspace_name,omitempty"`
+	StartedAt             *time.Time         `json:"started_at,omitempty"`
+	UpdatedAt             *time.Time         `json:"updated_at,omitempty"`
+	WorkflowName          *string            `json:"workflow_name,omitempty"`
+	WorkspaceName         string             `json:"workspace_name"`
+}
 
 // PeerStatus defines model for PeerStatus.
 type PeerStatus struct {

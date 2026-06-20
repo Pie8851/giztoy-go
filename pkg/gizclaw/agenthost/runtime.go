@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	ErrNilService       = errors.New("agenthost: nil service")
-	ErrMissingHost      = errors.New("agenthost: host is required")
-	ErrMissingPeerRun   = errors.New("agenthost: peer run store is required")
-	ErrMissingSource    = errors.New("agenthost: stream source is required")
-	ErrMissingConsumer  = errors.New("agenthost: stream consumer is required")
-	ErrInvalidPublicKey = errors.New("agenthost: invalid public key")
+	ErrNilService        = errors.New("agenthost: nil service")
+	ErrMissingHost       = errors.New("agenthost: host is required")
+	ErrMissingPeerRun    = errors.New("agenthost: peer run store is required")
+	ErrMissingSource     = errors.New("agenthost: stream source is required")
+	ErrMissingConsumer   = errors.New("agenthost: stream consumer is required")
+	ErrInvalidPublicKey  = errors.New("agenthost: invalid public key")
+	ErrNoActiveWorkspace = errors.New("agenthost: no active workspace")
 )
 
 type PeerRunStore interface {
@@ -54,14 +55,15 @@ func (f StreamConsumerFunc) ConsumeAgentOutput(ctx context.Context, stream genx.
 }
 
 type Service struct {
-	Host       genx.Transformer
-	PeerRun    PeerRunStore
-	Authorizer Authorizer
-	PublicKey  giznet.PublicKey
-	Source     StreamSource
-	Consumer   StreamConsumer
-	Logger     *slog.Logger
-	Now        func() time.Time
+	Host            genx.Transformer
+	PeerRun         PeerRunStore
+	Authorizer      Authorizer
+	PublicKey       giznet.PublicKey
+	Source          StreamSource
+	Consumer        StreamConsumer
+	OnConsumerError func(context.Context, string, error)
+	Logger          *slog.Logger
+	Now             func() time.Time
 
 	mu      sync.Mutex
 	runtime *runtime
@@ -101,7 +103,8 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 		return s.setErrorStatus(selection.WorkspaceName, err), err
 	}
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	output, err := s.Host.Transform(runCtx, workspacePattern(selection.WorkspaceName), input)
+	pattern := workspacePattern(selection.WorkspaceName)
+	agent, release, output, err := s.openAgentOutput(runCtx, pattern, input)
 	if err != nil {
 		cancel()
 		_ = input.CloseWithError(err)
@@ -109,12 +112,18 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 	}
 	if output == nil {
 		cancel()
+		if release != nil {
+			release()
+		}
 		_ = input.Close()
 		err := errors.New("agenthost: output stream is required")
 		return s.setErrorStatus(selection.WorkspaceName, err), err
 	}
 	if _, err := s.PeerRun.ActivateRunAgent(ctx, s.PublicKey, selection); err != nil {
 		cancel()
+		if release != nil {
+			release()
+		}
 		_ = errors.Join(output.CloseWithError(err), input.CloseWithError(err))
 		return s.setErrorStatus(selection.WorkspaceName, err), err
 	}
@@ -122,8 +131,10 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 	now := s.now()
 	next := &runtime{
 		cancel:    cancel,
+		agent:     agent,
 		input:     input,
 		output:    output,
+		release:   release,
 		done:      make(chan struct{}),
 		workspace: selection.WorkspaceName,
 		startedAt: now,
@@ -132,6 +143,32 @@ func (s *Service) Reload(ctx context.Context) (apitypes.PeerRunStatus, error) {
 	status := s.setStatus(apitypes.PeerRunStatusStateRunning, selection.WorkspaceName, nil, &now)
 	go s.consume(runCtx, next)
 	return status, nil
+}
+
+type agentOpener interface {
+	OpenAgent(context.Context, string) (Agent, func(), error)
+}
+
+func (s *Service) openAgentOutput(ctx context.Context, pattern string, input genx.Stream) (Agent, func(), genx.Stream, error) {
+	if opener, ok := s.Host.(agentOpener); ok {
+		agent, release, err := opener.OpenAgent(ctx, pattern)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		output, err := agent.Transform(ctx, pattern, input)
+		if err != nil {
+			if release != nil {
+				release()
+			}
+			return nil, nil, nil, err
+		}
+		return agent, release, output, nil
+	}
+	output, err := s.Host.Transform(ctx, pattern, input)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return asAgent(s.Host), nil, output, nil
 }
 
 func (s *Service) Status(context.Context) (apitypes.PeerRunStatus, error) {
@@ -165,6 +202,72 @@ func (s *Service) Stop(ctx context.Context) (apitypes.PeerRunStatus, error) {
 		return s.setErrorStatus(current.workspace, err), err
 	}
 	return s.setStatus(apitypes.PeerRunStatusStateStopped, current.workspace, nil, nil), nil
+}
+
+func (s *Service) WorkspaceState(ctx context.Context) (apitypes.PeerRunWorkspaceState, error) {
+	if s == nil {
+		return apitypes.PeerRunWorkspaceState{}, ErrNilService
+	}
+	status, err := s.Status(ctx)
+	if err != nil {
+		return apitypes.PeerRunWorkspaceState{}, err
+	}
+	state := workspaceStateFromStatus(status)
+	rt := s.currentRuntime()
+	if rt == nil || rt.agent == nil {
+		return state, nil
+	}
+	agentState, err := rt.agent.Status(ctx)
+	if err != nil {
+		return state, err
+	}
+	mergeWorkspaceState(&state, agentState)
+	if state.WorkspaceName == "" {
+		state.WorkspaceName = rt.workspace
+	}
+	if state.ActiveWorkspaceName == nil && rt.workspace != "" {
+		state.ActiveWorkspaceName = &rt.workspace
+	}
+	if state.StartedAt == nil {
+		state.StartedAt = &rt.startedAt
+	}
+	return state, nil
+}
+
+func (s *Service) ListWorkspaceHistory(ctx context.Context, req apitypes.PeerRunHistoryListRequest) (apitypes.PeerRunHistoryListResponse, error) {
+	agent, err := s.currentAgent()
+	if err != nil {
+		message := err.Error()
+		return apitypes.PeerRunHistoryListResponse{Available: false, Items: []apitypes.PeerRunHistoryEntry{}, HasNext: false, Message: &message}, nil
+	}
+	return agent.ListHistory(ctx, req)
+}
+
+func (s *Service) PlayWorkspaceHistory(ctx context.Context, req apitypes.PeerRunHistoryPlayRequest) (apitypes.PeerRunHistoryPlayResponse, error) {
+	agent, err := s.currentAgent()
+	if err != nil {
+		message := err.Error()
+		return apitypes.PeerRunHistoryPlayResponse{Accepted: false, HistoryId: req.HistoryId, State: "unavailable", Message: &message}, nil
+	}
+	return agent.PlayHistory(ctx, req)
+}
+
+func (s *Service) WorkspaceMemoryStats(ctx context.Context, req apitypes.PeerRunMemoryStatsRequest) (apitypes.PeerRunMemoryStatsResponse, error) {
+	agent, err := s.currentAgent()
+	if err != nil {
+		message := err.Error()
+		return apitypes.PeerRunMemoryStatsResponse{Available: false, Enabled: false, ItemCount: 0, StorageBytes: 0, Message: &message}, nil
+	}
+	return agent.MemoryStats(ctx, req)
+}
+
+func (s *Service) WorkspaceRecall(ctx context.Context, req apitypes.PeerRunRecallRequest) (apitypes.PeerRunRecallResponse, error) {
+	agent, err := s.currentAgent()
+	if err != nil {
+		message := err.Error()
+		return apitypes.PeerRunRecallResponse{Available: false, Hits: []apitypes.PeerRunRecallHit{}, Message: &message}, nil
+	}
+	return agent.Recall(ctx, req)
 }
 
 func (s *Service) validate() error {
@@ -203,11 +306,34 @@ func (s *Service) swap(next *runtime) *runtime {
 	return previous
 }
 
+func (s *Service) currentRuntime() *runtime {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runtime
+}
+
+func (s *Service) currentAgent() (Agent, error) {
+	rt := s.currentRuntime()
+	if rt == nil || rt.agent == nil {
+		return nil, ErrNoActiveWorkspace
+	}
+	return rt.agent, nil
+}
+
 func (s *Service) consume(ctx context.Context, rt *runtime) {
 	defer close(rt.done)
+	defer rt.releaseOnce()
+	defer func() {
+		if rt.input != nil {
+			_ = rt.input.Close()
+		}
+	}()
 	err := s.Consumer.ConsumeAgentOutput(ctx, rt.output)
 	if err != nil && ctx.Err() == nil {
 		s.logger().Error("agenthost: output consumer failed", "error", err)
+		if s.OnConsumerError != nil {
+			s.OnConsumerError(context.WithoutCancel(ctx), rt.workspace, err)
+		}
 		s.mu.Lock()
 		if s.runtime == rt {
 			s.runtime = nil
@@ -291,8 +417,11 @@ func stoppedStatus(updatedAt time.Time) apitypes.PeerRunStatus {
 
 type runtime struct {
 	cancel    context.CancelFunc
+	agent     Agent
 	input     genx.Stream
 	output    genx.Stream
+	release   func()
+	once      sync.Once
 	done      chan struct{}
 	workspace string
 	startedAt time.Time
@@ -306,8 +435,79 @@ func (r *runtime) stop(ctx context.Context) error {
 	err := errors.Join(r.output.Close(), r.input.Close())
 	select {
 	case <-r.done:
+		r.releaseOnce()
 		return err
 	case <-ctx.Done():
+		r.releaseOnce()
 		return errors.Join(err, ctx.Err())
+	}
+}
+
+func (r *runtime) releaseOnce() {
+	if r == nil {
+		return
+	}
+	r.once.Do(func() {
+		if r.release != nil {
+			r.release()
+		}
+	})
+}
+
+func workspaceStateFromStatus(status apitypes.PeerRunStatus) apitypes.PeerRunWorkspaceState {
+	state := apitypes.PeerRunWorkspaceState{
+		RuntimeState:  status.State,
+		WorkspaceName: "",
+		StartedAt:     status.StartedAt,
+		UpdatedAt:     status.UpdatedAt,
+		Message:       status.Message,
+	}
+	if status.WorkspaceName != nil {
+		workspace := *status.WorkspaceName
+		state.WorkspaceName = workspace
+		state.ActiveWorkspaceName = &workspace
+	}
+	return state
+}
+
+func mergeWorkspaceState(dst *apitypes.PeerRunWorkspaceState, src apitypes.PeerRunWorkspaceState) {
+	if src.WorkspaceName != "" {
+		dst.WorkspaceName = src.WorkspaceName
+	}
+	if src.RuntimeState != "" {
+		dst.RuntimeState = src.RuntimeState
+	}
+	if src.SelectedWorkspaceName != nil {
+		dst.SelectedWorkspaceName = src.SelectedWorkspaceName
+	}
+	if src.PendingWorkspaceName != nil {
+		dst.PendingWorkspaceName = src.PendingWorkspaceName
+	}
+	if src.ActiveWorkspaceName != nil {
+		dst.ActiveWorkspaceName = src.ActiveWorkspaceName
+	}
+	if src.WorkflowName != nil {
+		dst.WorkflowName = src.WorkflowName
+	}
+	if src.AgentType != nil {
+		dst.AgentType = src.AgentType
+	}
+	if src.Message != nil {
+		dst.Message = src.Message
+	}
+	if src.HistoryAvailable != nil {
+		dst.HistoryAvailable = src.HistoryAvailable
+	}
+	if src.MemoryStatsAvailable != nil {
+		dst.MemoryStatsAvailable = src.MemoryStatsAvailable
+	}
+	if src.RecallAvailable != nil {
+		dst.RecallAvailable = src.RecallAvailable
+	}
+	if src.StartedAt != nil {
+		dst.StartedAt = src.StartedAt
+	}
+	if src.UpdatedAt != nil {
+		dst.UpdatedAt = src.UpdatedAt
 	}
 }

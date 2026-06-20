@@ -28,6 +28,11 @@ type rpcPeerRunRuntime interface {
 	Reload(context.Context) (apitypes.PeerRunStatus, error)
 	Status(context.Context) (apitypes.PeerRunStatus, error)
 	Stop(context.Context) (apitypes.PeerRunStatus, error)
+	WorkspaceState(context.Context) (apitypes.PeerRunWorkspaceState, error)
+	ListWorkspaceHistory(context.Context, apitypes.PeerRunHistoryListRequest) (apitypes.PeerRunHistoryListResponse, error)
+	PlayWorkspaceHistory(context.Context, apitypes.PeerRunHistoryPlayRequest) (apitypes.PeerRunHistoryPlayResponse, error)
+	WorkspaceMemoryStats(context.Context, apitypes.PeerRunMemoryStatsRequest) (apitypes.PeerRunMemoryStatsResponse, error)
+	WorkspaceRecall(context.Context, apitypes.PeerRunRecallRequest) (apitypes.PeerRunRecallResponse, error)
 }
 
 type rpcServerResourceService interface {
@@ -91,6 +96,20 @@ func (s *rpcServer) dispatch(ctx context.Context, req *rpcapi.RPCRequest) (*rpca
 		return s.handleGetRunAgent(ctx, req)
 	case rpcapi.RPCMethodServerRunAgentSet:
 		return s.handleSetRunAgent(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceGet:
+		return s.handleGetRunWorkspace(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceSet:
+		return s.handleSetRunWorkspace(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceReload:
+		return s.handleReloadRunWorkspace(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceHistory:
+		return s.handleListRunWorkspaceHistory(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceHistoryPlay:
+		return s.handlePlayRunWorkspaceHistory(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceMemoryStats:
+		return s.handleGetRunWorkspaceMemoryStats(ctx, req)
+	case rpcapi.RPCMethodServerRunWorkspaceRecall:
+		return s.handleRunWorkspaceRecall(ctx, req)
 	case rpcapi.RPCMethodServerRunReload:
 		return s.handleReloadRun(ctx, req)
 	case rpcapi.RPCMethodServerRunStatus:

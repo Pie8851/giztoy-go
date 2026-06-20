@@ -324,6 +324,27 @@ func (e ModelSource) Valid() bool {
 	}
 }
 
+// Defines values for PeerRunHistoryChunkKind.
+const (
+	PeerRunHistoryChunkKindAudio      PeerRunHistoryChunkKind = "audio"
+	PeerRunHistoryChunkKindText       PeerRunHistoryChunkKind = "text"
+	PeerRunHistoryChunkKindTranscript PeerRunHistoryChunkKind = "transcript"
+)
+
+// Valid indicates whether the value is a known member of the PeerRunHistoryChunkKind enum.
+func (e PeerRunHistoryChunkKind) Valid() bool {
+	switch e {
+	case PeerRunHistoryChunkKindAudio:
+		return true
+	case PeerRunHistoryChunkKindText:
+		return true
+	case PeerRunHistoryChunkKindTranscript:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PeerRunStatusState.
 const (
 	PeerRunStatusStateError    PeerRunStatusState = "error"
@@ -448,6 +469,13 @@ const (
 	RPCMethodServerRunSay                   RPCMethod = "server.run.say"
 	RPCMethodServerRunStatus                RPCMethod = "server.run.status"
 	RPCMethodServerRunStop                  RPCMethod = "server.run.stop"
+	RPCMethodServerRunWorkspaceGet          RPCMethod = "server.run.workspace.get"
+	RPCMethodServerRunWorkspaceHistory      RPCMethod = "server.run.workspace.history"
+	RPCMethodServerRunWorkspaceHistoryPlay  RPCMethod = "server.run.workspace.history.play"
+	RPCMethodServerRunWorkspaceMemoryStats  RPCMethod = "server.run.workspace.memory.stats"
+	RPCMethodServerRunWorkspaceRecall       RPCMethod = "server.run.workspace.recall"
+	RPCMethodServerRunWorkspaceReload       RPCMethod = "server.run.workspace.reload"
+	RPCMethodServerRunWorkspaceSet          RPCMethod = "server.run.workspace.set"
 	RPCMethodServerRuntimeGet               RPCMethod = "server.runtime.get"
 	RPCMethodServerStatusGet                RPCMethod = "server.status.get"
 	RPCMethodServerStatusPut                RPCMethod = "server.status.put"
@@ -586,6 +614,20 @@ func (e RPCMethod) Valid() bool {
 	case RPCMethodServerRunStatus:
 		return true
 	case RPCMethodServerRunStop:
+		return true
+	case RPCMethodServerRunWorkspaceGet:
+		return true
+	case RPCMethodServerRunWorkspaceHistory:
+		return true
+	case RPCMethodServerRunWorkspaceHistoryPlay:
+		return true
+	case RPCMethodServerRunWorkspaceMemoryStats:
+		return true
+	case RPCMethodServerRunWorkspaceRecall:
+		return true
+	case RPCMethodServerRunWorkspaceReload:
+		return true
+	case RPCMethodServerRunWorkspaceSet:
 		return true
 	case RPCMethodServerRuntimeGet:
 		return true
@@ -1594,6 +1636,118 @@ type PeerRunAgent struct {
 	Pending *AgentSelection `json:"pending,omitempty"`
 }
 
+// PeerRunHistoryChunk defines model for PeerRunHistoryChunk.
+type PeerRunHistoryChunk struct {
+	Actor      *string                 `json:"actor,omitempty"`
+	AssetUri   *string                 `json:"asset_uri,omitempty"`
+	At         *time.Time              `json:"at,omitempty"`
+	Bytes      *int64                  `json:"bytes,omitempty"`
+	DurationMs *int64                  `json:"duration_ms,omitempty"`
+	Kind       PeerRunHistoryChunkKind `json:"kind"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+	MimeType   *string                 `json:"mime_type,omitempty"`
+	Text       *string                 `json:"text,omitempty"`
+}
+
+// PeerRunHistoryChunkKind defines model for PeerRunHistoryChunk.Kind.
+type PeerRunHistoryChunkKind string
+
+// PeerRunHistoryEntry defines model for PeerRunHistoryEntry.
+type PeerRunHistoryEntry struct {
+	Actor           *string                 `json:"actor,omitempty"`
+	AudioBytes      *int64                  `json:"audio_bytes,omitempty"`
+	AudioChunkCount *int64                  `json:"audio_chunk_count,omitempty"`
+	AudioMimeType   *string                 `json:"audio_mime_type,omitempty"`
+	Chunks          *[]PeerRunHistoryChunk  `json:"chunks,omitempty"`
+	CreatedAt       time.Time               `json:"created_at"`
+	DurationMs      *int64                  `json:"duration_ms,omitempty"`
+	EndedAt         *time.Time              `json:"ended_at,omitempty"`
+	Id              string                  `json:"id"`
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
+	ReplayAvailable bool                    `json:"replay_available"`
+	Text            *string                 `json:"text,omitempty"`
+	Transcript      *string                 `json:"transcript,omitempty"`
+}
+
+// PeerRunHistoryListRequest defines model for PeerRunHistoryListRequest.
+type PeerRunHistoryListRequest struct {
+	Cursor *string `json:"cursor,omitempty"`
+	Limit  *int    `json:"limit,omitempty"`
+}
+
+// PeerRunHistoryListResponse defines model for PeerRunHistoryListResponse.
+type PeerRunHistoryListResponse struct {
+	Available  bool                  `json:"available"`
+	HasNext    bool                  `json:"has_next"`
+	Items      []PeerRunHistoryEntry `json:"items"`
+	Message    *string               `json:"message,omitempty"`
+	NextCursor *string               `json:"next_cursor,omitempty"`
+}
+
+// PeerRunHistoryPlayOptions defines model for PeerRunHistoryPlayOptions.
+type PeerRunHistoryPlayOptions struct {
+	IncludeAudio *bool    `json:"include_audio,omitempty"`
+	IncludeText  *bool    `json:"include_text,omitempty"`
+	Speed        *float64 `json:"speed,omitempty"`
+}
+
+// PeerRunHistoryPlayRequest defines model for PeerRunHistoryPlayRequest.
+type PeerRunHistoryPlayRequest struct {
+	HistoryId string                     `json:"history_id"`
+	Options   *PeerRunHistoryPlayOptions `json:"options,omitempty"`
+}
+
+// PeerRunHistoryPlayResponse defines model for PeerRunHistoryPlayResponse.
+type PeerRunHistoryPlayResponse struct {
+	Accepted  bool    `json:"accepted"`
+	HistoryId string  `json:"history_id"`
+	Message   *string `json:"message,omitempty"`
+	State     string  `json:"state"`
+}
+
+// PeerRunMemoryStatsRequest defines model for PeerRunMemoryStatsRequest.
+type PeerRunMemoryStatsRequest = map[string]interface{}
+
+// PeerRunMemoryStatsResponse defines model for PeerRunMemoryStatsResponse.
+type PeerRunMemoryStatsResponse struct {
+	Available        bool                    `json:"available"`
+	Backend          *string                 `json:"backend,omitempty"`
+	EmbeddingEnabled *bool                   `json:"embedding_enabled,omitempty"`
+	EmbeddingStatus  *string                 `json:"embedding_status,omitempty"`
+	Enabled          bool                    `json:"enabled"`
+	IndexStatus      *string                 `json:"index_status,omitempty"`
+	ItemCount        int64                   `json:"item_count"`
+	LastUpdatedAt    *time.Time              `json:"last_updated_at,omitempty"`
+	Message          *string                 `json:"message,omitempty"`
+	Metadata         *map[string]interface{} `json:"metadata,omitempty"`
+	StorageBytes     int64                   `json:"storage_bytes"`
+}
+
+// PeerRunRecallHit defines model for PeerRunRecallHit.
+type PeerRunRecallHit struct {
+	CreatedAt  *time.Time              `json:"created_at,omitempty"`
+	Id         string                  `json:"id"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+	Score      float64                 `json:"score"`
+	Snippet    string                  `json:"snippet"`
+	SourceId   *string                 `json:"source_id,omitempty"`
+	SourceType *string                 `json:"source_type,omitempty"`
+}
+
+// PeerRunRecallRequest defines model for PeerRunRecallRequest.
+type PeerRunRecallRequest struct {
+	Filters *map[string]interface{} `json:"filters,omitempty"`
+	Limit   *int                    `json:"limit,omitempty"`
+	Query   string                  `json:"query"`
+}
+
+// PeerRunRecallResponse defines model for PeerRunRecallResponse.
+type PeerRunRecallResponse struct {
+	Available bool               `json:"available"`
+	Hits      []PeerRunRecallHit `json:"hits"`
+	Message   *string            `json:"message,omitempty"`
+}
+
 // PeerRunStatus defines model for PeerRunStatus.
 type PeerRunStatus struct {
 	FriendOtp     *string            `json:"friend_otp,omitempty"`
@@ -1606,6 +1760,23 @@ type PeerRunStatus struct {
 
 // PeerRunStatusState defines model for PeerRunStatusState.
 type PeerRunStatusState string
+
+// PeerRunWorkspaceState defines model for PeerRunWorkspaceState.
+type PeerRunWorkspaceState struct {
+	ActiveWorkspaceName   *string            `json:"active_workspace_name,omitempty"`
+	AgentType             *string            `json:"agent_type,omitempty"`
+	HistoryAvailable      *bool              `json:"history_available,omitempty"`
+	MemoryStatsAvailable  *bool              `json:"memory_stats_available,omitempty"`
+	Message               *string            `json:"message,omitempty"`
+	PendingWorkspaceName  *string            `json:"pending_workspace_name,omitempty"`
+	RecallAvailable       *bool              `json:"recall_available,omitempty"`
+	RuntimeState          PeerRunStatusState `json:"runtime_state"`
+	SelectedWorkspaceName *string            `json:"selected_workspace_name,omitempty"`
+	StartedAt             *time.Time         `json:"started_at,omitempty"`
+	UpdatedAt             *time.Time         `json:"updated_at,omitempty"`
+	WorkflowName          *string            `json:"workflow_name,omitempty"`
+	WorkspaceName         string             `json:"workspace_name"`
+}
 
 // PeerStatus defines model for PeerStatus.
 type PeerStatus struct {
@@ -1866,6 +2037,18 @@ type ServerGetRunStatusRequest struct {
 // ServerGetRunStatusResponse defines model for ServerGetRunStatusResponse.
 type ServerGetRunStatusResponse = PeerRunStatus
 
+// ServerGetRunWorkspaceMemoryStatsRequest defines model for ServerGetRunWorkspaceMemoryStatsRequest.
+type ServerGetRunWorkspaceMemoryStatsRequest = PeerRunMemoryStatsRequest
+
+// ServerGetRunWorkspaceMemoryStatsResponse defines model for ServerGetRunWorkspaceMemoryStatsResponse.
+type ServerGetRunWorkspaceMemoryStatsResponse = PeerRunMemoryStatsResponse
+
+// ServerGetRunWorkspaceRequest defines model for ServerGetRunWorkspaceRequest.
+type ServerGetRunWorkspaceRequest = map[string]interface{}
+
+// ServerGetRunWorkspaceResponse defines model for ServerGetRunWorkspaceResponse.
+type ServerGetRunWorkspaceResponse = PeerRunWorkspaceState
+
 // ServerGetRuntimeRequest defines model for ServerGetRuntimeRequest.
 type ServerGetRuntimeRequest = map[string]interface{}
 
@@ -1877,6 +2060,18 @@ type ServerGetStatusRequest = map[string]interface{}
 
 // ServerGetStatusResponse defines model for ServerGetStatusResponse.
 type ServerGetStatusResponse = PeerStatus
+
+// ServerListRunWorkspaceHistoryRequest defines model for ServerListRunWorkspaceHistoryRequest.
+type ServerListRunWorkspaceHistoryRequest = PeerRunHistoryListRequest
+
+// ServerListRunWorkspaceHistoryResponse defines model for ServerListRunWorkspaceHistoryResponse.
+type ServerListRunWorkspaceHistoryResponse = PeerRunHistoryListResponse
+
+// ServerPlayRunWorkspaceHistoryRequest defines model for ServerPlayRunWorkspaceHistoryRequest.
+type ServerPlayRunWorkspaceHistoryRequest = PeerRunHistoryPlayRequest
+
+// ServerPlayRunWorkspaceHistoryResponse defines model for ServerPlayRunWorkspaceHistoryResponse.
+type ServerPlayRunWorkspaceHistoryResponse = PeerRunHistoryPlayResponse
 
 // ServerPutInfoRequest defines model for ServerPutInfoRequest.
 type ServerPutInfoRequest = DeviceInfo
@@ -1896,6 +2091,12 @@ type ServerReloadRunRequest = map[string]interface{}
 // ServerReloadRunResponse defines model for ServerReloadRunResponse.
 type ServerReloadRunResponse = PeerRunStatus
 
+// ServerReloadRunWorkspaceRequest defines model for ServerReloadRunWorkspaceRequest.
+type ServerReloadRunWorkspaceRequest = map[string]interface{}
+
+// ServerReloadRunWorkspaceResponse defines model for ServerReloadRunWorkspaceResponse.
+type ServerReloadRunWorkspaceResponse = PeerRunWorkspaceState
+
 // ServerRunSayRequest defines model for ServerRunSayRequest.
 type ServerRunSayRequest struct {
 	CredentialName *string `json:"credential_name,omitempty"`
@@ -1909,11 +2110,23 @@ type ServerRunSayResponse struct {
 	Accepted bool `json:"accepted"`
 }
 
+// ServerRunWorkspaceRecallRequest defines model for ServerRunWorkspaceRecallRequest.
+type ServerRunWorkspaceRecallRequest = PeerRunRecallRequest
+
+// ServerRunWorkspaceRecallResponse defines model for ServerRunWorkspaceRecallResponse.
+type ServerRunWorkspaceRecallResponse = PeerRunRecallResponse
+
 // ServerSetRunAgentRequest defines model for ServerSetRunAgentRequest.
 type ServerSetRunAgentRequest = AgentSelection
 
 // ServerSetRunAgentResponse defines model for ServerSetRunAgentResponse.
 type ServerSetRunAgentResponse = PeerRunAgent
+
+// ServerSetRunWorkspaceRequest defines model for ServerSetRunWorkspaceRequest.
+type ServerSetRunWorkspaceRequest = AgentSelection
+
+// ServerSetRunWorkspaceResponse defines model for ServerSetRunWorkspaceResponse.
+type ServerSetRunWorkspaceResponse = PeerRunWorkspaceState
 
 // ServerStopRunRequest defines model for ServerStopRunRequest.
 type ServerStopRunRequest = map[string]interface{}
@@ -2911,6 +3124,188 @@ func (t *RPCRequest_Params) FromServerSetRunAgentRequest(v ServerSetRunAgentRequ
 
 // MergeServerSetRunAgentRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerSetRunAgentRequest
 func (t *RPCRequest_Params) MergeServerSetRunAgentRequest(v ServerSetRunAgentRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetRunWorkspaceRequest returns the union data inside the RPCRequest_Params as a ServerGetRunWorkspaceRequest
+func (t RPCRequest_Params) AsServerGetRunWorkspaceRequest() (ServerGetRunWorkspaceRequest, error) {
+	var body ServerGetRunWorkspaceRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetRunWorkspaceRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetRunWorkspaceRequest
+func (t *RPCRequest_Params) FromServerGetRunWorkspaceRequest(v ServerGetRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetRunWorkspaceRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetRunWorkspaceRequest
+func (t *RPCRequest_Params) MergeServerGetRunWorkspaceRequest(v ServerGetRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerSetRunWorkspaceRequest returns the union data inside the RPCRequest_Params as a ServerSetRunWorkspaceRequest
+func (t RPCRequest_Params) AsServerSetRunWorkspaceRequest() (ServerSetRunWorkspaceRequest, error) {
+	var body ServerSetRunWorkspaceRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerSetRunWorkspaceRequest overwrites any union data inside the RPCRequest_Params as the provided ServerSetRunWorkspaceRequest
+func (t *RPCRequest_Params) FromServerSetRunWorkspaceRequest(v ServerSetRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerSetRunWorkspaceRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerSetRunWorkspaceRequest
+func (t *RPCRequest_Params) MergeServerSetRunWorkspaceRequest(v ServerSetRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerReloadRunWorkspaceRequest returns the union data inside the RPCRequest_Params as a ServerReloadRunWorkspaceRequest
+func (t RPCRequest_Params) AsServerReloadRunWorkspaceRequest() (ServerReloadRunWorkspaceRequest, error) {
+	var body ServerReloadRunWorkspaceRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerReloadRunWorkspaceRequest overwrites any union data inside the RPCRequest_Params as the provided ServerReloadRunWorkspaceRequest
+func (t *RPCRequest_Params) FromServerReloadRunWorkspaceRequest(v ServerReloadRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerReloadRunWorkspaceRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerReloadRunWorkspaceRequest
+func (t *RPCRequest_Params) MergeServerReloadRunWorkspaceRequest(v ServerReloadRunWorkspaceRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerListRunWorkspaceHistoryRequest returns the union data inside the RPCRequest_Params as a ServerListRunWorkspaceHistoryRequest
+func (t RPCRequest_Params) AsServerListRunWorkspaceHistoryRequest() (ServerListRunWorkspaceHistoryRequest, error) {
+	var body ServerListRunWorkspaceHistoryRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerListRunWorkspaceHistoryRequest overwrites any union data inside the RPCRequest_Params as the provided ServerListRunWorkspaceHistoryRequest
+func (t *RPCRequest_Params) FromServerListRunWorkspaceHistoryRequest(v ServerListRunWorkspaceHistoryRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerListRunWorkspaceHistoryRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerListRunWorkspaceHistoryRequest
+func (t *RPCRequest_Params) MergeServerListRunWorkspaceHistoryRequest(v ServerListRunWorkspaceHistoryRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerPlayRunWorkspaceHistoryRequest returns the union data inside the RPCRequest_Params as a ServerPlayRunWorkspaceHistoryRequest
+func (t RPCRequest_Params) AsServerPlayRunWorkspaceHistoryRequest() (ServerPlayRunWorkspaceHistoryRequest, error) {
+	var body ServerPlayRunWorkspaceHistoryRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerPlayRunWorkspaceHistoryRequest overwrites any union data inside the RPCRequest_Params as the provided ServerPlayRunWorkspaceHistoryRequest
+func (t *RPCRequest_Params) FromServerPlayRunWorkspaceHistoryRequest(v ServerPlayRunWorkspaceHistoryRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerPlayRunWorkspaceHistoryRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerPlayRunWorkspaceHistoryRequest
+func (t *RPCRequest_Params) MergeServerPlayRunWorkspaceHistoryRequest(v ServerPlayRunWorkspaceHistoryRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetRunWorkspaceMemoryStatsRequest returns the union data inside the RPCRequest_Params as a ServerGetRunWorkspaceMemoryStatsRequest
+func (t RPCRequest_Params) AsServerGetRunWorkspaceMemoryStatsRequest() (ServerGetRunWorkspaceMemoryStatsRequest, error) {
+	var body ServerGetRunWorkspaceMemoryStatsRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetRunWorkspaceMemoryStatsRequest overwrites any union data inside the RPCRequest_Params as the provided ServerGetRunWorkspaceMemoryStatsRequest
+func (t *RPCRequest_Params) FromServerGetRunWorkspaceMemoryStatsRequest(v ServerGetRunWorkspaceMemoryStatsRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetRunWorkspaceMemoryStatsRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerGetRunWorkspaceMemoryStatsRequest
+func (t *RPCRequest_Params) MergeServerGetRunWorkspaceMemoryStatsRequest(v ServerGetRunWorkspaceMemoryStatsRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerRunWorkspaceRecallRequest returns the union data inside the RPCRequest_Params as a ServerRunWorkspaceRecallRequest
+func (t RPCRequest_Params) AsServerRunWorkspaceRecallRequest() (ServerRunWorkspaceRecallRequest, error) {
+	var body ServerRunWorkspaceRecallRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerRunWorkspaceRecallRequest overwrites any union data inside the RPCRequest_Params as the provided ServerRunWorkspaceRecallRequest
+func (t *RPCRequest_Params) FromServerRunWorkspaceRecallRequest(v ServerRunWorkspaceRecallRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerRunWorkspaceRecallRequest performs a merge with any union data inside the RPCRequest_Params, using the provided ServerRunWorkspaceRecallRequest
+func (t *RPCRequest_Params) MergeServerRunWorkspaceRecallRequest(v ServerRunWorkspaceRecallRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -4871,6 +5266,188 @@ func (t *RPCResponse_Result) FromServerSetRunAgentResponse(v ServerSetRunAgentRe
 
 // MergeServerSetRunAgentResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerSetRunAgentResponse
 func (t *RPCResponse_Result) MergeServerSetRunAgentResponse(v ServerSetRunAgentResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetRunWorkspaceResponse returns the union data inside the RPCResponse_Result as a ServerGetRunWorkspaceResponse
+func (t RPCResponse_Result) AsServerGetRunWorkspaceResponse() (ServerGetRunWorkspaceResponse, error) {
+	var body ServerGetRunWorkspaceResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetRunWorkspaceResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetRunWorkspaceResponse
+func (t *RPCResponse_Result) FromServerGetRunWorkspaceResponse(v ServerGetRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetRunWorkspaceResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetRunWorkspaceResponse
+func (t *RPCResponse_Result) MergeServerGetRunWorkspaceResponse(v ServerGetRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerSetRunWorkspaceResponse returns the union data inside the RPCResponse_Result as a ServerSetRunWorkspaceResponse
+func (t RPCResponse_Result) AsServerSetRunWorkspaceResponse() (ServerSetRunWorkspaceResponse, error) {
+	var body ServerSetRunWorkspaceResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerSetRunWorkspaceResponse overwrites any union data inside the RPCResponse_Result as the provided ServerSetRunWorkspaceResponse
+func (t *RPCResponse_Result) FromServerSetRunWorkspaceResponse(v ServerSetRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerSetRunWorkspaceResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerSetRunWorkspaceResponse
+func (t *RPCResponse_Result) MergeServerSetRunWorkspaceResponse(v ServerSetRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerReloadRunWorkspaceResponse returns the union data inside the RPCResponse_Result as a ServerReloadRunWorkspaceResponse
+func (t RPCResponse_Result) AsServerReloadRunWorkspaceResponse() (ServerReloadRunWorkspaceResponse, error) {
+	var body ServerReloadRunWorkspaceResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerReloadRunWorkspaceResponse overwrites any union data inside the RPCResponse_Result as the provided ServerReloadRunWorkspaceResponse
+func (t *RPCResponse_Result) FromServerReloadRunWorkspaceResponse(v ServerReloadRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerReloadRunWorkspaceResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerReloadRunWorkspaceResponse
+func (t *RPCResponse_Result) MergeServerReloadRunWorkspaceResponse(v ServerReloadRunWorkspaceResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerListRunWorkspaceHistoryResponse returns the union data inside the RPCResponse_Result as a ServerListRunWorkspaceHistoryResponse
+func (t RPCResponse_Result) AsServerListRunWorkspaceHistoryResponse() (ServerListRunWorkspaceHistoryResponse, error) {
+	var body ServerListRunWorkspaceHistoryResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerListRunWorkspaceHistoryResponse overwrites any union data inside the RPCResponse_Result as the provided ServerListRunWorkspaceHistoryResponse
+func (t *RPCResponse_Result) FromServerListRunWorkspaceHistoryResponse(v ServerListRunWorkspaceHistoryResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerListRunWorkspaceHistoryResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerListRunWorkspaceHistoryResponse
+func (t *RPCResponse_Result) MergeServerListRunWorkspaceHistoryResponse(v ServerListRunWorkspaceHistoryResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerPlayRunWorkspaceHistoryResponse returns the union data inside the RPCResponse_Result as a ServerPlayRunWorkspaceHistoryResponse
+func (t RPCResponse_Result) AsServerPlayRunWorkspaceHistoryResponse() (ServerPlayRunWorkspaceHistoryResponse, error) {
+	var body ServerPlayRunWorkspaceHistoryResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerPlayRunWorkspaceHistoryResponse overwrites any union data inside the RPCResponse_Result as the provided ServerPlayRunWorkspaceHistoryResponse
+func (t *RPCResponse_Result) FromServerPlayRunWorkspaceHistoryResponse(v ServerPlayRunWorkspaceHistoryResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerPlayRunWorkspaceHistoryResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerPlayRunWorkspaceHistoryResponse
+func (t *RPCResponse_Result) MergeServerPlayRunWorkspaceHistoryResponse(v ServerPlayRunWorkspaceHistoryResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerGetRunWorkspaceMemoryStatsResponse returns the union data inside the RPCResponse_Result as a ServerGetRunWorkspaceMemoryStatsResponse
+func (t RPCResponse_Result) AsServerGetRunWorkspaceMemoryStatsResponse() (ServerGetRunWorkspaceMemoryStatsResponse, error) {
+	var body ServerGetRunWorkspaceMemoryStatsResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerGetRunWorkspaceMemoryStatsResponse overwrites any union data inside the RPCResponse_Result as the provided ServerGetRunWorkspaceMemoryStatsResponse
+func (t *RPCResponse_Result) FromServerGetRunWorkspaceMemoryStatsResponse(v ServerGetRunWorkspaceMemoryStatsResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerGetRunWorkspaceMemoryStatsResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerGetRunWorkspaceMemoryStatsResponse
+func (t *RPCResponse_Result) MergeServerGetRunWorkspaceMemoryStatsResponse(v ServerGetRunWorkspaceMemoryStatsResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsServerRunWorkspaceRecallResponse returns the union data inside the RPCResponse_Result as a ServerRunWorkspaceRecallResponse
+func (t RPCResponse_Result) AsServerRunWorkspaceRecallResponse() (ServerRunWorkspaceRecallResponse, error) {
+	var body ServerRunWorkspaceRecallResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromServerRunWorkspaceRecallResponse overwrites any union data inside the RPCResponse_Result as the provided ServerRunWorkspaceRecallResponse
+func (t *RPCResponse_Result) FromServerRunWorkspaceRecallResponse(v ServerRunWorkspaceRecallResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeServerRunWorkspaceRecallResponse performs a merge with any union data inside the RPCResponse_Result, using the provided ServerRunWorkspaceRecallResponse
+func (t *RPCResponse_Result) MergeServerRunWorkspaceRecallResponse(v ServerRunWorkspaceRecallResponse) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
