@@ -13,6 +13,8 @@ func TestServerWorkspacesCRUD(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t)
+	runtime := &recordingRuntimeStore{}
+	srv.RuntimeStore = runtime
 	ctx := context.Background()
 	seedWorkflow(t, srv, "workflow-1")
 
@@ -35,6 +37,9 @@ func TestServerWorkspacesCRUD(t *testing.T) {
 	}
 	if created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() {
 		t.Fatalf("CreateWorkspace() timestamps = %#v", created)
+	}
+	if len(runtime.prepared) != 1 || runtime.prepared[0] != "alpha" {
+		t.Fatalf("runtime prepared after create = %#v", runtime.prepared)
 	}
 
 	listResp, err := srv.ListWorkspaces(ctx, adminservice.ListWorkspacesRequestObject{})
@@ -80,6 +85,9 @@ func TestServerWorkspacesCRUD(t *testing.T) {
 	if updated.CreatedAt.IsZero() || updated.UpdatedAt.Before(updated.CreatedAt) {
 		t.Fatalf("PutWorkspace() timestamps = %#v", updated)
 	}
+	if len(runtime.prepared) != 2 || runtime.prepared[1] != "alpha" {
+		t.Fatalf("runtime prepared after put = %#v", runtime.prepared)
+	}
 
 	deleteResp, err := srv.DeleteWorkspace(ctx, adminservice.DeleteWorkspaceRequestObject{Name: "alpha"})
 	if err != nil {
@@ -87,6 +95,9 @@ func TestServerWorkspacesCRUD(t *testing.T) {
 	}
 	if _, ok := deleteResp.(adminservice.DeleteWorkspace200JSONResponse); !ok {
 		t.Fatalf("DeleteWorkspace() response = %#v", deleteResp)
+	}
+	if len(runtime.deleted) != 1 || runtime.deleted[0] != "alpha" {
+		t.Fatalf("runtime deleted = %#v", runtime.deleted)
 	}
 
 	getAfterDelete, err := srv.GetWorkspace(ctx, adminservice.GetWorkspaceRequestObject{Name: "alpha"})
@@ -102,6 +113,8 @@ func TestServerListWorkspacesPagination(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t)
+	runtime := &recordingRuntimeStore{}
+	srv.RuntimeStore = runtime
 	ctx := context.Background()
 	seedWorkflow(t, srv, "workflow-1")
 
@@ -153,6 +166,8 @@ func TestServerRejectsInvalidWorkspaceReferences(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t)
+	runtime := &recordingRuntimeStore{}
+	srv.RuntimeStore = runtime
 	ctx := context.Background()
 	seedWorkflow(t, srv, "workflow-1")
 
@@ -176,16 +191,16 @@ func TestServerRejectsInvalidWorkspaceReferences(t *testing.T) {
 		t.Fatalf("CreateWorkspace(nil body) response = %#v", nilCreateResp)
 	}
 
-	blankName := mustWorkspaceUpsert(t, `{
+	missingName := mustWorkspaceUpsert(t, `{
 		"name": " ",
 		"workflow_name": "workflow-1"
 	}`)
-	blankResp, err := srv.CreateWorkspace(ctx, adminservice.CreateWorkspaceRequestObject{Body: &blankName})
+	missingNameResp, err := srv.CreateWorkspace(ctx, adminservice.CreateWorkspaceRequestObject{Body: &missingName})
 	if err != nil {
-		t.Fatalf("CreateWorkspace(blank name) error = %v", err)
+		t.Fatalf("CreateWorkspace(missing name) error = %v", err)
 	}
-	if _, ok := blankResp.(adminservice.CreateWorkspace400JSONResponse); !ok {
-		t.Fatalf("CreateWorkspace(blank name) response = %#v", blankResp)
+	if _, ok := missingNameResp.(adminservice.CreateWorkspace400JSONResponse); !ok {
+		t.Fatalf("CreateWorkspace(missing name) response = %#v", missingNameResp)
 	}
 }
 
@@ -224,6 +239,8 @@ func TestServerWorkspaceConflictAndMissingDelete(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer(t)
+	runtime := &recordingRuntimeStore{}
+	srv.RuntimeStore = runtime
 	ctx := context.Background()
 	seedWorkflow(t, srv, "workflow-1")
 
@@ -248,6 +265,9 @@ func TestServerWorkspaceConflictAndMissingDelete(t *testing.T) {
 	}
 	if _, ok := deleteResp.(adminservice.DeleteWorkspace404JSONResponse); !ok {
 		t.Fatalf("DeleteWorkspace(missing) response = %#v", deleteResp)
+	}
+	if len(runtime.deleted) != 1 || runtime.deleted[0] != "missing" {
+		t.Fatalf("runtime deleted for missing workspace = %#v", runtime.deleted)
 	}
 }
 
@@ -312,4 +332,23 @@ func mustWorkspaceUpsert(t *testing.T, raw string) adminservice.WorkspaceUpsert 
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
 	return upsert
+}
+
+type recordingRuntimeStore struct {
+	prepared []string
+	deleted  []string
+}
+
+func (s *recordingRuntimeStore) PrepareWorkspace(_ context.Context, workspace string) (Runtime, error) {
+	s.prepared = append(s.prepared, workspace)
+	return Runtime{ObjectPrefix: ObjectPrefix(workspace), LocalDir: "/tmp/" + workspace}, nil
+}
+
+func (s *recordingRuntimeStore) GetWorkspaceRuntime(_ context.Context, workspace string) (Runtime, error) {
+	return Runtime{ObjectPrefix: ObjectPrefix(workspace), LocalDir: "/tmp/" + workspace}, nil
+}
+
+func (s *recordingRuntimeStore) DeleteWorkspaceRuntime(_ context.Context, workspace string) error {
+	s.deleted = append(s.deleted, workspace)
+	return nil
 }

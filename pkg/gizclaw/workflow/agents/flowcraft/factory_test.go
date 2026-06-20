@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	flowclaw "github.com/GizClaw/flowcraft/sdkx/claw"
 	"github.com/GizClaw/gizclaw-go/pkg/audio/codec/ogg"
@@ -19,12 +24,14 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peergenx"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/workspace"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
 )
 
 func TestAgentRunTurnBridgesASRClawAndTTS(t *testing.T) {
+	transformer := &recordingVoiceTransformer{}
 	a := &agent{
-		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		transformers: fakeTransformerProvider{transformer: transformer},
 		claw: fakeClaw{events: []flowclaw.Event{
 			{Type: flowclaw.EventToken, NodeID: "answer", Content: "好的"},
 			{Type: flowclaw.EventToken, NodeID: "answer", Content: "呀"},
@@ -38,7 +45,7 @@ func TestAgentRunTurnBridgesASRClawAndTTS(t *testing.T) {
 		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
 	}}
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 16)
-	if err := a.runTurn(context.Background(), input, output); err != nil {
+	if err := a.runTurn(context.Background(), input, output, a.currentOutputEpoch(), "audio"); err != nil {
 		t.Fatalf("runTurn() error = %v", err)
 	}
 	if err := output.Done(genx.Usage{}); err != nil {
@@ -58,9 +65,10 @@ func TestAgentRunTurnBridgesASRClawAndTTS(t *testing.T) {
 		{role: genx.RoleUser, label: transcriptLabel, text: "", eos: true},
 		{role: genx.RoleModel, name: "answer", label: assistantLabel, text: "好的"},
 		{role: genx.RoleModel, name: "answer", label: assistantLabel, text: "呀"},
-		{role: genx.RoleModel, name: assistantLabel, label: assistantLabel, text: "", eos: true},
 		{role: genx.RoleModel, name: "answer", label: assistantLabel, blob: []byte{0xaa}},
 		{role: genx.RoleModel, name: "answer", label: assistantLabel, blob: nil, eos: true},
+		{role: genx.RoleModel, name: assistantLabel, label: assistantLabel, text: "", eos: true},
+		{role: genx.RoleModel, name: assistantLabel, label: assistantLabel, blob: nil, eos: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("chunks len = %d, want %d: %#v", len(got), len(want), got)
@@ -73,13 +81,13 @@ func TestAgentRunTurnBridgesASRClawAndTTS(t *testing.T) {
 		if want.name != "" && chunk.Name != want.name {
 			t.Fatalf("chunk[%d] name = %q, want %q", i, chunk.Name, want.name)
 		}
-		if want.text != "" || i == 1 || i == 4 {
+		if want.text != "" || i == 1 || i == 6 {
 			text, _ := chunk.Part.(genx.Text)
 			if string(text) != want.text {
 				t.Fatalf("chunk[%d] text = %q, want %q", i, text, want.text)
 			}
 		}
-		if want.blob != nil || i == 6 {
+		if want.blob != nil || i == 5 || i == 7 {
 			blob, ok := chunk.Part.(*genx.Blob)
 			if !ok || blob.MIMEType != "audio/opus" || !reflect.DeepEqual(blob.Data, want.blob) {
 				t.Fatalf("chunk[%d] blob = %#v", i, chunk.Part)
@@ -104,7 +112,7 @@ func TestAgentRunTurnForksAssistantTextToTTSInput(t *testing.T) {
 	if err := a.runTurn(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
 		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
 		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
-	}}, output); err != nil {
+	}}, output, a.currentOutputEpoch(), "audio"); err != nil {
 		t.Fatalf("runTurn() error = %v", err)
 	}
 	if err := output.Done(genx.Usage{}); err != nil {
@@ -128,22 +136,83 @@ func TestAgentRunTurnForksAssistantTextToTTSInput(t *testing.T) {
 	if !reflect.DeepEqual(assistantText, []string{"好的", "呀"}) {
 		t.Fatalf("assistant text chunks = %#v", assistantText)
 	}
-	if firstAudio >= 0 {
-		textDoneIndex := -1
-		for i, chunk := range chunks {
-			if chunk.Ctrl != nil && chunk.Ctrl.Label == assistantLabel && chunk.IsEndOfStream() {
-				if _, ok := chunk.Part.(genx.Text); ok {
-					textDoneIndex = i
-					break
-				}
-			}
-		}
-		if textDoneIndex < 0 || firstAudio < textDoneIndex {
-			t.Fatalf("audio arrived before assistant text done: firstAudio=%d textDone=%d chunks=%#v", firstAudio, textDoneIndex, chunks)
-		}
+	if firstAudio < 0 {
+		t.Fatalf("missing assistant audio chunks: %#v", chunks)
 	}
 	if got := transformer.Texts(); !reflect.DeepEqual(got, []string{"好的", "呀"}) {
 		t.Fatalf("TTS input texts = %#v, want copied assistant tokens", got)
+	}
+}
+
+func TestAgentRunTurnFlushesTTSWhenNodeChanges(t *testing.T) {
+	transformer := &recordingVoiceTransformer{}
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: transformer},
+		claw: fakeClaw{events: []flowclaw.Event{
+			{Type: flowclaw.EventToken, NodeID: "checkpoint", Content: "第一段"},
+			{Type: flowclaw.EventToken, NodeID: "audit", Content: "第二段"},
+		}},
+		asrModel:     "asr",
+		defaultVoice: "voice",
+		nodeVoices: map[string]string{
+			"checkpoint": "voice-answer",
+			"audit":      "voice-answer",
+		},
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 16)
+	if err := a.runClawTextTurn(context.Background(), "开始", "audio", output, a.currentOutputEpoch()); err != nil {
+		t.Fatalf("runClawTextTurn() error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+
+	firstNodeAudio := -1
+	secondNodeText := -1
+	for i, chunk := range chunks {
+		if chunk.Ctrl != nil && chunk.Ctrl.Label == assistantLabel && chunk.Name == "audit" {
+			if text, ok := chunk.Part.(genx.Text); ok && text == "第二段" {
+				secondNodeText = i
+			}
+		}
+		if blob, ok := chunk.Part.(*genx.Blob); ok && blob.MIMEType == "audio/opus" && len(blob.Data) > 0 && chunk.Name == "checkpoint" {
+			firstNodeAudio = i
+		}
+	}
+	if firstNodeAudio < 0 || secondNodeText < 0 || firstNodeAudio > secondNodeText {
+		t.Fatalf("first node audio index=%d second node text index=%d chunks=%#v", firstNodeAudio, secondNodeText, chunks)
+	}
+	if got := transformer.Texts(); !reflect.DeepEqual(got, []string{"第一段", "第二段"}) {
+		t.Fatalf("TTS input texts = %#v, want both node texts flushed", got)
+	}
+}
+
+func TestAgentRunTurnSkipsTTSForUnconfiguredNodeVoice(t *testing.T) {
+	transformer := &recordingVoiceTransformer{}
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: transformer},
+		claw: fakeClaw{events: []flowclaw.Event{
+			{Type: flowclaw.EventToken, NodeID: "answer", Content: "好的。"},
+			{Type: flowclaw.EventToken, NodeID: "tool_call", Content: `<function name="weather_forecast"><parameter name="city">上海</parameter></function>`},
+		}},
+		asrModel:     "asr",
+		defaultVoice: "voice",
+		nodeVoices:   map[string]string{"answer": "voice-answer"},
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 16)
+	if err := a.runTurn(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
+		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
+		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
+	}}, output, a.currentOutputEpoch(), "audio"); err != nil {
+		t.Fatalf("runTurn() error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	_ = drainChunks(t, output.Stream())
+	if got := transformer.Texts(); !reflect.DeepEqual(got, []string{"好的。"}) {
+		t.Fatalf("TTS input texts = %#v, want only answer node text", got)
 	}
 }
 
@@ -158,8 +227,10 @@ func TestAgentTransformRunsTurnAndClosesOutput(t *testing.T) {
 		nodeVoices:   map[string]string{"answer": "voice-answer"},
 	}
 	stream, err := a.Transform(context.Background(), "ignored", &sliceStream{chunks: []*genx.MessageChunk{
-		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
-		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
+		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{0xff}}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
+		genx.NewBeginOfStream("audio-1"),
+		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1", EndOfStream: true}},
 	}})
 	if err != nil {
 		t.Fatalf("Transform() error = %v", err)
@@ -167,6 +238,642 @@ func TestAgentTransformRunsTurnAndClosesOutput(t *testing.T) {
 	chunks := drainChunks(t, stream)
 	if len(chunks) == 0 {
 		t.Fatal("Transform() produced no chunks")
+	}
+	for _, chunk := range chunks {
+		if chunk.Ctrl != nil && chunk.Ctrl.StreamID != "" && chunk.Ctrl.StreamID != "audio-1" {
+			t.Fatalf("unexpected stream id %q in chunk %#v", chunk.Ctrl.StreamID, chunk)
+		}
+	}
+}
+
+func TestAgentTransformSelfStartsEmptyConversation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	claw := &recordingClaw{
+		events: []flowclaw.Event{{Type: flowclaw.EventToken, NodeID: "opening", Content: "欢迎开始"}},
+		handler: func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/debug/history" {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`{"enabled":true,"count":0,"messages":[]}`))
+		},
+	}
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		claw:         claw,
+		starts:       "self",
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 2)
+	stream, err := a.Transform(ctx, "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	chunk := nextChunkWithTimeout(t, stream)
+	if chunk.Ctrl == nil || chunk.Ctrl.StreamID != selfStartStreamID || chunk.Name != "opening" {
+		t.Fatalf("self-start chunk = %#v", chunk)
+	}
+	if text, _ := chunk.Part.(genx.Text); text != "欢迎开始" {
+		t.Fatalf("self-start text = %q", text)
+	}
+	if got := claw.Texts(); !reflect.DeepEqual(got, []string{""}) {
+		t.Fatalf("claw texts = %#v, want empty self-start turn", got)
+	}
+}
+
+func TestAgentTransformDoesNotSelfStartWithExistingHistory(t *testing.T) {
+	claw := &recordingClaw{
+		events: []flowclaw.Event{{Type: flowclaw.EventToken, NodeID: "opening", Content: "不该出现"}},
+		handler: func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/debug/history" {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`{"enabled":true,"count":1,"messages":[{"role":"assistant","parts":[{"type":"text","text":"已开场"}]}]}`))
+		},
+	}
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		claw:         claw,
+		starts:       "self",
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 2)
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input done: %v", err)
+	}
+	if _, err := stream.Next(); !agenthost.IsStreamDone(err) && !errors.Is(err, io.EOF) {
+		t.Fatalf("stream.Next() error = %v, want done", err)
+	}
+	if got := claw.Texts(); len(got) != 0 {
+		t.Fatalf("claw texts = %#v, want no self-start", got)
+	}
+}
+
+func TestAgentTransformRunsMultipleTurns(t *testing.T) {
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		claw: fakeClaw{events: []flowclaw.Event{
+			{Type: flowclaw.EventToken, NodeID: "answer", Content: "收到"},
+		}},
+		asrModel:     "asr",
+		defaultVoice: "voice",
+		nodeVoices:   map[string]string{"answer": "voice-answer"},
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-1"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add first turn: %v", err)
+	}
+	var chunks []*genx.MessageChunk
+	for {
+		chunk := nextChunkWithTimeout(t, stream)
+		chunks = append(chunks, chunk)
+		if chunk.Ctrl != nil && chunk.Ctrl.StreamID == "audio-1" && chunk.Ctrl.EndOfStream {
+			if _, ok := chunk.Part.(*genx.Blob); ok {
+				break
+			}
+		}
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-2"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-2"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-2", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add second turn: %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input Done() error = %v", err)
+	}
+
+	chunks = append(chunks, drainChunks(t, stream)...)
+	seenTranscript := map[string]bool{}
+	seenAssistant := map[string]bool{}
+	seenAudio := map[string]bool{}
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil {
+			continue
+		}
+		streamID := chunk.Ctrl.StreamID
+		switch {
+		case chunk.Ctrl.Label == transcriptLabel:
+			seenTranscript[streamID] = true
+		case chunk.Ctrl.Label == assistantLabel:
+			if text, ok := chunk.Part.(genx.Text); ok && strings.TrimSpace(string(text)) != "" {
+				seenAssistant[streamID] = true
+			}
+			if blob, ok := chunk.Part.(*genx.Blob); ok && len(blob.Data) > 0 {
+				seenAudio[streamID] = true
+			}
+		}
+	}
+	for _, streamID := range []string{"audio-1", "audio-2"} {
+		if !seenTranscript[streamID] || !seenAssistant[streamID] || !seenAudio[streamID] {
+			t.Fatalf("stream %s seen transcript=%t assistant=%t audio=%t chunks=%#v", streamID, seenTranscript[streamID], seenAssistant[streamID], seenAudio[streamID], chunks)
+		}
+	}
+}
+
+func TestAgentTransformInterruptsCurrentTurnOnNextBOS(t *testing.T) {
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 16)
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		claw:         &interruptClaw{},
+		asrModel:     "asr",
+		defaultVoice: "voice",
+		nodeVoices:   map[string]string{"answer": "voice-answer"},
+	}
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-1"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add first turn: %v", err)
+	}
+
+	var chunks []*genx.MessageChunk
+	for {
+		chunk := nextChunkWithTimeout(t, stream)
+		chunks = append(chunks, chunk)
+		if chunk.Ctrl != nil && chunk.Ctrl.StreamID == "audio-1" {
+			if text, ok := chunk.Part.(genx.Text); ok && string(text) == "旧回复" {
+				break
+			}
+		}
+	}
+
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-2"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-2"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-2", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add second turn: %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input Done() error = %v", err)
+	}
+	chunks = append(chunks, drainChunks(t, stream)...)
+
+	var interruptedTextEOS, interruptedAudioEOS, secondText bool
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil {
+			continue
+		}
+		if chunk.Ctrl.StreamID == "audio-1" && chunk.Ctrl.EndOfStream && chunk.Ctrl.Error == interruptedError {
+			switch chunk.Part.(type) {
+			case genx.Text:
+				interruptedTextEOS = true
+			case *genx.Blob:
+				interruptedAudioEOS = true
+			}
+		}
+		if chunk.Ctrl.StreamID == "audio-2" {
+			if text, ok := chunk.Part.(genx.Text); ok && string(text) == "新回复" {
+				secondText = true
+			}
+		}
+	}
+	if !interruptedTextEOS || !interruptedAudioEOS || !secondText {
+		t.Fatalf("interrupt/result flags textEOS=%t audioEOS=%t secondText=%t chunks=%#v", interruptedTextEOS, interruptedAudioEOS, secondText, chunks)
+	}
+}
+
+func TestAgentRealtimeModeRunsDefiniteASRChunksAsTurns(t *testing.T) {
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: &realtimeASRTransformer{texts: []string{"第一段", "第二段"}}},
+		claw: fakeEchoClaw{
+			nodeID: "answer",
+			prefix: "回复:",
+		},
+		asrModel:  "asr",
+		inputMode: inputModeRealtime,
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-1"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add realtime audio: %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input Done() error = %v", err)
+	}
+	chunks := drainChunks(t, stream)
+
+	transcripts := map[string]string{}
+	assistant := map[string]string{}
+	interruptedTextEOS := map[string]bool{}
+	interruptedAudioEOS := map[string]bool{}
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil {
+			continue
+		}
+		if chunk.IsEndOfStream() && chunk.Ctrl.Error == interruptedError {
+			switch chunk.Part.(type) {
+			case genx.Text:
+				interruptedTextEOS[chunk.Ctrl.StreamID] = true
+			case *genx.Blob:
+				interruptedAudioEOS[chunk.Ctrl.StreamID] = true
+			}
+			continue
+		}
+		if chunk.IsEndOfStream() {
+			continue
+		}
+		text, ok := chunk.Part.(genx.Text)
+		if !ok || text == "" {
+			continue
+		}
+		switch chunk.Ctrl.Label {
+		case transcriptLabel:
+			transcripts[chunk.Ctrl.StreamID] += string(text)
+		case assistantLabel:
+			assistant[chunk.Ctrl.StreamID] += string(text)
+		}
+	}
+	if transcripts["audio-1:rt:1"] != "第一段" || transcripts["audio-1:rt:2"] != "第二段" {
+		t.Fatalf("transcripts by stream = %#v, chunks=%#v", transcripts, chunks)
+	}
+	if !interruptedTextEOS["audio-1:rt:1"] || !interruptedAudioEOS["audio-1:rt:1"] {
+		t.Fatalf("interrupted flags text=%#v audio=%#v chunks=%#v", interruptedTextEOS, interruptedAudioEOS, chunks)
+	}
+	if assistant["audio-1:rt:2"] != "回复:第二段" {
+		t.Fatalf("assistant by stream = %#v, chunks=%#v", assistant, chunks)
+	}
+}
+
+func TestAgentRealtimeModeInterruptsOnTranscriptBOS(t *testing.T) {
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: &realtimeASRTransformer{chunks: []*genx.MessageChunk{
+			{Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", BeginOfStream: true}},
+			{Part: genx.Text("第一段"), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript"}},
+			{Part: genx.Text(""), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", EndOfStream: true}},
+			{Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", BeginOfStream: true}},
+			{Part: genx.Text("第二"), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript"}},
+			{Part: genx.Text("第二段"), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript"}},
+			{Part: genx.Text(""), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", EndOfStream: true}},
+		}}},
+		claw:      &interruptClaw{},
+		asrModel:  "asr",
+		inputMode: inputModeRealtime,
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-1"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{3}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{4}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{5}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{6}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{7}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1", EndOfStream: true}},
+	); err != nil {
+		t.Fatalf("add realtime audio: %v", err)
+	}
+	if err := input.Done(genx.Usage{}); err != nil {
+		t.Fatalf("input Done() error = %v", err)
+	}
+	chunks := drainChunks(t, stream)
+
+	transcripts := map[string]string{}
+	var interruptedTextEOS, interruptedAudioEOS, partialTranscript bool
+	var secondAssistant bool
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil {
+			continue
+		}
+		if chunk.IsEndOfStream() && chunk.Ctrl.Error == interruptedError {
+			switch chunk.Part.(type) {
+			case genx.Text:
+				interruptedTextEOS = true
+			case *genx.Blob:
+				interruptedAudioEOS = true
+			}
+			continue
+		}
+		if chunk.IsEndOfStream() {
+			continue
+		}
+		text, ok := chunk.Part.(genx.Text)
+		if !ok {
+			continue
+		}
+		if chunk.Ctrl.Label == transcriptLabel {
+			transcripts[chunk.Ctrl.StreamID] += string(text)
+			if string(text) == "第二" {
+				partialTranscript = true
+			}
+		}
+		if chunk.Ctrl.Label == assistantLabel && string(text) == "新回复" {
+			secondAssistant = true
+		}
+	}
+	if !interruptedTextEOS || !interruptedAudioEOS {
+		t.Fatalf("partial ASR did not interrupt current turn: textEOS=%t audioEOS=%t chunks=%#v", interruptedTextEOS, interruptedAudioEOS, chunks)
+	}
+	if partialTranscript {
+		t.Fatalf("partial ASR chunk was emitted as transcript: transcripts=%#v chunks=%#v", transcripts, chunks)
+	}
+	if transcripts["audio-1:rt:1"] != "第一段" || transcripts["audio-1:rt:2"] != "第二段" {
+		t.Fatalf("transcripts by stream = %#v, chunks=%#v", transcripts, chunks)
+	}
+	if !secondAssistant {
+		t.Fatalf("second definite transcript did not reach claw: chunks=%#v", chunks)
+	}
+}
+
+func TestAgentRealtimeModePropagatesASRErrorWhileTurnActive(t *testing.T) {
+	wantErr := errors.New("asr exploded")
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: &realtimeASRTransformer{
+			chunks: []*genx.MessageChunk{
+				{Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", BeginOfStream: true}},
+				{Part: genx.Text("第一段"), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript"}},
+				{Part: genx.Text(""), Ctrl: &genx.StreamCtrl{StreamID: "audio-1", Label: "transcript", EndOfStream: true}},
+			},
+			err: wantErr,
+		}},
+		claw:      &interruptClaw{},
+		asrModel:  "asr",
+		inputMode: inputModeRealtime,
+	}
+	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	stream, err := a.Transform(context.Background(), "ignored", input.Stream())
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Add(
+		genx.NewBeginOfStream("audio-1"),
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{3}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+		&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{4}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-1"}},
+	); err != nil {
+		t.Fatalf("add realtime audio: %v", err)
+	}
+
+	for {
+		_, err := stream.Next()
+		if err == nil {
+			continue
+		}
+		if !strings.Contains(err.Error(), "flowcraft: read ASR") || !errors.Is(err, wantErr) {
+			t.Fatalf("stream error = %v, want wrapped ASR error", err)
+		}
+		break
+	}
+}
+
+func TestAgentListHistoryUsesClawDebugHistory(t *testing.T) {
+	a := &agent{claw: fakeDebugClaw{handler: func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/debug/history" {
+			t.Fatalf("debug request = %s %s, want GET /debug/history", r.Method, r.URL.Path)
+		}
+		writeTestJSON(t, w, map[string]any{
+			"enabled":    true,
+			"context_id": "ctx",
+			"count":      2,
+			"messages": []map[string]any{
+				{"role": "user", "parts": []map[string]any{{"type": "text", "text": "你好"}}},
+				{"role": "assistant", "parts": []map[string]any{{"type": "text", "text": "好的"}}},
+			},
+		})
+	}}}
+	limit := 1
+	resp, err := a.ListHistory(context.Background(), apitypes.PeerRunHistoryListRequest{Limit: &limit})
+	if err != nil {
+		t.Fatalf("ListHistory() error = %v", err)
+	}
+	if !resp.Available || !resp.HasNext || resp.NextCursor == nil || *resp.NextCursor != "1" {
+		t.Fatalf("history response = %+v", resp)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(resp.Items))
+	}
+	item := resp.Items[0]
+	if item.Id != "ctx:000000" || item.Transcript == nil || *item.Transcript != "你好" || item.Actor == nil || *item.Actor != "user" {
+		t.Fatalf("history item = %+v", item)
+	}
+}
+
+func TestAgentMemoryStatsUsesClawDebugMemoryAndWorkspaceFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "memory", "metadata"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory", "metadata", "facts.jsonl"), []byte("{\"id\":\"1\"}\n{\"id\":\"2\"}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile facts error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "memory", "index.bin"), []byte{1, 2, 3}, 0o644); err != nil {
+		t.Fatalf("WriteFile index error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "state"), 0o755); err != nil {
+		t.Fatalf("MkdirAll state error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state", "runtime.json"), []byte(`{"active":true}`), 0o644); err != nil {
+		t.Fatalf("WriteFile state error = %v", err)
+	}
+	a := &agent{localDir: dir, claw: fakeDebugClaw{handler: func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/debug/memory" {
+			t.Fatalf("debug request = %s %s, want GET /debug/memory", r.Method, r.URL.Path)
+		}
+		writeTestJSON(t, w, map[string]any{
+			"enabled": true,
+			"root":    "memory",
+			"scope":   map[string]any{"runtime_id": "ctx"},
+			"write":   map[string]any{"save_conversation": true},
+			"recall":  map[string]any{"enabled": true, "top_k": 5},
+			"retrieval": map[string]any{
+				"backend": "bbh",
+			},
+			"layout": map[string]any{"kind": "default"},
+		})
+	}}}
+	resp, err := a.MemoryStats(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("MemoryStats() error = %v", err)
+	}
+	wantStorageBytes := int64(len("{\"id\":\"1\"}\n{\"id\":\"2\"}\n") + 3 + len(`{"active":true}`))
+	if !resp.Available || !resp.Enabled || resp.ItemCount != 2 || resp.StorageBytes != wantStorageBytes {
+		t.Fatalf("memory stats = %+v", resp)
+	}
+	if resp.Backend == nil || *resp.Backend != "bbh" {
+		t.Fatalf("memory backend = %v, want bbh", resp.Backend)
+	}
+	if resp.Metadata == nil || (*resp.Metadata)["memory_storage_bytes"] != int64(len("{\"id\":\"1\"}\n{\"id\":\"2\"}\n")+3) {
+		t.Fatalf("metadata = %+v, want memory_storage_bytes", resp.Metadata)
+	}
+}
+
+func TestAgentMemoryStatsReportsUnavailableMessage(t *testing.T) {
+	resp, err := (&agent{}).MemoryStats(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("MemoryStats() error = %v", err)
+	}
+	if resp.Available || resp.Message == nil || !strings.Contains(*resp.Message, "debug API") {
+		t.Fatalf("MemoryStats() = %+v, want unavailable message", resp)
+	}
+	if resp.Metadata != nil {
+		t.Fatalf("MemoryStats() metadata = %+v, want nil", resp.Metadata)
+	}
+}
+
+func TestAgentRecallUsesClawDebugRecall(t *testing.T) {
+	a := &agent{claw: fakeDebugClaw{handler: func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/debug/recall" {
+			t.Fatalf("debug request = %s %s, want POST /debug/recall", r.Method, r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode debug recall payload: %v", err)
+		}
+		if payload["text"] != "咖啡" || payload["top_k"] != float64(3) {
+			t.Fatalf("debug recall payload = %#v", payload)
+		}
+		writeTestJSON(t, w, map[string]any{
+			"enabled": true,
+			"count":   1,
+			"hits": []map[string]any{{
+				"id":        "fact-1",
+				"kind":      "note",
+				"content":   "喜欢咖啡",
+				"subject":   "user",
+				"predicate": "likes",
+				"object":    "coffee",
+				"entities":  []string{"coffee"},
+				"score":     0.8,
+				"sources":   []string{"turn-1"},
+			}},
+		})
+	}}}
+	limit := 3
+	resp, err := a.Recall(context.Background(), apitypes.PeerRunRecallRequest{Query: "咖啡", Limit: &limit})
+	if err != nil {
+		t.Fatalf("Recall() error = %v", err)
+	}
+	if !resp.Available || len(resp.Hits) != 1 {
+		t.Fatalf("recall response = %+v", resp)
+	}
+	hit := resp.Hits[0]
+	if hit.Id != "fact-1" || hit.Snippet != "喜欢咖啡" || hit.Score != 0.8 || hit.SourceType == nil || *hit.SourceType != "note" || hit.SourceId == nil || *hit.SourceId != "turn-1" {
+		t.Fatalf("recall hit = %+v", hit)
+	}
+}
+
+func TestAgentPlayHistoryEmitsAssistantTextAndAudio(t *testing.T) {
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		defaultVoice: "voice-answer",
+		claw: fakeDebugClaw{handler: func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/debug/history" {
+				t.Fatalf("debug request = %s %s, want GET /debug/history", r.Method, r.URL.Path)
+			}
+			writeTestJSON(t, w, map[string]any{
+				"enabled":    true,
+				"context_id": "ctx",
+				"count":      2,
+				"messages": []map[string]any{
+					{"role": "user", "parts": []map[string]any{{"type": "text", "text": "你好"}}},
+					{"role": "assistant", "parts": []map[string]any{{"type": "text", "text": "好的"}}},
+				},
+			})
+		}},
+	}
+	a.setActiveOutput(output, "audio")
+	resp, err := a.PlayHistory(context.Background(), apitypes.PeerRunHistoryPlayRequest{HistoryId: "ctx:000001"})
+	if err != nil {
+		t.Fatalf("PlayHistory() error = %v", err)
+	}
+	if !resp.Accepted || resp.State != "played" {
+		t.Fatalf("PlayHistory() response = %+v", resp)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+	var textChunks []string
+	var audioChunks int
+	for _, chunk := range chunks {
+		if text, ok := chunk.Part.(genx.Text); ok && text != "" {
+			textChunks = append(textChunks, string(text))
+		}
+		if blob, ok := chunk.Part.(*genx.Blob); ok && blob.MIMEType == "audio/opus" && len(blob.Data) > 0 {
+			audioChunks++
+		}
+	}
+	if !reflect.DeepEqual(textChunks, []string{"好的"}) || audioChunks != 1 {
+		t.Fatalf("replay chunks text=%#v audio=%d all=%#v", textChunks, audioChunks, chunks)
+	}
+}
+
+func TestAgentPlayHistoryInterruptsStaleOutputEpoch(t *testing.T) {
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		defaultVoice: "voice-answer",
+		claw: fakeDebugClaw{handler: func(w http.ResponseWriter, r *http.Request) {
+			writeTestJSON(t, w, map[string]any{
+				"enabled":    true,
+				"context_id": "ctx",
+				"count":      1,
+				"messages": []map[string]any{
+					{"role": "assistant", "parts": []map[string]any{{"type": "text", "text": "历史回复"}}},
+				},
+			})
+		}},
+	}
+	staleEpoch := a.setActiveOutput(output, "audio")
+	if err := a.addOutput(output, staleEpoch, textChunk(genx.RoleModel, "answer", "audio", assistantLabel, "旧回复1", false)); err != nil {
+		t.Fatalf("add stale prelude: %v", err)
+	}
+	resp, err := a.PlayHistory(context.Background(), apitypes.PeerRunHistoryPlayRequest{HistoryId: "ctx:000000"})
+	if err != nil {
+		t.Fatalf("PlayHistory() error = %v", err)
+	}
+	if !resp.Accepted {
+		t.Fatalf("PlayHistory() response = %+v", resp)
+	}
+	if err := a.addOutput(output, staleEpoch, textChunk(genx.RoleModel, "answer", "audio", assistantLabel, "旧回复2", false)); err != nil {
+		t.Fatalf("add stale after replay: %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+	var texts []string
+	for _, chunk := range chunks {
+		if text, ok := chunk.Part.(genx.Text); ok && text != "" {
+			texts = append(texts, string(text))
+		}
+	}
+	if !reflect.DeepEqual(texts, []string{"旧回复1", "历史回复"}) {
+		t.Fatalf("texts after replay interrupt = %#v, want stale post-replay suppressed", texts)
 	}
 }
 
@@ -181,21 +888,23 @@ func TestFactoryNewAgentWritesClawConfig(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
-	workflow := testFlowcraftWorkflow(map[string]any{
-		"flowcraft": map[string]any{
-			"history": map[string]any{"enabled": false},
-			"memory":  map[string]any{"enabled": false},
-		},
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
+	workflow := testFlowcraftWorkflow(apitypes.FlowcraftWorkflowSpec{
+		"history": map[string]any{"enabled": false},
+		"memory":  map[string]any{"enabled": false},
 		"voice_adapter": map[string]any{
 			"asr_model":     "asr",
 			"default_voice": "voice",
 		},
 	})
 	transformer, err := (Factory{GenX: service}).NewAgent(ctx, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 		Workflow:  workflow,
-		Runtime:   agenthost.WorkspaceRuntime{LocalDir: t.TempDir()},
+		Runtime:   workspace.Runtime{LocalDir: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatalf("NewAgent() error = %v", err)
@@ -207,6 +916,149 @@ func TestFactoryNewAgentWritesClawConfig(t *testing.T) {
 	})
 	if transformer == nil {
 		t.Fatal("NewAgent() agent = nil")
+	}
+	gotAgent, ok := transformer.(*agent)
+	if !ok {
+		t.Fatalf("NewAgent() type = %T, want *agent", transformer)
+	}
+	if gotAgent.inputMode != inputModePushToTalk {
+		t.Fatalf("agent inputMode = %q, want %q", gotAgent.inputMode, inputModePushToTalk)
+	}
+}
+
+func TestFactoryNewAgentReadsWorkspaceInputMode(t *testing.T) {
+	ctx := context.Background()
+	events := []string{}
+	service := peergenx.New(peergenx.Service{
+		Peer:            testPeer{},
+		Authorizer:      recordingAuthorizer{events: &events},
+		Models:          fakeModels{events: &events},
+		Voices:          fakeVoices{events: &events},
+		Credentials:     fakeCredentials{events: &events},
+		ProviderTenants: fakeTenants{events: &events},
+	})
+	generateModel := "chat"
+	input := apitypes.WorkspaceInputModeRealtime
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel, Input: &input}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
+	workflow := testFlowcraftWorkflow(apitypes.FlowcraftWorkflowSpec{
+		"voice_adapter": map[string]any{
+			"asr_model":     "asr",
+			"default_voice": "voice",
+		},
+	})
+	transformer, err := (Factory{GenX: service}).NewAgent(ctx, agenthost.Spec{
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
+		Workflow:  workflow,
+		Runtime:   workspace.Runtime{LocalDir: t.TempDir()},
+	})
+	if err != nil {
+		t.Fatalf("NewAgent() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if a, ok := transformer.(*agent); ok && a.claw != nil {
+			_ = a.claw.CloseContext(context.Background())
+		}
+	})
+	gotAgent, ok := transformer.(*agent)
+	if !ok {
+		t.Fatalf("NewAgent() type = %T, want *agent", transformer)
+	}
+	if gotAgent.inputMode != inputModeRealtime {
+		t.Fatalf("agent inputMode = %q, want %q", gotAgent.inputMode, inputModeRealtime)
+	}
+}
+
+func TestFactoryNewAgentRejectsNonFlowcraftWorkspaceParameters(t *testing.T) {
+	ctx := context.Background()
+	events := []string{}
+	service := peergenx.New(peergenx.Service{
+		Peer:            testPeer{},
+		Authorizer:      recordingAuthorizer{events: &events},
+		Models:          fakeModels{events: &events},
+		Voices:          fakeVoices{events: &events},
+		Credentials:     fakeCredentials{events: &events},
+		ProviderTenants: fakeTenants{events: &events},
+	})
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromASTTranslateWorkspaceParameters(apitypes.ASTTranslateWorkspaceParameters{TranslationModel: ptrString("translate")}); err != nil {
+		t.Fatalf("FromASTTranslateWorkspaceParameters() error = %v", err)
+	}
+	workflow := testFlowcraftWorkflow(apitypes.FlowcraftWorkflowSpec{
+		"voice_adapter": map[string]any{
+			"asr_model":     "asr",
+			"default_voice": "voice",
+		},
+	})
+	_, err := (Factory{GenX: service}).NewAgent(ctx, agenthost.Spec{
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
+		Workflow:  workflow,
+		Runtime:   workspace.Runtime{LocalDir: t.TempDir()},
+	})
+	if err == nil || !strings.Contains(err.Error(), "decode workspace parameters") {
+		t.Fatalf("NewAgent() error = %v, want workspace parameter decode failure", err)
+	}
+}
+
+func TestFlowcraftConversationSettingsReadsWorkspaceInitiative(t *testing.T) {
+	initiative := apitypes.FlowcraftConversationParametersInitiativeAgent
+	policyValue := apitypes.FlowcraftConversationParametersAgentInitiativePolicyOnReload
+	workspaceParams := apitypes.FlowcraftWorkspaceParameters{
+		Conversation: &apitypes.FlowcraftConversationParameters{
+			Initiative:            &initiative,
+			AgentInitiativePolicy: &policyValue,
+		},
+	}
+	starts, policy := flowcraftConversationSettings(&workspaceParams, map[string]any{
+		"conversation": map[string]any{"starts": "peer"},
+	})
+	if starts != "self" || policy != "on_reload" {
+		t.Fatalf("settings = %q/%q, want self/on_reload", starts, policy)
+	}
+
+	initiative = apitypes.FlowcraftConversationParametersInitiativePeer
+	workspaceParams = apitypes.FlowcraftWorkspaceParameters{
+		Conversation: &apitypes.FlowcraftConversationParameters{Initiative: &initiative},
+	}
+	starts, policy = flowcraftConversationSettings(&workspaceParams, map[string]any{
+		"conversation": map[string]any{"starts": "self"},
+	})
+	if starts != "peer" || policy != "once_when_empty" {
+		t.Fatalf("settings = %q/%q, want peer/once_when_empty", starts, policy)
+	}
+
+	starts, policy = flowcraftConversationSettings(nil, map[string]any{
+		"conversation": map[string]any{"starts": "self"},
+	})
+	if starts != "self" || policy != "on_reload" {
+		t.Fatalf("settings = %q/%q, want self/on_reload", starts, policy)
+	}
+
+	initiative = apitypes.FlowcraftConversationParametersInitiativeAgent
+	workspaceParams = apitypes.FlowcraftWorkspaceParameters{
+		Conversation: &apitypes.FlowcraftConversationParameters{Initiative: &initiative},
+	}
+	starts, policy = flowcraftConversationSettings(&workspaceParams, map[string]any{
+		"conversation": map[string]any{"starts": "peer"},
+	})
+	if starts != "self" || policy != "on_reload" {
+		t.Fatalf("settings = %q/%q, want self/on_reload", starts, policy)
+	}
+
+	policyValue = apitypes.FlowcraftConversationParametersAgentInitiativePolicyOnceWhenEmpty
+	workspaceParams = apitypes.FlowcraftWorkspaceParameters{
+		Conversation: &apitypes.FlowcraftConversationParameters{
+			Initiative:            &initiative,
+			AgentInitiativePolicy: &policyValue,
+		},
+	}
+	starts, policy = flowcraftConversationSettings(&workspaceParams, map[string]any{
+		"conversation": map[string]any{"starts": "peer"},
+	})
+	if starts != "self" || policy != "once_when_empty" {
+		t.Fatalf("settings = %q/%q, want self/once_when_empty", starts, policy)
 	}
 }
 
@@ -221,18 +1073,21 @@ func TestFactoryNewAgentFailsClosedOnDeniedVoice(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
-	workflow := testFlowcraftWorkflow(map[string]any{
-		"flowcraft": map[string]any{},
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
+	workflow := testFlowcraftWorkflow(apitypes.FlowcraftWorkflowSpec{
 		"voice_adapter": map[string]any{
 			"asr_model":     "asr",
 			"default_voice": "voice",
 		},
 	})
 	_, err := (Factory{GenX: service}).NewAgent(ctx, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 		Workflow:  workflow,
-		Runtime:   agenthost.WorkspaceRuntime{LocalDir: t.TempDir()},
+		Runtime:   workspace.Runtime{LocalDir: t.TempDir()},
 	})
 	if err == nil || !errors.Is(err, peergenx.ErrDenied) || !strings.Contains(err.Error(), `resolve voice "voice"`) {
 		t.Fatalf("NewAgent() error = %v, want denied voice", err)
@@ -240,7 +1095,7 @@ func TestFactoryNewAgentFailsClosedOnDeniedVoice(t *testing.T) {
 }
 
 func TestParseWorkflowConfigTrimsNodeVoices(t *testing.T) {
-	cfg, err := parseWorkflowConfig(agenthost.Spec{Workflow: testFlowcraftWorkflow(map[string]any{
+	cfg, err := parseWorkflowConfig(agenthost.Spec{Workflow: testFlowcraftWorkflow(apitypes.FlowcraftWorkflowSpec{
 		"voice_adapter": map[string]any{
 			"asr_model":     " asr ",
 			"default_voice": " voice ",
@@ -262,16 +1117,6 @@ func TestParseWorkflowConfigTrimsNodeVoices(t *testing.T) {
 	}
 }
 
-func testFlowcraftWorkflow(values map[string]any) apitypes.WorkflowDocument {
-	spec := apitypes.FlowcraftWorkflowSpec(values)
-	return apitypes.WorkflowDocument{
-		Spec: apitypes.WorkflowSpec{
-			Driver:    apitypes.WorkflowDriverFlowcraft,
-			Flowcraft: &spec,
-		},
-	}
-}
-
 func TestRealClawCloseContextHandlesNil(t *testing.T) {
 	if err := (realClaw{}).CloseContext(context.Background()); err != nil {
 		t.Fatalf("CloseContext(nil) error = %v", err)
@@ -282,8 +1127,7 @@ func TestFactoryValidation(t *testing.T) {
 	if _, err := (Factory{}).NewAgent(context.Background(), agenthost.Spec{}); err == nil || !strings.Contains(err.Error(), "peergenx") {
 		t.Fatalf("NewAgent(missing genx) error = %v", err)
 	}
-	spec := agenthost.Spec{Workflow: testFlowcraftWorkflow(map[string]any{"flowcraft": map[string]any{}})}
-	if _, err := (Factory{GenX: peergenx.New(peergenx.Service{})}).NewAgent(context.Background(), spec); err == nil || !strings.Contains(err.Error(), "asr_model") {
+	if _, err := (Factory{GenX: peergenx.New(peergenx.Service{})}).NewAgent(context.Background(), agenthost.Spec{}); err == nil || !strings.Contains(err.Error(), "asr_model") {
 		t.Fatalf("NewAgent(missing workflow config) error = %v", err)
 	}
 }
@@ -299,7 +1143,7 @@ func TestSynthesizeConvertsOggOpusToPeerOpusChunks(t *testing.T) {
 		}},
 	}
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
-	if err := a.synthesize(context.Background(), "audio", "answer", "voice", "hello", output); err != nil {
+	if err := a.synthesize(context.Background(), "audio", "answer", "voice", "hello", output, a.currentOutputEpoch()); err != nil {
 		t.Fatalf("synthesize() error = %v", err)
 	}
 	if err := output.Done(genx.Usage{}); err != nil {
@@ -320,6 +1164,131 @@ func TestSynthesizeConvertsOggOpusToPeerOpusChunks(t *testing.T) {
 	}
 }
 
+func TestDrainTTSOutputStreamsOggFramesBeforeTTSEOS(t *testing.T) {
+	raw := buildOggPackets(t, opusHeadPacket(16000, 1), opusTagsPacket("test"), []byte{0x21})
+	tts := newBlockingChunkStream()
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	a := &agent{}
+	epoch := a.setActiveOutput(output, "audio")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- a.drainTTSOutput(context.Background(), "audio", "answer", "voice", tts, output, epoch, true)
+	}()
+
+	tts.Push(&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/ogg", Data: raw}})
+	chunk := nextChunkWithTimeout(t, output.Stream())
+	blob, ok := chunk.Part.(*genx.Blob)
+	if !ok || blob.MIMEType != "audio/opus" || !bytes.Equal(blob.Data, []byte{0x21}) {
+		t.Fatalf("first streamed chunk = %#v", chunk)
+	}
+	if chunk.Ctrl == nil || chunk.Ctrl.StreamID != "audio" || chunk.Ctrl.Label != assistantLabel || chunk.Ctrl.EndOfStream {
+		t.Fatalf("first streamed ctrl = %#v", chunk.Ctrl)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("drainTTSOutput returned before TTS EOS: %v", err)
+	default:
+	}
+
+	tts.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("drainTTSOutput() error = %v", err)
+	}
+	chunk = nextChunkWithTimeout(t, output.Stream())
+	if chunk.Ctrl == nil || !chunk.Ctrl.EndOfStream {
+		t.Fatalf("final audio eos = %#v", chunk)
+	}
+}
+
+func TestSynthesizeTextSegmentCanOmitAudioEOS(t *testing.T) {
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: patternTransformer{
+			pattern: "voice/voice",
+			stream: &sliceStream{chunks: []*genx.MessageChunk{
+				{Part: &genx.Blob{MIMEType: "audio/opus", Data: []byte{0x44}}},
+			}},
+		}},
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
+	if err := a.synthesizeTextSegment(context.Background(), "audio", "answer", "voice", " hello ", output, a.currentOutputEpoch(), false); err != nil {
+		t.Fatalf("synthesizeTextSegment() error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+	if len(chunks) != 1 {
+		t.Fatalf("chunks len = %d, want one audio frame", len(chunks))
+	}
+	if blob, ok := chunks[0].Part.(*genx.Blob); !ok || !bytes.Equal(blob.Data, []byte{0x44}) || chunks[0].IsEndOfStream() {
+		t.Fatalf("audio chunk = %#v", chunks[0])
+	}
+
+	output = genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 1)
+	if err := a.synthesizeTextSegment(context.Background(), "audio", "answer", "voice", " ", output, a.currentOutputEpoch(), true); err != nil {
+		t.Fatalf("synthesizeTextSegment(blank) error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done(blank) error = %v", err)
+	}
+	if chunks := drainChunks(t, output.Stream()); len(chunks) != 0 {
+		t.Fatalf("blank segment chunks = %#v, want none", chunks)
+	}
+}
+
+func TestWatchInputInterruptEmitsInterruptedEOSAndCancels(t *testing.T) {
+	a := &agent{}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
+	epoch := a.setActiveOutput(output, "audio-1")
+	canceled := make(chan struct{}, 1)
+	a.watchInputInterrupt(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
+		{Part: genx.Text("ignored")},
+		genx.NewBeginOfStream("audio-2"),
+	}}, output, "audio-1", epoch, func() {
+		canceled <- struct{}{}
+	})
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("cancel was not called")
+	}
+	chunks := drainChunks(t, output.Stream())
+	if len(chunks) != 2 {
+		t.Fatalf("interrupt chunks = %#v, want text and audio EOS", chunks)
+	}
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil || chunk.Ctrl.StreamID != "audio-1" || !chunk.Ctrl.EndOfStream || chunk.Ctrl.Error != interruptedError {
+			t.Fatalf("interrupt chunk = %#v", chunk)
+		}
+	}
+}
+
+func TestOggOpusFrameDecoderAcceptsPartialHeader(t *testing.T) {
+	raw := buildOggPackets(t, opusHeadPacket(16000, 1), opusTagsPacket("test"), []byte{0x31})
+	decoder := newOggOpusFrameDecoder()
+	frames, err := decoder.Write(raw[:10])
+	if err != nil {
+		t.Fatalf("Write(partial header) error = %v", err)
+	}
+	if len(frames) != 0 {
+		t.Fatalf("partial header frames = %#v, want none", frames)
+	}
+	frames, err = decoder.Write(raw[10:])
+	if err != nil {
+		t.Fatalf("Write(rest) error = %v", err)
+	}
+	if len(frames) != 1 || !bytes.Equal(frames[0], []byte{0x31}) {
+		t.Fatalf("frames = %#v, want one opus packet", frames)
+	}
+	if err := decoder.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
 func TestSynthesizeRejectsUnsupportedAudioMIME(t *testing.T) {
 	a := &agent{
 		transformers: fakeTransformerProvider{transformer: patternTransformer{
@@ -330,9 +1299,57 @@ func TestSynthesizeRejectsUnsupportedAudioMIME(t *testing.T) {
 		}},
 	}
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
-	err := a.synthesize(context.Background(), "audio", "answer", "voice", "hello", output)
+	err := a.synthesize(context.Background(), "audio", "answer", "voice", "hello", output, a.currentOutputEpoch())
 	if err == nil || !strings.Contains(err.Error(), "unsupported TTS audio MIME") {
 		t.Fatalf("synthesize() error = %v", err)
+	}
+}
+
+func TestDrainTTSOutputErrors(t *testing.T) {
+	a := &agent{}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
+	wantErr := errors.New("tts read failed")
+	err := a.drainTTSOutput(context.Background(), "audio", "answer", "voice", &sliceStream{err: wantErr}, output, a.currentOutputEpoch(), true)
+	if err == nil || !strings.Contains(err.Error(), "read TTS") || !errors.Is(err, wantErr) {
+		t.Fatalf("drainTTSOutput(read error) = %v", err)
+	}
+	err = a.drainTTSOutput(context.Background(), "audio", "answer", "voice", &sliceStream{chunks: []*genx.MessageChunk{
+		{Part: &genx.Blob{MIMEType: "audio/ogg", Data: []byte("OggS")}},
+	}}, output, a.currentOutputEpoch(), true)
+	if err == nil || !strings.Contains(err.Error(), "decode TTS ogg") {
+		t.Fatalf("drainTTSOutput(truncated ogg) = %v", err)
+	}
+}
+
+func TestInterruptOutputGuards(t *testing.T) {
+	a := &agent{}
+	if a.interruptOutput(nil, "audio", 0) {
+		t.Fatal("interruptOutput(nil) = true")
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 2)
+	if a.interruptOutput(output, "audio", 99) {
+		t.Fatal("interruptOutput(stale epoch) = true")
+	}
+}
+
+func TestWaitOpusFrameCancellation(t *testing.T) {
+	a := &agent{}
+	if err := a.waitOpusFrame(context.Background(), 99); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitOpusFrame(stale) = %v, want canceled", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := a.waitOpusFrame(ctx, a.currentOutputEpoch()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitOpusFrame(canceled) = %v, want canceled", err)
+	}
+}
+
+func TestAudioMIMEHelpers(t *testing.T) {
+	if got := baseMIME(" audio/ogg; codecs=opus "); got != "audio/ogg" {
+		t.Fatalf("baseMIME() = %q", got)
+	}
+	if !isAudioMIME("audio/opus") || !isAudioMIME("audio/pcm") || isAudioMIME("text/plain") {
+		t.Fatalf("isAudioMIME() returned unexpected values")
 	}
 }
 
@@ -348,9 +1365,117 @@ func TestRunTurnReturnsClawEventError(t *testing.T) {
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
 	err := a.runTurn(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
 		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
-	}}, output)
+	}}, output, a.currentOutputEpoch(), "audio")
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("runTurn() error = %v", err)
+	}
+}
+
+func TestRunTurnCompletesPartialLengthLimitedClawResponse(t *testing.T) {
+	transformer := &recordingVoiceTransformer{}
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: transformer},
+		claw: fakeClaw{events: []flowclaw.Event{
+			{Type: flowclaw.EventToken, NodeID: "answer", Content: "月门亮起来了"},
+			{Type: flowclaw.EventError, Err: `llm round "answer": stream error: bytedance: response incomplete: length`, IsError: true},
+		}},
+		defaultVoice: "voice",
+		nodeVoices:   map[string]string{"answer": "voice-answer"},
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	if err := a.runClawTextTurn(context.Background(), "开始", "audio", output, a.currentOutputEpoch()); err != nil {
+		t.Fatalf("runClawTextTurn() error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+	var gotText bool
+	var gotAudioEOS bool
+	for _, chunk := range chunks {
+		if text, ok := chunk.Part.(genx.Text); ok && text == "月门亮起来了" {
+			gotText = true
+		}
+		if blob, ok := chunk.Part.(*genx.Blob); ok && blob.MIMEType == "audio/opus" && chunk.IsEndOfStream() {
+			gotAudioEOS = true
+		}
+	}
+	if !gotText || !gotAudioEOS {
+		t.Fatalf("partial response chunks missing text/audio eos: text=%t audioEOS=%t chunks=%#v", gotText, gotAudioEOS, chunks)
+	}
+	if got := transformer.Texts(); !reflect.DeepEqual(got, []string{"月门亮起来了"}) {
+		t.Fatalf("TTS input texts = %#v", got)
+	}
+}
+
+func TestRunTranscriptTurnEmitsTranscriptAndAssistant(t *testing.T) {
+	a := &agent{
+		transformers: fakeTransformerProvider{transformer: fakeVoiceTransformer{}},
+		claw: fakeEchoClaw{
+			nodeID: "answer",
+			prefix: "回复:",
+		},
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	if err := a.runTranscriptTurn(context.Background(), "  你好  ", "", output, a.currentOutputEpoch(), true); err != nil {
+		t.Fatalf("runTranscriptTurn() error = %v", err)
+	}
+	if err := output.Done(genx.Usage{}); err != nil {
+		t.Fatalf("Done() error = %v", err)
+	}
+	chunks := drainChunks(t, output.Stream())
+	var transcript, assistant bool
+	for _, chunk := range chunks {
+		if chunk.Ctrl == nil {
+			continue
+		}
+		if chunk.Ctrl.StreamID != defaultInputStreamID {
+			t.Fatalf("chunk stream id = %q, want default", chunk.Ctrl.StreamID)
+		}
+		if chunk.Ctrl.Label == transcriptLabel {
+			if text, ok := chunk.Part.(genx.Text); ok && text == "你好" {
+				transcript = true
+			}
+		}
+		if chunk.Ctrl.Label == assistantLabel {
+			if text, ok := chunk.Part.(genx.Text); ok && text == "回复:你好" {
+				assistant = true
+			}
+		}
+	}
+	if !transcript || !assistant {
+		t.Fatalf("missing transcript/assistant chunks transcript=%t assistant=%t chunks=%#v", transcript, assistant, chunks)
+	}
+	if err := a.runTranscriptTurn(context.Background(), " ", "audio", output, a.currentOutputEpoch(), false); err == nil || !strings.Contains(err.Error(), "empty transcript") {
+		t.Fatalf("runTranscriptTurn(empty) error = %v", err)
+	}
+}
+
+func TestTTSSessionMethods(t *testing.T) {
+	session := &ttsSession{
+		input:    genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4),
+		done:     make(chan error, 1),
+		streamID: "audio",
+		nodeID:   "answer",
+	}
+	session.done <- nil
+	if err := session.AddText("hello"); err != nil {
+		t.Fatalf("AddText() error = %v", err)
+	}
+	if err := session.CloseInput(); err != nil {
+		t.Fatalf("CloseInput() error = %v", err)
+	}
+	if err := session.Wait(); err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if err := (*ttsSession)(nil).AddText("hello"); err == nil || !strings.Contains(err.Error(), "nil") {
+		t.Fatalf("AddText(nil) error = %v", err)
+	}
+	if err := (*ttsSession)(nil).CloseInput(); err != nil {
+		t.Fatalf("CloseInput(nil) error = %v", err)
+	}
+	if err := (*ttsSession)(nil).Wait(); err != nil {
+		t.Fatalf("Wait(nil) error = %v", err)
 	}
 }
 
@@ -368,7 +1493,7 @@ func TestTranscribeInputTurnHandlesFinalTextDone(t *testing.T) {
 	transcript, streamID, err := a.transcribeInputTurn(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
 		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1, 2}}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
 		{Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
-	}}, output)
+	}}, output, a.currentOutputEpoch(), "audio")
 	if err != nil {
 		t.Fatalf("transcribeInputTurn() error = %v", err)
 	}
@@ -397,7 +1522,7 @@ func TestTranscribeInputTurnStartASRError(t *testing.T) {
 		asrModel:     "asr",
 	}
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
-	_, _, err := a.transcribeInputTurn(context.Background(), &sliceStream{}, output)
+	_, _, err := a.transcribeInputTurn(context.Background(), &sliceStream{}, output, a.currentOutputEpoch(), "audio")
 	if err == nil || !strings.Contains(err.Error(), "start ASR") || !errors.Is(err, want) {
 		t.Fatalf("transcribeInputTurn() error = %v", err)
 	}
@@ -407,7 +1532,7 @@ func TestFeedASRInputReturnsInputError(t *testing.T) {
 	want := errors.New("input failed")
 	input := &sliceStream{err: want}
 	asrInput := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 4)
-	result := feedASRInput(context.Background(), input, asrInput, &lockedString{value: defaultInputStreamID})
+	result := feedASRInput(context.Background(), input, asrInput, &lockedString{value: defaultInputStreamID}, defaultInputStreamID)
 	if !errors.Is(result.err, want) {
 		t.Fatalf("feedASRInput() error = %v, want %v", result.err, want)
 	}
@@ -423,7 +1548,7 @@ func TestFeedASRInputStreamsRawOpusUnchanged(t *testing.T) {
 	result := feedASRInput(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
 		{Part: &genx.Blob{MIMEType: "audio/opus", Data: packet}, Ctrl: &genx.StreamCtrl{StreamID: "audio"}},
 		{Part: &genx.Blob{MIMEType: "audio/opus"}, Ctrl: &genx.StreamCtrl{StreamID: "audio", EndOfStream: true}},
-	}}, asrInput, state)
+	}}, asrInput, state, defaultInputStreamID)
 	if result.err != nil {
 		t.Fatalf("feedASRInput() error = %v", result.err)
 	}
@@ -450,6 +1575,64 @@ func TestFeedASRInputStreamsRawOpusUnchanged(t *testing.T) {
 	}
 	if _, err := stream.Next(); !agenthost.IsStreamDone(err) {
 		t.Fatalf("final Next() error = %v, want done", err)
+	}
+}
+
+func TestFeedRealtimeASRInputForwardsAudioAndDone(t *testing.T) {
+	asrInput := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	state := &lockedString{}
+	result := feedRealtimeASRInput(context.Background(), &sliceStream{chunks: []*genx.MessageChunk{
+		genx.NewBeginOfStream("audio-rt"),
+		{Part: genx.Text("ignored"), Ctrl: &genx.StreamCtrl{StreamID: "audio-rt"}},
+		{Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1}}, Ctrl: &genx.StreamCtrl{StreamID: "audio-rt"}},
+		{Part: &genx.Blob{MIMEType: "audio/pcm"}, Ctrl: &genx.StreamCtrl{StreamID: "audio-rt", EndOfStream: true}},
+	}}, asrInput, state)
+	if result.err != nil || result.streamID != "audio-rt" || state.Get() != "audio-rt" {
+		t.Fatalf("feedRealtimeASRInput() = %+v state=%q", result, state.Get())
+	}
+	chunks := drainChunks(t, asrInput.Stream())
+	if len(chunks) != 2 {
+		t.Fatalf("ASR input chunks = %#v, want audio frame and EOS", chunks)
+	}
+	if blob, ok := chunks[0].Part.(*genx.Blob); !ok || !bytes.Equal(blob.Data, []byte{1}) {
+		t.Fatalf("audio chunk = %#v", chunks[0])
+	}
+	if !chunks[1].IsEndOfStream() {
+		t.Fatalf("EOS chunk = %#v", chunks[1])
+	}
+
+	errResult := feedRealtimeASRInput(context.Background(), nil, genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 1), &lockedString{})
+	if errResult.err == nil || !strings.Contains(errResult.err.Error(), "input stream") {
+		t.Fatalf("feedRealtimeASRInput(nil) = %+v", errResult)
+	}
+}
+
+func TestNormalizeInputModeAndRealtimeTurnStreamID(t *testing.T) {
+	for _, in := range []string{"push", "push-to-talk", "ptt"} {
+		if got := normalizeInputMode(in); got != inputModePushToTalk {
+			t.Fatalf("normalizeInputMode(%q) = %q, want push_to_talk", in, got)
+		}
+	}
+	for _, in := range []string{"realtime", "real_time", "real-time"} {
+		if got := normalizeInputMode(in); got != inputModeRealtime {
+			t.Fatalf("normalizeInputMode(%q) = %q, want realtime", in, got)
+		}
+	}
+	if got := normalizeInputMode("unknown"); got != "" {
+		t.Fatalf("normalizeInputMode(unknown) = %q, want empty", got)
+	}
+	if got := realtimeTurnStreamID("", 0); got != "audio:rt:1" {
+		t.Fatalf("realtimeTurnStreamID(empty,0) = %q", got)
+	}
+}
+
+func TestWriteClawConfigErrors(t *testing.T) {
+	rootFile := filepath.Join(t.TempDir(), "config-root")
+	if err := os.WriteFile(rootFile, []byte("file"), 0o644); err != nil {
+		t.Fatalf("WriteFile root: %v", err)
+	}
+	if err := writeClawConfig(filepath.Join(rootFile, "child"), map[string]any{}); err == nil || !strings.Contains(err.Error(), "create workspace dir") {
+		t.Fatalf("writeClawConfig(file parent) error = %v", err)
 	}
 }
 
@@ -485,14 +1668,18 @@ func TestBuildClawConfigInjectsPeerResolvedOpenAIModel(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
 	cfg := workflowConfig{}
 	cfg.Spec.Flowcraft = map[string]any{
 		"history": map[string]any{"enabled": false},
 		"agent":   map[string]any{"system_prompt": "short"},
 	}
 	got, err := buildClawConfig(ctx, service, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 	}, cfg)
 	if err != nil {
 		t.Fatalf("buildClawConfig() error = %v", err)
@@ -544,9 +1731,13 @@ func TestBuildClawConfigMapsVolcTenantLLMToBytedance(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
 	got, err := buildClawConfig(ctx, service, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 	}, workflowConfig{})
 	if err != nil {
 		t.Fatalf("buildClawConfig() error = %v", err)
@@ -572,12 +1763,17 @@ func TestBuildClawConfigInjectsOptionalModelRoles(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{
-		"generate_model": "chat",
-		"extract_model":  "extract",
+	generateModel := "chat"
+	extractModel := "extract"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{
+		GenerateModel: &generateModel,
+		ExtractModel:  &extractModel,
+	}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
 	}
 	got, err := buildClawConfig(ctx, service, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 	}, workflowConfig{})
 	if err != nil {
 		t.Fatalf("buildClawConfig() error = %v", err)
@@ -608,9 +1804,13 @@ func TestBuildClawConfigRejectsUnsupportedProvider(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
 	_, err := buildClawConfig(context.Background(), service, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 	}, workflowConfig{})
 	if err == nil || !strings.Contains(err.Error(), "not supported") {
 		t.Fatalf("buildClawConfig() error = %v", err)
@@ -629,6 +1829,29 @@ func drainChunks(t *testing.T, stream genx.Stream) []*genx.MessageChunk {
 			t.Fatalf("Next() error = %v", err)
 		}
 		chunks = append(chunks, chunk)
+	}
+}
+
+func nextChunkWithTimeout(t *testing.T, stream genx.Stream) *genx.MessageChunk {
+	t.Helper()
+	type result struct {
+		chunk *genx.MessageChunk
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		chunk, err := stream.Next()
+		done <- result{chunk: chunk, err: err}
+	}()
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("Next() error = %v", result.err)
+		}
+		return result.chunk
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stream chunk")
+		return nil
 	}
 }
 
@@ -740,6 +1963,89 @@ func (s *recordingVoiceStream) CloseWithError(err error) error {
 	return nil
 }
 
+type blockingChunkStream struct {
+	ch chan *genx.MessageChunk
+}
+
+func newBlockingChunkStream() *blockingChunkStream {
+	return &blockingChunkStream{ch: make(chan *genx.MessageChunk, 8)}
+}
+
+func (s *blockingChunkStream) Push(chunk *genx.MessageChunk) {
+	s.ch <- chunk
+}
+
+func (s *blockingChunkStream) Next() (*genx.MessageChunk, error) {
+	chunk, ok := <-s.ch
+	if !ok {
+		return nil, genx.ErrDone
+	}
+	return chunk, nil
+}
+
+func (s *blockingChunkStream) Close() error {
+	close(s.ch)
+	return nil
+}
+
+func (s *blockingChunkStream) CloseWithError(error) error {
+	close(s.ch)
+	return nil
+}
+
+type realtimeASRTransformer struct {
+	texts  []string
+	chunks []*genx.MessageChunk
+	err    error
+}
+
+func (t *realtimeASRTransformer) Transform(_ context.Context, pattern string, input genx.Stream) (genx.Stream, error) {
+	if pattern != "model/asr?emit_interim=true" {
+		return nil, errors.New("unexpected pattern: " + pattern)
+	}
+	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 8)
+	go func() {
+		defer func() { _ = output.Done(genx.Usage{}) }()
+		texts := append([]string(nil), t.texts...)
+		chunks := append([]*genx.MessageChunk(nil), t.chunks...)
+		for {
+			chunk, err := input.Next()
+			if err != nil {
+				if agenthost.IsStreamDone(err) {
+					return
+				}
+				_ = output.Unexpected(genx.Usage{}, err)
+				return
+			}
+			blob, ok := chunk.Part.(*genx.Blob)
+			if !ok || len(blob.Data) == 0 || chunk.IsEndOfStream() {
+				continue
+			}
+			if len(chunks) > 0 {
+				next := chunks[0]
+				chunks = chunks[1:]
+				if err := output.Add(next); err != nil {
+					return
+				}
+				continue
+			}
+			if t.err != nil {
+				_ = output.Unexpected(genx.Usage{}, t.err)
+				return
+			}
+			if len(texts) == 0 {
+				continue
+			}
+			text := texts[0]
+			texts = texts[1:]
+			if err := output.Add(&genx.MessageChunk{Part: genx.Text(text)}); err != nil {
+				return
+			}
+		}
+	}()
+	return output.Stream(), nil
+}
+
 type patternTransformer struct {
 	pattern string
 	stream  genx.Stream
@@ -772,6 +2078,110 @@ func (c fakeClaw) RoundTrip(req flowclaw.Request) (clawResponse, error) {
 
 func (fakeClaw) CloseContext(context.Context) error { return nil }
 
+type fakeEchoClaw struct {
+	nodeID string
+	prefix string
+}
+
+func (c fakeEchoClaw) RoundTrip(req flowclaw.Request) (clawResponse, error) {
+	nodeID := c.nodeID
+	if nodeID == "" {
+		nodeID = "answer"
+	}
+	return &fakeClawResponse{events: []flowclaw.Event{
+		{Type: flowclaw.EventToken, NodeID: nodeID, Content: c.prefix + req.Text},
+	}}, nil
+}
+
+func (fakeEchoClaw) CloseContext(context.Context) error { return nil }
+
+type interruptClaw struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (c *interruptClaw) RoundTrip(req flowclaw.Request) (clawResponse, error) {
+	c.mu.Lock()
+	c.calls++
+	call := c.calls
+	c.mu.Unlock()
+	if call == 1 {
+		return &blockingClawResponse{
+			ctx:   req.Context,
+			event: flowclaw.Event{Type: flowclaw.EventToken, NodeID: "answer", Content: "旧回复"},
+		}, nil
+	}
+	return &fakeClawResponse{events: []flowclaw.Event{
+		{Type: flowclaw.EventToken, NodeID: "answer", Content: "新回复"},
+	}}, nil
+}
+
+func (*interruptClaw) CloseContext(context.Context) error { return nil }
+
+type blockingClawResponse struct {
+	ctx  context.Context
+	once sync.Once
+
+	event flowclaw.Event
+	sent  bool
+}
+
+func (r *blockingClawResponse) Next() (flowclaw.Event, error) {
+	if !r.sent {
+		r.sent = true
+		return r.event, nil
+	}
+	if r.ctx == nil {
+		select {}
+	}
+	<-r.ctx.Done()
+	return flowclaw.Event{}, r.ctx.Err()
+}
+
+type fakeDebugClaw struct {
+	fakeClaw
+	handler http.HandlerFunc
+}
+
+func (c fakeDebugClaw) ServeDebugHTTP(w http.ResponseWriter, r *http.Request) {
+	if c.handler == nil {
+		http.NotFound(w, r)
+		return
+	}
+	c.handler(w, r)
+}
+
+type recordingClaw struct {
+	mu      sync.Mutex
+	events  []flowclaw.Event
+	texts   []string
+	handler http.HandlerFunc
+}
+
+func (c *recordingClaw) RoundTrip(req flowclaw.Request) (clawResponse, error) {
+	c.mu.Lock()
+	c.texts = append(c.texts, req.Text)
+	events := append([]flowclaw.Event(nil), c.events...)
+	c.mu.Unlock()
+	return &fakeClawResponse{events: events}, nil
+}
+
+func (*recordingClaw) CloseContext(context.Context) error { return nil }
+
+func (c *recordingClaw) ServeDebugHTTP(w http.ResponseWriter, r *http.Request) {
+	if c.handler == nil {
+		http.NotFound(w, r)
+		return
+	}
+	c.handler(w, r)
+}
+
+func (c *recordingClaw) Texts() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.texts...)
+}
+
 type fakeClawResponse struct {
 	events []flowclaw.Event
 }
@@ -801,9 +2211,13 @@ func TestBuildClawConfigFailsClosedOnDeniedModel(t *testing.T) {
 		Credentials:     fakeCredentials{events: &events},
 		ProviderTenants: fakeTenants{events: &events},
 	})
-	params := map[string]any{"generate_model": "chat"}
+	generateModel := "chat"
+	var workspaceParams apitypes.WorkspaceParameters
+	if err := workspaceParams.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{GenerateModel: &generateModel}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
 	_, err := buildClawConfig(context.Background(), service, agenthost.Spec{
-		Workspace: apitypes.Workspace{Name: "ws", Parameters: testFlowcraftWorkspaceParameters(params)},
+		Workspace: apitypes.Workspace{Name: "ws", Parameters: &workspaceParams},
 	}, workflowConfig{})
 	if err == nil || !strings.Contains(err.Error(), "not accessible as a generator") {
 		t.Fatalf("buildClawConfig() error = %v, want inaccessible model", err)
@@ -822,6 +2236,9 @@ func TestMergeTranscriptHandlesFullAndDeltaResults(t *testing.T) {
 	}
 	if got := mergeTranscript("你好世界", "你好"); got != "你好世界" {
 		t.Fatalf("prefix merge = %q", got)
+	}
+	if got := mergeTranscript("请用一句话回答，收到，并", "请用一句话回答，收到并继续"); got != "请用一句话回答，收到并继续" {
+		t.Fatalf("punctuation-insensitive prefix merge = %q", got)
 	}
 }
 
@@ -853,13 +2270,17 @@ func TestWorkflowConfigValidation(t *testing.T) {
 	}
 }
 
-func TestVoiceForNodeFallsBackToDefault(t *testing.T) {
+func TestVoiceForNodeUsesConfiguredMapBeforeDefault(t *testing.T) {
 	a := &agent{defaultVoice: "default", nodeVoices: map[string]string{"answer": "answer-voice"}}
-	if got := a.voiceForNode("answer"); got != "answer-voice" {
-		t.Fatalf("answer voice = %q", got)
+	if got, ok := a.voiceForNode("answer"); !ok || got != "answer-voice" {
+		t.Fatalf("answer voice = %q ok=%t, want answer-voice true", got, ok)
 	}
-	if got := a.voiceForNode("other"); got != "default" {
-		t.Fatalf("fallback voice = %q", got)
+	if got, ok := a.voiceForNode("other"); ok || got != "" {
+		t.Fatalf("unconfigured node voice = %q ok=%t, want false", got, ok)
+	}
+	a = &agent{defaultVoice: "default"}
+	if got, ok := a.voiceForNode("other"); !ok || got != "default" {
+		t.Fatalf("default voice = %q ok=%t, want default true", got, ok)
 	}
 }
 
@@ -888,6 +2309,14 @@ func TestConfigHelperBranches(t *testing.T) {
 
 func ptrString(value string) *string {
 	return &value
+}
+
+func writeTestJSON(t *testing.T, w http.ResponseWriter, value any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		t.Fatalf("encode test JSON: %v", err)
+	}
 }
 
 func opusHeadPacket(sampleRate, channels int) []byte {
@@ -963,6 +2392,16 @@ type fakeModels struct {
 	providerKind apitypes.ModelProviderKind
 }
 
+func testFlowcraftWorkflow(spec apitypes.FlowcraftWorkflowSpec) apitypes.WorkflowDocument {
+	return apitypes.WorkflowDocument{
+		Metadata: apitypes.WorkflowMetadata{Name: "test-workflow"},
+		Spec: apitypes.WorkflowSpec{
+			Driver:    apitypes.WorkflowDriverFlowcraft,
+			Flowcraft: &spec,
+		},
+	}
+}
+
 func appendEvent(events *[]string, event string) {
 	if events != nil {
 		*events = append(*events, event)
@@ -998,24 +2437,24 @@ func (f fakeModels) model(id string) apitypes.Model {
 		kind = apitypes.ModelKindAsr
 		providerKind = apitypes.ModelProviderKindVolcTenant
 	}
-	openAIUpstream := "gpt-test"
-	volcUpstream := "doubao-lite"
-	thinkingParam := "thinking.type"
-	thinkingLevel := "disabled"
-	var providerData *apitypes.ModelProviderData
+	providerData := apitypes.ModelProviderData{}
 	switch providerKind {
 	case apitypes.ModelProviderKindVolcTenant:
-		providerData = testVolcModelProviderData(apitypes.VolcTenantModelProviderData{
-			UpstreamModel:        &volcUpstream,
-			ThinkingParam:        &thinkingParam,
-			DefaultThinkingLevel: &thinkingLevel,
-		})
+		if err := providerData.FromVolcTenantModelProviderData(apitypes.VolcTenantModelProviderData{
+			UpstreamModel:        ptrString("doubao-lite"),
+			ThinkingParam:        ptrString("thinking.type"),
+			DefaultThinkingLevel: ptrString("disabled"),
+		}); err != nil {
+			panic(err)
+		}
 	default:
-		providerData = testOpenAIModelProviderData(apitypes.OpenAITenantModelProviderData{
-			UpstreamModel:        &openAIUpstream,
-			ThinkingParam:        &thinkingParam,
-			DefaultThinkingLevel: &thinkingLevel,
-		})
+		if err := providerData.FromOpenAITenantModelProviderData(apitypes.OpenAITenantModelProviderData{
+			UpstreamModel:        ptrString("gpt-test"),
+			ThinkingParam:        ptrString("thinking.type"),
+			DefaultThinkingLevel: ptrString("disabled"),
+		}); err != nil {
+			panic(err)
+		}
 	}
 	return apitypes.Model{
 		Id:   id,
@@ -1024,7 +2463,7 @@ func (f fakeModels) model(id string) apitypes.Model {
 			Kind: providerKind,
 			Name: "main",
 		},
-		ProviderData: providerData,
+		ProviderData: &providerData,
 	}
 }
 
@@ -1049,13 +2488,17 @@ type fakeCredentials struct {
 
 func (f fakeCredentials) GetCredential(_ context.Context, request adminservice.GetCredentialRequestObject) (adminservice.GetCredentialResponseObject, error) {
 	*f.events = append(*f.events, "get:credential:"+request.Name)
-	body := testOpenAICredentialBody("test-key")
-	if strings.Contains(request.Name, "volc") {
-		body = testVolcCredentialBody("test-key")
+	if request.Name == "volc-key" {
+		return adminservice.GetCredential200JSONResponse(apitypes.Credential{
+			Name: request.Name,
+			Body: testVolcCredentialBodyFromStrings(map[string]string{
+				"ark_api_key": "test-key",
+			}),
+		}), nil
 	}
 	return adminservice.GetCredential200JSONResponse(apitypes.Credential{
 		Name: request.Name,
-		Body: body,
+		Body: testOpenAICredentialBody("test-key"),
 	}), nil
 }
 

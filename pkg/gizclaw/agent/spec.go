@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -17,12 +16,12 @@ type Spec struct {
 }
 
 func resolveWorkflowType(workflow apitypes.WorkflowDocument) (string, error) {
-	workflowType := strings.TrimSpace(string(workflow.Spec.Driver))
-	if workflowType == "" {
-		return "", errors.New("agent: workflow spec.driver is required")
+	driver := strings.TrimSpace(string(workflow.Spec.Driver))
+	if driver == "" {
+		return "", fmt.Errorf("agent: workflow spec.driver is required")
 	}
 	if !workflow.Spec.Driver.Valid() {
 		return "", fmt.Errorf("agent: unsupported workflow spec.driver %q", workflow.Spec.Driver)
 	}
-	return workflowType, nil
+	return driver, nil
 }

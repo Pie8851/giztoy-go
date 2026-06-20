@@ -29,6 +29,10 @@ func asAgent(transformer genx.Transformer) Agent {
 	return transformerAgent{Transformer: transformer}
 }
 
+func NewTransformerAgent(transformer genx.Transformer) Agent {
+	return asAgent(transformer)
+}
+
 type transformerAgent struct {
 	genx.Transformer
 }

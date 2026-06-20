@@ -20,7 +20,7 @@ type Factory struct {
 	Transformer genx.Transformer
 }
 
-func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (genx.Transformer, error) {
+func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (agenthost.Agent, error) {
 	if f.Transformer == nil {
 		return nil, fmt.Errorf("doubaorealtime: transformer is required")
 	}
@@ -28,7 +28,7 @@ func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (genx.Transfor
 	if err != nil {
 		return nil, err
 	}
-	return patternTransformer{Transformer: f.Transformer, Pattern: pattern}, nil
+	return agenthost.NewTransformerAgent(patternTransformer{Transformer: f.Transformer, Pattern: pattern}), nil
 }
 
 type patternTransformer struct {

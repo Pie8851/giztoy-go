@@ -1,17 +1,23 @@
 package flowcraft
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	flowmodel "github.com/GizClaw/flowcraft/sdk/model"
 	sdkworkspace "github.com/GizClaw/flowcraft/sdk/workspace"
 	flowclaw "github.com/GizClaw/flowcraft/sdkx/claw"
 	"gopkg.in/yaml.v3"
@@ -28,8 +34,19 @@ const Type = "flowcraft"
 
 const (
 	defaultInputStreamID = "audio"
+	selfStartStreamID    = "flowcraft-self-start"
 	transcriptLabel      = "transcript"
 	assistantLabel       = "assistant"
+	interruptedError     = "interrupted"
+)
+
+const opusFrameDuration = 20 * time.Millisecond
+
+type inputMode string
+
+const (
+	inputModePushToTalk inputMode = "push_to_talk"
+	inputModeRealtime   inputMode = "realtime"
 )
 
 var clawModelRoles = []struct {
@@ -46,7 +63,7 @@ type Factory struct {
 	GenX *peergenx.Service
 }
 
-func (f Factory) NewAgent(ctx context.Context, spec agenthost.Spec) (genx.Transformer, error) {
+func (f Factory) NewAgent(ctx context.Context, spec agenthost.Spec) (agenthost.Agent, error) {
 	if f.GenX == nil {
 		return nil, fmt.Errorf("flowcraft: peergenx service is required")
 	}
@@ -59,6 +76,10 @@ func (f Factory) NewAgent(ctx context.Context, spec agenthost.Spec) (genx.Transf
 	}
 	if strings.TrimSpace(spec.Runtime.LocalDir) == "" {
 		return nil, fmt.Errorf("flowcraft: local workspace directory is required")
+	}
+	workspaceParams, err := flowcraftWorkspaceParameters(spec.Workspace.Parameters)
+	if err != nil {
+		return nil, err
 	}
 	clawConfig, err := buildClawConfig(ctx, f.GenX, spec, cfg)
 	if err != nil {
@@ -78,12 +99,23 @@ func (f Factory) NewAgent(ctx context.Context, spec agenthost.Spec) (genx.Transf
 	if err != nil {
 		return nil, err
 	}
+	starts, initiativePolicy := flowcraftConversationSettings(workspaceParams, cfg.Spec.Flowcraft)
+	inputMode := inputModePushToTalk
+	if workspaceParams != nil && workspaceParams.Input != nil {
+		if mode := normalizeInputMode(string(*workspaceParams.Input)); mode != "" {
+			inputMode = mode
+		}
+	}
 	return &agent{
 		transformers: f.GenX,
 		claw:         realClaw{Claw: claw},
 		asrModel:     cfg.Spec.VoiceAdapter.ASRModel,
 		defaultVoice: cfg.Spec.VoiceAdapter.DefaultVoice,
 		nodeVoices:   cfg.Spec.VoiceAdapter.NodeVoices,
+		starts:       starts,
+		startPolicy:  initiativePolicy,
+		inputMode:    inputMode,
+		localDir:     spec.Runtime.LocalDir,
 	}, nil
 }
 
@@ -101,24 +133,27 @@ type voiceAdapterConfig struct {
 }
 
 func parseWorkflowConfig(spec agenthost.Spec) (workflowConfig, error) {
-	flowcraft := spec.Workflow.Spec.Flowcraft
-	if flowcraft == nil {
-		return workflowConfig{}, fmt.Errorf("flowcraft: workflow spec.flowcraft is required")
-	}
-	data, err := json.Marshal(flowcraft)
+	data, err := json.Marshal(spec.Workflow)
 	if err != nil {
 		return workflowConfig{}, fmt.Errorf("flowcraft: encode workflow: %w", err)
 	}
-	var raw struct {
-		Flowcraft    map[string]any     `json:"flowcraft"`
-		VoiceAdapter voiceAdapterConfig `json:"voice_adapter"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var cfg workflowConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return workflowConfig{}, fmt.Errorf("flowcraft: decode workflow: %w", err)
 	}
-	cfg := workflowConfig{}
-	cfg.Spec.Flowcraft = raw.Flowcraft
-	cfg.Spec.VoiceAdapter = raw.VoiceAdapter
+	if cfg.Spec.Flowcraft == nil {
+		cfg.Spec.Flowcraft = map[string]any{}
+	}
+	if raw, ok := cfg.Spec.Flowcraft["voice_adapter"]; ok {
+		adapterData, err := json.Marshal(raw)
+		if err != nil {
+			return workflowConfig{}, fmt.Errorf("flowcraft: encode voice_adapter: %w", err)
+		}
+		if err := json.Unmarshal(adapterData, &cfg.Spec.VoiceAdapter); err != nil {
+			return workflowConfig{}, fmt.Errorf("flowcraft: decode voice_adapter: %w", err)
+		}
+		delete(cfg.Spec.Flowcraft, "voice_adapter")
+	}
 	cfg.Spec.VoiceAdapter.ASRModel = strings.TrimSpace(cfg.Spec.VoiceAdapter.ASRModel)
 	cfg.Spec.VoiceAdapter.DefaultVoice = strings.TrimSpace(cfg.Spec.VoiceAdapter.DefaultVoice)
 	for rawNodeID, voice := range cfg.Spec.VoiceAdapter.NodeVoices {
@@ -143,12 +178,313 @@ func (c workflowConfig) validate() error {
 	return nil
 }
 
+func flowcraftConversationStarts(cfg map[string]any) string {
+	if conversation, ok := cfg["conversation"].(map[string]any); ok {
+		if starts, ok := conversation["starts"].(string); ok && strings.TrimSpace(starts) != "" {
+			return strings.TrimSpace(starts)
+		}
+	}
+	return "peer"
+}
+
+func flowcraftWorkspaceParameters(parameters *apitypes.WorkspaceParameters) (*apitypes.FlowcraftWorkspaceParameters, error) {
+	if parameters == nil {
+		return nil, nil
+	}
+	agentType, err := parameters.Discriminator()
+	if err != nil {
+		return nil, fmt.Errorf("flowcraft: decode workspace parameters: %w", err)
+	}
+	if strings.TrimSpace(agentType) != Type {
+		return nil, fmt.Errorf("flowcraft: decode workspace parameters: agent_type %q does not match %q", agentType, Type)
+	}
+	typed, err := parameters.AsFlowcraftWorkspaceParameters()
+	if err != nil {
+		return nil, fmt.Errorf("flowcraft: decode workspace parameters: %w", err)
+	}
+	return &typed, nil
+}
+
+func flowcraftConversationSettings(parameters *apitypes.FlowcraftWorkspaceParameters, cfg map[string]any) (string, string) {
+	starts := flowcraftConversationStarts(cfg)
+	policy := flowcraftDefaultAgentInitiativePolicy(starts)
+	if parameters == nil || parameters.Conversation == nil {
+		return starts, policy
+	}
+	if parameters.Conversation.Initiative != nil {
+		switch strings.ToLower(strings.TrimSpace(string(*parameters.Conversation.Initiative))) {
+		case "agent", "self":
+			starts = "self"
+			policy = flowcraftDefaultAgentInitiativePolicy(starts)
+		case "peer", "user":
+			starts = "peer"
+			policy = flowcraftDefaultAgentInitiativePolicy(starts)
+		}
+	}
+	if parameters.Conversation.AgentInitiativePolicy != nil {
+		switch strings.ToLower(strings.TrimSpace(string(*parameters.Conversation.AgentInitiativePolicy))) {
+		case "on_reload", "once_when_empty":
+			policy = strings.ToLower(strings.TrimSpace(string(*parameters.Conversation.AgentInitiativePolicy)))
+		}
+	}
+	return starts, policy
+}
+
+func flowcraftDefaultAgentInitiativePolicy(starts string) string {
+	if strings.EqualFold(strings.TrimSpace(starts), "self") {
+		return "on_reload"
+	}
+	return "once_when_empty"
+}
+
 type agent struct {
 	transformers transformerProvider
 	claw         clawClient
 	asrModel     string
 	defaultVoice string
 	nodeVoices   map[string]string
+	starts       string
+	startPolicy  string
+	inputMode    inputMode
+	localDir     string
+
+	outputMu       sync.Mutex
+	activeOutput   *genx.StreamBuilder
+	activeStreamID string
+	outputEpoch    uint64
+
+	selfStartMu sync.Mutex
+	selfStarted bool
+}
+
+func (a *agent) Status(context.Context) (apitypes.PeerRunWorkspaceState, error) {
+	return apitypes.PeerRunWorkspaceState{RuntimeState: "running"}, nil
+}
+
+func (a *agent) ListHistory(ctx context.Context, req apitypes.PeerRunHistoryListRequest) (apitypes.PeerRunHistoryListResponse, error) {
+	var debugResp debugHistoryResponse
+	if err := a.callDebug(ctx, http.MethodGet, "/debug/history", nil, &debugResp); err != nil {
+		message := err.Error()
+		return apitypes.PeerRunHistoryListResponse{
+			Available: false,
+			Items:     []apitypes.PeerRunHistoryEntry{},
+			HasNext:   false,
+			Message:   &message,
+		}, nil
+	}
+	if !debugResp.Enabled {
+		message := "flowcraft history is disabled"
+		return apitypes.PeerRunHistoryListResponse{
+			Available: false,
+			Items:     []apitypes.PeerRunHistoryEntry{},
+			HasNext:   false,
+			Message:   &message,
+		}, nil
+	}
+	offset, err := parseHistoryCursor(req.Cursor)
+	if err != nil {
+		return apitypes.PeerRunHistoryListResponse{}, err
+	}
+	limit := 50
+	if req.Limit != nil {
+		limit = *req.Limit
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset > len(debugResp.Messages) {
+		offset = len(debugResp.Messages)
+	}
+	end := min(offset+limit, len(debugResp.Messages))
+	items := make([]apitypes.PeerRunHistoryEntry, 0, end-offset)
+	now := time.Now().UTC()
+	for i := offset; i < end; i++ {
+		items = append(items, historyEntryFromMessage(debugResp.ContextID, i, now, debugResp.Messages[i]))
+	}
+	resp := apitypes.PeerRunHistoryListResponse{
+		Available: true,
+		Items:     items,
+		HasNext:   end < len(debugResp.Messages),
+	}
+	if resp.HasNext {
+		next := strconv.Itoa(end)
+		resp.NextCursor = &next
+	}
+	if len(debugResp.Messages) == 0 {
+		message := "flowcraft history is empty"
+		resp.Message = &message
+	}
+	return resp, nil
+}
+
+func (a *agent) PlayHistory(ctx context.Context, req apitypes.PeerRunHistoryPlayRequest) (apitypes.PeerRunHistoryPlayResponse, error) {
+	var debugResp debugHistoryResponse
+	if err := a.callDebug(ctx, http.MethodGet, "/debug/history", nil, &debugResp); err != nil {
+		message := err.Error()
+		return apitypes.PeerRunHistoryPlayResponse{
+			Accepted:  false,
+			HistoryId: req.HistoryId,
+			State:     "unavailable",
+			Message:   &message,
+		}, nil
+	}
+	msg, ok := historyMessageByID(debugResp.ContextID, req.HistoryId, debugResp.Messages)
+	if !ok {
+		message := "history entry not found"
+		return apitypes.PeerRunHistoryPlayResponse{
+			Accepted:  false,
+			HistoryId: req.HistoryId,
+			State:     "not_found",
+			Message:   &message,
+		}, nil
+	}
+	text := strings.TrimSpace(msg.Content())
+	if text == "" {
+		message := "history entry has no text to replay"
+		return apitypes.PeerRunHistoryPlayResponse{
+			Accepted:  false,
+			HistoryId: req.HistoryId,
+			State:     "empty",
+			Message:   &message,
+		}, nil
+	}
+	output, streamID, epoch, ok := a.beginReplayOutput()
+	if !ok {
+		message := "flowcraft history replay requires an active peer output stream"
+		return apitypes.PeerRunHistoryPlayResponse{
+			Accepted:  false,
+			HistoryId: req.HistoryId,
+			State:     "unavailable",
+			Message:   &message,
+		}, nil
+	}
+	if msg.Role == flowmodel.RoleUser {
+		if err := a.addOutput(output, epoch,
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, text, false),
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, "", true),
+		); err != nil {
+			message := err.Error()
+			return apitypes.PeerRunHistoryPlayResponse{Accepted: false, HistoryId: req.HistoryId, State: "unavailable", Message: &message}, nil
+		}
+		return apitypes.PeerRunHistoryPlayResponse{Accepted: true, HistoryId: req.HistoryId, State: "played"}, nil
+	}
+	nodeID := "answer"
+	if err := a.addOutput(output, epoch,
+		textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, text, false),
+		textChunk(genx.RoleModel, assistantLabel, streamID, assistantLabel, "", true),
+	); err != nil {
+		message := err.Error()
+		return apitypes.PeerRunHistoryPlayResponse{Accepted: false, HistoryId: req.HistoryId, State: "unavailable", Message: &message}, nil
+	}
+	if includeAudio(req.Options) {
+		voice, ok := a.voiceForNode(nodeID)
+		if !ok {
+			return apitypes.PeerRunHistoryPlayResponse{Accepted: true, HistoryId: req.HistoryId, State: "played"}, nil
+		}
+		if err := a.synthesize(ctx, streamID, nodeID, voice, text, output, epoch); err != nil {
+			message := err.Error()
+			return apitypes.PeerRunHistoryPlayResponse{Accepted: false, HistoryId: req.HistoryId, State: "audio_failed", Message: &message}, nil
+		}
+	}
+	return apitypes.PeerRunHistoryPlayResponse{Accepted: true, HistoryId: req.HistoryId, State: "played"}, nil
+}
+
+func (a *agent) MemoryStats(ctx context.Context, _ apitypes.PeerRunMemoryStatsRequest) (apitypes.PeerRunMemoryStatsResponse, error) {
+	var debugResp debugMemoryResponse
+	if err := a.callDebug(ctx, http.MethodGet, "/debug/memory", nil, &debugResp); err != nil {
+		message := err.Error()
+		return apitypes.PeerRunMemoryStatsResponse{
+			Available: false,
+			Enabled:   false,
+			Message:   &message,
+		}, nil
+	}
+	memoryRootPath := a.resolveWorkspacePath(debugResp.Root)
+	memoryStats, err := inspectDirectoryStats(memoryRootPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return apitypes.PeerRunMemoryStatsResponse{}, fmt.Errorf("flowcraft: inspect memory root: %w", err)
+	}
+	workspaceStats, err := inspectDirectoryStats(a.localDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return apitypes.PeerRunMemoryStatsResponse{}, fmt.Errorf("flowcraft: inspect workspace root: %w", err)
+	}
+	metadata := map[string]interface{}{
+		"root":                 debugResp.Root,
+		"root_path":            memoryRootPath,
+		"workspace_path":       a.localDir,
+		"scope":                debugResp.Scope,
+		"write":                debugResp.Write,
+		"recall":               debugResp.Recall,
+		"retrieval":            debugResp.Retrieval,
+		"layout":               debugResp.Layout,
+		"file_count":           workspaceStats.FileCount,
+		"memory_file_count":    memoryStats.FileCount,
+		"memory_storage_bytes": memoryStats.StorageBytes,
+	}
+	embeddingEnabled := false
+	embeddingStatus := "disabled"
+	indexStatus := "disabled"
+	if debugResp.Enabled {
+		indexStatus = "ready"
+	}
+	resp := apitypes.PeerRunMemoryStatsResponse{
+		Available:        true,
+		Enabled:          debugResp.Enabled,
+		ItemCount:        memoryStats.JSONLLineCount,
+		StorageBytes:     workspaceStats.StorageBytes,
+		EmbeddingEnabled: &embeddingEnabled,
+		EmbeddingStatus:  &embeddingStatus,
+		IndexStatus:      &indexStatus,
+		Metadata:         &metadata,
+	}
+	if backend := debugResp.RetrievalBackend(); backend != "" {
+		resp.Backend = &backend
+	}
+	if !workspaceStats.LastUpdatedAt.IsZero() {
+		updatedAt := workspaceStats.LastUpdatedAt
+		resp.LastUpdatedAt = &updatedAt
+	}
+	return resp, nil
+}
+
+func (a *agent) Recall(ctx context.Context, req apitypes.PeerRunRecallRequest) (apitypes.PeerRunRecallResponse, error) {
+	payload := map[string]interface{}{"text": req.Query}
+	if req.Limit != nil {
+		payload["top_k"] = *req.Limit
+	}
+	if req.Filters != nil {
+		for key, value := range *req.Filters {
+			payload[key] = value
+		}
+	}
+	var debugResp debugRecallResponse
+	if err := a.callDebug(ctx, http.MethodPost, "/debug/recall", payload, &debugResp); err != nil {
+		message := err.Error()
+		return apitypes.PeerRunRecallResponse{
+			Available: false,
+			Hits:      []apitypes.PeerRunRecallHit{},
+			Message:   &message,
+		}, nil
+	}
+	if !debugResp.Enabled {
+		message := "flowcraft memory recall is disabled"
+		return apitypes.PeerRunRecallResponse{
+			Available: false,
+			Hits:      []apitypes.PeerRunRecallHit{},
+			Message:   &message,
+		}, nil
+	}
+	hits := make([]apitypes.PeerRunRecallHit, 0, len(debugResp.Hits))
+	for i, hit := range debugResp.Hits {
+		hits = append(hits, recallHitFromDebug(i, hit))
+	}
+	return apitypes.PeerRunRecallResponse{
+		Available: true,
+		Hits:      hits,
+	}, nil
 }
 
 type transformerProvider interface {
@@ -158,6 +494,10 @@ type transformerProvider interface {
 type clawClient interface {
 	RoundTrip(flowclaw.Request) (clawResponse, error)
 	CloseContext(context.Context) error
+}
+
+type debugHTTPClaw interface {
+	ServeDebugHTTP(http.ResponseWriter, *http.Request)
 }
 
 type clawResponse interface {
@@ -179,45 +519,874 @@ func (c realClaw) CloseContext(ctx context.Context) error {
 	return c.Claw.CloseContext(ctx)
 }
 
+func (c realClaw) ServeDebugHTTP(w http.ResponseWriter, r *http.Request) {
+	if c.Claw == nil {
+		http.Error(w, "flowcraft: nil claw runtime", http.StatusServiceUnavailable)
+		return
+	}
+	c.Claw.ServeDebugHTTP(w, r)
+}
+
+func (a *agent) callDebug(ctx context.Context, method, path string, body any, out any) error {
+	debugger, ok := a.claw.(debugHTTPClaw)
+	if !ok || debugger == nil {
+		return fmt.Errorf("flowcraft debug API is not available")
+	}
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("flowcraft: encode debug request: %w", err)
+		}
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, path, reader)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	debugger.ServeDebugHTTP(rec, req)
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		var problem struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(res.Body).Decode(&problem)
+		if problem.Error == "" {
+			problem.Error = res.Status
+		}
+		return fmt.Errorf("flowcraft debug %s %s: %s", method, path, problem.Error)
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+		return fmt.Errorf("flowcraft: decode debug response: %w", err)
+	}
+	return nil
+}
+
+func (a *agent) resolveWorkspacePath(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return a.localDir
+	}
+	if filepath.IsAbs(root) {
+		return filepath.Clean(root)
+	}
+	return filepath.Join(a.localDir, filepath.Clean(root))
+}
+
+type debugHistoryResponse struct {
+	Enabled   bool                `json:"enabled"`
+	ContextID string              `json:"context_id"`
+	Count     int                 `json:"count"`
+	Messages  []flowmodel.Message `json:"messages,omitempty"`
+}
+
+type debugMemoryResponse struct {
+	Enabled   bool                   `json:"enabled"`
+	Root      string                 `json:"root"`
+	Scope     map[string]interface{} `json:"scope"`
+	Write     map[string]interface{} `json:"write"`
+	Recall    map[string]interface{} `json:"recall"`
+	Retrieval map[string]interface{} `json:"retrieval"`
+	Layout    map[string]interface{} `json:"layout"`
+}
+
+func (r debugMemoryResponse) RetrievalBackend() string {
+	if raw, ok := r.Retrieval["backend"].(string); ok {
+		return strings.TrimSpace(raw)
+	}
+	return ""
+}
+
+type debugRecallResponse struct {
+	Enabled bool             `json:"enabled"`
+	Count   int              `json:"count"`
+	Hits    []debugRecallHit `json:"hits"`
+}
+
+type debugRecallHit struct {
+	ID        string   `json:"id,omitempty"`
+	Kind      string   `json:"kind,omitempty"`
+	Content   string   `json:"content"`
+	Subject   string   `json:"subject,omitempty"`
+	Predicate string   `json:"predicate,omitempty"`
+	Object    string   `json:"object,omitempty"`
+	Entities  []string `json:"entities,omitempty"`
+	Score     float64  `json:"score,omitempty"`
+	Sources   []string `json:"sources,omitempty"`
+}
+
+func parseHistoryCursor(cursor *string) (int, error) {
+	if cursor == nil || strings.TrimSpace(*cursor) == "" {
+		return 0, nil
+	}
+	offset, err := strconv.Atoi(strings.TrimSpace(*cursor))
+	if err != nil || offset < 0 {
+		return 0, fmt.Errorf("flowcraft: invalid history cursor %q", *cursor)
+	}
+	return offset, nil
+}
+
+func historyEntryFromMessage(contextID string, index int, createdAt time.Time, msg flowmodel.Message) apitypes.PeerRunHistoryEntry {
+	actor := string(msg.Role)
+	text := strings.TrimSpace(msg.Content())
+	kind := apitypes.PeerRunHistoryChunkKind("text")
+	if msg.Role == flowmodel.RoleUser {
+		kind = apitypes.PeerRunHistoryChunkKind("transcript")
+	}
+	metadata := map[string]interface{}{
+		"context_id":    contextID,
+		"message_index": index,
+		"role":          actor,
+	}
+	chunks := []apitypes.PeerRunHistoryChunk{{
+		Actor:    &actor,
+		At:       &createdAt,
+		Kind:     kind,
+		Metadata: &metadata,
+		Text:     &text,
+	}}
+	entry := apitypes.PeerRunHistoryEntry{
+		Actor:           &actor,
+		Chunks:          &chunks,
+		CreatedAt:       createdAt,
+		Id:              historyEntryID(contextID, index),
+		Metadata:        &metadata,
+		ReplayAvailable: text != "",
+	}
+	switch msg.Role {
+	case flowmodel.RoleUser:
+		entry.Transcript = &text
+	default:
+		entry.Text = &text
+	}
+	return entry
+}
+
+func historyMessageByID(contextID, historyID string, messages []flowmodel.Message) (flowmodel.Message, bool) {
+	for i, msg := range messages {
+		if historyEntryID(contextID, i) == historyID {
+			return msg, true
+		}
+	}
+	return flowmodel.Message{}, false
+}
+
+func historyEntryID(contextID string, index int) string {
+	return fmt.Sprintf("%s:%06d", contextIDOrDefault(contextID), index)
+}
+
+func contextIDOrDefault(contextID string) string {
+	contextID = strings.TrimSpace(contextID)
+	if contextID == "" {
+		return "default"
+	}
+	return contextID
+}
+
+func includeAudio(options *apitypes.PeerRunHistoryPlayOptions) bool {
+	return options == nil || options.IncludeAudio == nil || *options.IncludeAudio
+}
+
+func recallHitFromDebug(index int, hit debugRecallHit) apitypes.PeerRunRecallHit {
+	id := strings.TrimSpace(hit.ID)
+	if id == "" {
+		id = fmt.Sprintf("hit-%06d", index)
+	}
+	snippet := strings.TrimSpace(hit.Content)
+	if snippet == "" {
+		snippet = strings.TrimSpace(strings.Join([]string{hit.Subject, hit.Predicate, hit.Object}, " "))
+	}
+	sourceType := strings.TrimSpace(hit.Kind)
+	var sourceTypePtr *string
+	if sourceType != "" {
+		sourceTypePtr = &sourceType
+	}
+	var sourceIDPtr *string
+	if len(hit.Sources) > 0 && strings.TrimSpace(hit.Sources[0]) != "" {
+		sourceID := strings.TrimSpace(hit.Sources[0])
+		sourceIDPtr = &sourceID
+	}
+	metadata := map[string]interface{}{
+		"subject":   hit.Subject,
+		"predicate": hit.Predicate,
+		"object":    hit.Object,
+		"entities":  hit.Entities,
+		"sources":   hit.Sources,
+	}
+	return apitypes.PeerRunRecallHit{
+		Id:         id,
+		Score:      hit.Score,
+		Snippet:    snippet,
+		SourceType: sourceTypePtr,
+		SourceId:   sourceIDPtr,
+		Metadata:   &metadata,
+	}
+}
+
+type directoryStats struct {
+	StorageBytes   int64
+	FileCount      int64
+	JSONLLineCount int64
+	LastUpdatedAt  time.Time
+}
+
+func inspectDirectoryStats(root string) (directoryStats, error) {
+	var stats directoryStats
+	if strings.TrimSpace(root) == "" {
+		return stats, nil
+	}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		stats.FileCount++
+		stats.StorageBytes += info.Size()
+		if info.ModTime().After(stats.LastUpdatedAt) {
+			stats.LastUpdatedAt = info.ModTime().UTC()
+		}
+		if filepath.Ext(path) != ".jsonl" {
+			return nil
+		}
+		lines, err := countFileLines(path)
+		if err != nil {
+			return err
+		}
+		stats.JSONLLineCount += lines
+		return nil
+	})
+	if err != nil {
+		return directoryStats{}, err
+	}
+	return stats, nil
+}
+
+func countFileLines(path string) (int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = file.Close() }()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024), 1024*1024)
+	var lines int64
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) != "" {
+			lines++
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+	return lines, nil
+}
+
 func (a *agent) Transform(ctx context.Context, _ string, input genx.Stream) (genx.Stream, error) {
 	if a == nil {
 		return nil, fmt.Errorf("flowcraft: agent is nil")
 	}
 	output := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 64)
+	a.setActiveOutput(output, defaultInputStreamID)
 	go a.run(ctx, input, output)
 	return output.Stream(), nil
 }
 
 func (a *agent) run(ctx context.Context, input genx.Stream, output *genx.StreamBuilder) {
 	defer func() {
+		a.clearActiveOutput(output)
 		if a.claw != nil {
 			_ = a.claw.CloseContext(context.Background())
 		}
 	}()
-	if err := a.runTurn(ctx, input, output); err != nil {
-		_ = output.Unexpected(genx.Usage{}, err)
+
+	current := a.startSelfTurnIfNeeded(ctx, output)
+	if a.inputMode == inputModeRealtime {
+		a.runRealtime(ctx, input, output, current)
 		return
 	}
-	_ = output.Done(genx.Usage{})
+
+	readerCtx, cancelReader := context.WithCancel(ctx)
+	defer cancelReader()
+	turns := make(chan flowcraftInputTurn, 4)
+	readerDone := make(chan error, 1)
+	go func() {
+		readerDone <- a.readInputTurns(readerCtx, input, turns)
+	}()
+
+	inputDone := false
+	var inputErr error
+	for {
+		if current == nil && inputDone {
+			if inputErr != nil && !isFlowcraftInputDone(inputErr) && !errors.Is(inputErr, context.Canceled) {
+				_ = output.Unexpected(genx.Usage{}, inputErr)
+			} else {
+				_ = output.Done(genx.Usage{})
+			}
+			return
+		}
+
+		if current == nil {
+			select {
+			case turn, ok := <-turns:
+				if !ok {
+					inputDone = true
+					continue
+				}
+				current = a.startFlowcraftTurn(ctx, output, turn)
+			case err := <-readerDone:
+				inputDone = true
+				inputErr = err
+				readerDone = nil
+			case <-ctx.Done():
+				_ = output.Unexpected(genx.Usage{}, ctx.Err())
+				return
+			}
+			continue
+		}
+
+		select {
+		case turn, ok := <-turns:
+			if !ok {
+				inputDone = true
+				continue
+			}
+			current.cancel()
+			_ = a.interruptOutput(output, current.streamID, current.epoch)
+			current = a.startFlowcraftTurn(ctx, output, turn)
+		case err := <-current.done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				if isFlowcraftInputDone(err) {
+					current = nil
+					continue
+				}
+				_ = output.Unexpected(genx.Usage{}, err)
+				return
+			}
+			current = nil
+		case err := <-readerDone:
+			inputDone = true
+			inputErr = err
+			readerDone = nil
+		case <-ctx.Done():
+			current.cancel()
+			_ = output.Unexpected(genx.Usage{}, ctx.Err())
+			return
+		}
+	}
 }
 
-func (a *agent) runTurn(ctx context.Context, input genx.Stream, output *genx.StreamBuilder) error {
-	transcript, streamID, err := a.transcribeInputTurn(ctx, input, output)
+type flowcraftInputTurn struct {
+	streamID string
+	stream   genx.Stream
+}
+
+type flowcraftActiveTurn struct {
+	streamID string
+	epoch    uint64
+	cancel   context.CancelFunc
+	done     <-chan error
+}
+
+type flowcraftTranscriptTurn struct {
+	streamID   string
+	transcript string
+}
+
+func (a *agent) startFlowcraftTurn(ctx context.Context, output *genx.StreamBuilder, turn flowcraftInputTurn) *flowcraftActiveTurn {
+	streamID := strings.TrimSpace(turn.streamID)
+	if streamID == "" {
+		streamID = genx.NewStreamID()
+	}
+	epoch := a.setActiveOutput(output, streamID)
+	turnCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- a.runTurn(turnCtx, turn.stream, output, epoch, streamID)
+	}()
+	return &flowcraftActiveTurn{
+		streamID: streamID,
+		epoch:    epoch,
+		cancel:   cancel,
+		done:     done,
+	}
+}
+
+func (a *agent) startFlowcraftTranscriptTurn(ctx context.Context, output *genx.StreamBuilder, streamID, transcript string, emitTranscript bool) *flowcraftActiveTurn {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		streamID = genx.NewStreamID()
+	}
+	epoch := a.setActiveOutput(output, streamID)
+	if emitTranscript {
+		if err := a.addOutput(output, epoch,
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, strings.TrimSpace(transcript), false),
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, "", true),
+		); err != nil {
+			done := make(chan error, 1)
+			done <- err
+			return &flowcraftActiveTurn{streamID: streamID, epoch: epoch, cancel: func() {}, done: done}
+		}
+	}
+	turnCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- a.runTranscriptTurn(turnCtx, transcript, streamID, output, epoch, false)
+	}()
+	return &flowcraftActiveTurn{
+		streamID: streamID,
+		epoch:    epoch,
+		cancel:   cancel,
+		done:     done,
+	}
+}
+
+func (a *agent) startSelfTurnIfNeeded(ctx context.Context, output *genx.StreamBuilder) *flowcraftActiveTurn {
+	if !a.shouldSelfStart(ctx) {
+		return nil
+	}
+	streamID := selfStartStreamID
+	epoch := a.setActiveOutput(output, streamID)
+	turnCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- a.runClawTextTurn(turnCtx, "", streamID, output, epoch)
+	}()
+	return &flowcraftActiveTurn{
+		streamID: streamID,
+		epoch:    epoch,
+		cancel:   cancel,
+		done:     done,
+	}
+}
+
+func (a *agent) shouldSelfStart(ctx context.Context) bool {
+	if !strings.EqualFold(strings.TrimSpace(a.starts), "self") {
+		return false
+	}
+	a.selfStartMu.Lock()
+	if a.selfStarted {
+		a.selfStartMu.Unlock()
+		return false
+	}
+	a.selfStarted = true
+	a.selfStartMu.Unlock()
+
+	if strings.EqualFold(strings.TrimSpace(a.startPolicy), "on_reload") {
+		return true
+	}
+	empty, err := a.historyEmpty(ctx)
+	if err != nil {
+		return true
+	}
+	return empty
+}
+
+func (a *agent) historyEmpty(ctx context.Context) (bool, error) {
+	var resp debugHistoryResponse
+	if err := a.callDebug(ctx, http.MethodGet, "/debug/history", nil, &resp); err != nil {
+		return false, err
+	}
+	return resp.Count == 0 && len(resp.Messages) == 0, nil
+}
+
+func (a *agent) runRealtime(ctx context.Context, input genx.Stream, output *genx.StreamBuilder, current *flowcraftActiveTurn) {
+	transformer := a.transformers.Transformer()
+	asrInput := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 64)
+	asr, err := transformer.Transform(ctx, "model/"+a.asrModel+"?emit_interim=true", asrInput.Stream())
+	if err != nil {
+		_ = output.Unexpected(genx.Usage{}, fmt.Errorf("flowcraft: start ASR: %w", err))
+		return
+	}
+	defer func() { _ = asr.Close() }()
+
+	streamIDState := &lockedString{value: defaultInputStreamID}
+	feedDone := make(chan feedASRResult, 1)
+	go func() {
+		feedDone <- feedRealtimeASRInput(ctx, input, asrInput, streamIDState)
+	}()
+
+	asrResults := make(chan streamResult, 1)
+	go readStreamResults(asr, asrResults)
+
+	var asrDone bool
+	var asrErr error
+	var feedResult feedASRResult
+	feedClosed := false
+	realtimeTurnIndex := 0
+	var pending []flowcraftTranscriptTurn
+	startPending := func() {
+		if current != nil || len(pending) == 0 {
+			return
+		}
+		turn := pending[0]
+		pending = pending[1:]
+		current = a.startFlowcraftTranscriptTurn(ctx, output, turn.streamID, turn.transcript, true)
+	}
+	queueTranscript := func(text string) {
+		realtimeTurnIndex++
+		streamID := realtimeTurnStreamID(streamIDState.Get(), realtimeTurnIndex)
+		turn := flowcraftTranscriptTurn{streamID: streamID, transcript: text}
+		if current != nil {
+			current.cancel()
+			_ = a.interruptOutput(output, current.streamID, current.epoch)
+			current = nil
+			pending = nil
+		}
+		pending = append(pending, turn)
+		startPending()
+	}
+	interruptCurrent := func() {
+		pending = nil
+		if current == nil {
+			return
+		}
+		current.cancel()
+		_ = a.interruptOutput(output, current.streamID, current.epoch)
+		current = nil
+	}
+	var asrTranscript string
+	asrTranscriptOpen := false
+	failCurrent := func(err error) bool {
+		if err == nil || isFlowcraftInputDone(err) || errors.Is(err, context.Canceled) {
+			return false
+		}
+		if current != nil {
+			current.cancel()
+			current = nil
+		}
+		pending = nil
+		_ = output.Unexpected(genx.Usage{}, err)
+		return true
+	}
+	handleASRChunk := func(chunk *genx.MessageChunk) {
+		if chunk == nil {
+			return
+		}
+		if chunk.IsBeginOfStream() {
+			interruptCurrent()
+			asrTranscript = ""
+			asrTranscriptOpen = true
+			return
+		}
+		if chunk.IsEndOfStream() {
+			if !asrTranscriptOpen {
+				return
+			}
+			transcript := strings.TrimSpace(asrTranscript)
+			asrTranscript = ""
+			asrTranscriptOpen = false
+			if chunk.Ctrl != nil && strings.TrimSpace(chunk.Ctrl.Error) != "" {
+				return
+			}
+			if transcript != "" {
+				queueTranscript(transcript)
+			}
+			return
+		}
+		text, ok := chunk.Part.(genx.Text)
+		if !ok || strings.TrimSpace(string(text)) == "" {
+			return
+		}
+		if asrTranscriptOpen {
+			asrTranscript = mergeTranscript(asrTranscript, string(text))
+			return
+		}
+		queueTranscript(string(text))
+	}
+
+	for {
+		startPending()
+		if current == nil && len(pending) == 0 && asrDone {
+			if !feedClosed {
+				feedResult = <-feedDone
+				feedClosed = true
+			}
+			if feedResult.err != nil && !isFlowcraftInputDone(feedResult.err) && !errors.Is(feedResult.err, context.Canceled) {
+				_ = output.Unexpected(genx.Usage{}, fmt.Errorf("flowcraft: feed ASR: %w", feedResult.err))
+				return
+			}
+			if asrErr != nil && !isFlowcraftInputDone(asrErr) && !errors.Is(asrErr, context.Canceled) {
+				_ = output.Unexpected(genx.Usage{}, fmt.Errorf("flowcraft: read ASR: %w", asrErr))
+				return
+			}
+			_ = output.Done(genx.Usage{})
+			return
+		}
+
+		if current == nil {
+			select {
+			case result := <-asrResults:
+				if result.err != nil {
+					if failCurrent(fmt.Errorf("flowcraft: read ASR: %w", result.err)) {
+						return
+					}
+					asrDone = true
+					asrErr = result.err
+					continue
+				}
+				if result.chunk == nil {
+					continue
+				}
+				handleASRChunk(result.chunk)
+			case feedResult = <-feedDone:
+				feedClosed = true
+				feedDone = nil
+				if feedResult.err != nil {
+					if failCurrent(fmt.Errorf("flowcraft: feed ASR: %w", feedResult.err)) {
+						return
+					}
+				}
+			case <-ctx.Done():
+				_ = output.Unexpected(genx.Usage{}, ctx.Err())
+				return
+			}
+			continue
+		}
+
+		select {
+		case err := <-current.done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				_ = output.Unexpected(genx.Usage{}, err)
+				return
+			}
+			current = nil
+			continue
+		default:
+		}
+
+		select {
+		case result := <-asrResults:
+			if result.err != nil {
+				if failCurrent(fmt.Errorf("flowcraft: read ASR: %w", result.err)) {
+					return
+				}
+				asrDone = true
+				asrErr = result.err
+				continue
+			}
+			if result.chunk == nil {
+				continue
+			}
+			handleASRChunk(result.chunk)
+		case err := <-current.done:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				_ = output.Unexpected(genx.Usage{}, err)
+				return
+			}
+			current = nil
+		case feedResult = <-feedDone:
+			feedClosed = true
+			feedDone = nil
+			if feedResult.err != nil {
+				if failCurrent(fmt.Errorf("flowcraft: feed ASR: %w", feedResult.err)) {
+					return
+				}
+			}
+		case <-ctx.Done():
+			current.cancel()
+			_ = output.Unexpected(genx.Usage{}, ctx.Err())
+			return
+		}
+	}
+}
+
+func (a *agent) readInputTurns(ctx context.Context, input genx.Stream, turns chan<- flowcraftInputTurn) error {
+	defer close(turns)
+	if input == nil {
+		return fmt.Errorf("flowcraft: input stream is required")
+	}
+
+	type openTurn struct {
+		streamID string
+		input    *genx.StreamBuilder
+	}
+	var current *openTurn
+	closeCurrent := func() {
+		if current == nil {
+			return
+		}
+		_ = current.input.Done(genx.Usage{})
+		current = nil
+	}
+	startTurn := func(streamID string) error {
+		closeCurrent()
+		streamID = strings.TrimSpace(streamID)
+		if streamID == "" {
+			streamID = genx.NewStreamID()
+		}
+		builder := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 64)
+		turn := flowcraftInputTurn{streamID: streamID, stream: builder.Stream()}
+		select {
+		case <-ctx.Done():
+			_ = builder.Unexpected(genx.Usage{}, ctx.Err())
+			return ctx.Err()
+		case turns <- turn:
+		}
+		current = &openTurn{streamID: streamID, input: builder}
+		return nil
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			closeCurrent()
+			return err
+		}
+		chunk, err := input.Next()
+		if err != nil {
+			closeCurrent()
+			if isFlowcraftInputDone(err) {
+				return nil
+			}
+			return err
+		}
+		if chunk == nil {
+			continue
+		}
+
+		if chunk.IsBeginOfStream() {
+			streamID := chunkStreamID(chunk)
+			if err := startTurn(streamID); err != nil {
+				return err
+			}
+		}
+		if current == nil {
+			if isAudioChunk(chunk) {
+				continue
+			}
+			if err := startTurn(chunkStreamID(chunk)); err != nil {
+				return err
+			}
+		}
+		turnChunk := cloneTurnChunk(chunk, current.streamID)
+		if err := current.input.Add(turnChunk); err != nil {
+			closeCurrent()
+			return err
+		}
+		if chunk.IsEndOfStream() {
+			closeCurrent()
+		}
+	}
+}
+
+func cloneTurnChunk(chunk *genx.MessageChunk, streamID string) *genx.MessageChunk {
+	cloned := chunk.Clone()
+	if cloned.Ctrl == nil {
+		cloned.Ctrl = &genx.StreamCtrl{}
+	}
+	cloned.Ctrl.StreamID = streamID
+	return cloned
+}
+
+func chunkStreamID(chunk *genx.MessageChunk) string {
+	if chunk == nil || chunk.Ctrl == nil {
+		return ""
+	}
+	return strings.TrimSpace(chunk.Ctrl.StreamID)
+}
+
+func isAudioChunk(chunk *genx.MessageChunk) bool {
+	if chunk == nil {
+		return false
+	}
+	blob, ok := chunk.Part.(*genx.Blob)
+	if !ok {
+		return false
+	}
+	return isAudioMIME(blob.MIMEType)
+}
+
+func isFlowcraftInputDone(err error) bool {
+	return errors.Is(err, io.EOF) || agenthost.IsStreamDone(err)
+}
+
+func (a *agent) runTurn(ctx context.Context, input genx.Stream, output *genx.StreamBuilder, epoch uint64, defaultStreamID string) error {
+	transcript, streamID, err := a.transcribeInputTurn(ctx, input, output, epoch, defaultStreamID)
 	if err != nil {
 		return err
 	}
+	return a.runTranscriptTurn(ctx, transcript, streamID, output, epoch, false)
+}
+
+func (a *agent) runTranscriptTurn(ctx context.Context, transcript, streamID string, output *genx.StreamBuilder, epoch uint64, emitTranscript bool) error {
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
 		return fmt.Errorf("flowcraft: ASR produced empty transcript")
 	}
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		streamID = defaultInputStreamID
+	}
+	if emitTranscript {
+		if err := a.addOutput(output, epoch,
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, transcript, false),
+			textChunk(genx.RoleUser, transcriptLabel, streamID, transcriptLabel, "", true),
+		); err != nil {
+			return err
+		}
+	}
+	return a.runClawTextTurn(ctx, transcript, streamID, output, epoch)
+}
 
-	resp, err := a.claw.RoundTrip(flowclaw.Request{Context: ctx, Text: transcript})
+func (a *agent) runClawTextTurn(ctx context.Context, text, streamID string, output *genx.StreamBuilder, epoch uint64) error {
+	text = strings.TrimSpace(text)
+	a.setActiveStreamID(streamID)
+
+	resp, err := a.claw.RoundTrip(flowclaw.Request{Context: ctx, Text: text})
 	if err != nil {
 		return fmt.Errorf("flowcraft: claw round trip: %w", err)
 	}
-	var nodeOrder []string
-	ttsByNode := make(map[string]*ttsSession)
+	var currentNodeID string
+	var tts *ttsSession
+	emittedAudio := false
+	sawToken := false
+	closeTTS := func() error {
+		if tts == nil {
+			return nil
+		}
+		session := tts
+		tts = nil
+		if err := session.CloseInput(); err != nil {
+			return err
+		}
+		if err := session.Wait(); err != nil {
+			return err
+		}
+		emittedAudio = true
+		return nil
+	}
+	addTTSText := func(nodeID, text string) error {
+		if tts == nil {
+			voice, ok := a.voiceForNode(nodeID)
+			if !ok {
+				return nil
+			}
+			session, err := a.startTTS(ctx, streamID, nodeID, voice, output, epoch)
+			if err != nil {
+				return err
+			}
+			tts = session
+		}
+		return tts.AddText(text)
+	}
+	defer func() { _ = closeTTS() }()
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		ev, err := resp.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -229,51 +1398,183 @@ func (a *agent) runTurn(ctx context.Context, input genx.Stream, output *genx.Str
 			if ev.Err == "" {
 				ev.Err = ev.Content
 			}
+			if sawToken && isClawPartialResponseLimitError(ev.Err) {
+				break
+			}
 			return fmt.Errorf("flowcraft: claw event error: %s", ev.Err)
 		}
 		if ev.Type != flowclaw.EventToken || ev.Content == "" {
 			continue
 		}
+		sawToken = true
 		nodeID := strings.TrimSpace(ev.NodeID)
 		if nodeID == "" {
 			nodeID = assistantLabel
 		}
-		if err := output.Add(textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, ev.Content, false)); err != nil {
-			return err
-		}
-		tts := ttsByNode[nodeID]
-		if tts == nil {
-			nodeOrder = append(nodeOrder, nodeID)
-			voice := a.voiceForNode(nodeID)
-			tts, err = a.startTTS(ctx, streamID, nodeID, voice, output)
-			if err != nil {
+		if currentNodeID != "" && nodeID != currentNodeID {
+			if err := closeTTS(); err != nil {
 				return err
 			}
-			ttsByNode[nodeID] = tts
 		}
-		if err := tts.AddText(ev.Content); err != nil {
+		currentNodeID = nodeID
+		if err := a.addOutput(output, epoch, textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, ev.Content, false)); err != nil {
+			return err
+		}
+		if err := addTTSText(nodeID, ev.Content); err != nil {
 			return err
 		}
 	}
-	if err := output.Add(textChunk(genx.RoleModel, assistantLabel, streamID, assistantLabel, "", true)); err != nil {
+	if err := closeTTS(); err != nil {
 		return err
 	}
-	for _, nodeID := range nodeOrder {
-		tts := ttsByNode[nodeID]
-		if tts == nil {
-			continue
-		}
-		if err := tts.CloseInput(); err != nil {
-			return err
-		}
-		if err := tts.Wait(); err != nil {
-			return err
-		}
+	if err := a.addOutput(output, epoch, textChunk(genx.RoleModel, assistantLabel, streamID, assistantLabel, "", true)); err != nil {
+		return err
+	}
+	if emittedAudio {
+		return a.addOutput(output, epoch, audioChunk(assistantLabel, streamID, nil, true))
 	}
 	return nil
 }
 
-func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, output *genx.StreamBuilder) (string, string, error) {
+func isClawPartialResponseLimitError(message string) bool {
+	message = strings.ToLower(strings.TrimSpace(message))
+	return strings.Contains(message, "response incomplete") && strings.Contains(message, "length")
+}
+
+type streamResult struct {
+	chunk *genx.MessageChunk
+	err   error
+}
+
+func readStreamResults(stream genx.Stream, results chan<- streamResult) {
+	for {
+		chunk, err := stream.Next()
+		results <- streamResult{chunk: chunk, err: err}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (a *agent) setActiveOutput(output *genx.StreamBuilder, streamID string) uint64 {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	a.outputEpoch++
+	a.activeOutput = output
+	a.activeStreamID = streamID
+	return a.outputEpoch
+}
+
+func (a *agent) setActiveStreamID(streamID string) {
+	if strings.TrimSpace(streamID) == "" {
+		return
+	}
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	a.activeStreamID = streamID
+}
+
+func (a *agent) clearActiveOutput(output *genx.StreamBuilder) {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	if a.activeOutput == output {
+		a.activeOutput = nil
+		a.activeStreamID = ""
+	}
+}
+
+func (a *agent) beginReplayOutput() (*genx.StreamBuilder, string, uint64, bool) {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	if a.activeOutput == nil {
+		return nil, "", 0, false
+	}
+	a.outputEpoch++
+	streamID := strings.TrimSpace(a.activeStreamID)
+	if streamID == "" {
+		streamID = defaultInputStreamID
+	}
+	return a.activeOutput, streamID, a.outputEpoch, true
+}
+
+func (a *agent) currentOutputEpoch() uint64 {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	return a.outputEpoch
+}
+
+func (a *agent) isCurrentOutputEpoch(epoch uint64) bool {
+	a.outputMu.Lock()
+	defer a.outputMu.Unlock()
+	return a.outputEpoch == epoch
+}
+
+func (a *agent) addOutput(output *genx.StreamBuilder, epoch uint64, chunks ...*genx.MessageChunk) error {
+	if !a.isCurrentOutputEpoch(epoch) {
+		return nil
+	}
+	return output.Add(chunks...)
+}
+
+func (a *agent) watchInputInterrupt(ctx context.Context, input genx.Stream, output *genx.StreamBuilder, streamID string, epoch uint64, cancel func()) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		chunk, err := input.Next()
+		if err != nil {
+			return
+		}
+		if chunk == nil || !chunk.IsBeginOfStream() {
+			continue
+		}
+		if a.interruptOutput(output, streamID, epoch) && cancel != nil {
+			cancel()
+		}
+		return
+	}
+}
+
+func (a *agent) interruptOutput(output *genx.StreamBuilder, streamID string, epoch uint64) bool {
+	if output == nil {
+		return false
+	}
+	if strings.TrimSpace(streamID) == "" {
+		streamID = defaultInputStreamID
+	}
+	a.outputMu.Lock()
+	if a.outputEpoch != epoch {
+		a.outputMu.Unlock()
+		return false
+	}
+	a.outputEpoch++
+	a.outputMu.Unlock()
+
+	textEOS := textChunk(genx.RoleModel, assistantLabel, streamID, assistantLabel, "", true)
+	audioEOS := audioChunk(assistantLabel, streamID, nil, true)
+	textEOS.Ctrl.Error = interruptedError
+	audioEOS.Ctrl.Error = interruptedError
+	return output.Add(textEOS, audioEOS) == nil
+}
+
+func (a *agent) waitOpusFrame(ctx context.Context, epoch uint64) error {
+	if !a.isCurrentOutputEpoch(epoch) {
+		return context.Canceled
+	}
+	timer := time.NewTimer(opusFrameDuration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	if !a.isCurrentOutputEpoch(epoch) {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, output *genx.StreamBuilder, epoch uint64, defaultStreamID string) (string, string, error) {
 	transformer := a.transformers.Transformer()
 	asrInput := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 64)
 	asr, err := transformer.Transform(ctx, "model/"+a.asrModel, asrInput.Stream())
@@ -282,10 +1583,14 @@ func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, outp
 	}
 	defer func() { _ = asr.Close() }()
 
-	streamIDState := &lockedString{value: defaultInputStreamID}
+	defaultStreamID = strings.TrimSpace(defaultStreamID)
+	if defaultStreamID == "" {
+		defaultStreamID = defaultInputStreamID
+	}
+	streamIDState := &lockedString{value: defaultStreamID}
 	feedDone := make(chan feedASRResult, 1)
 	go func() {
-		result := feedASRInput(ctx, input, asrInput, streamIDState)
+		result := feedASRInput(ctx, input, asrInput, streamIDState, defaultStreamID)
 		feedDone <- result
 	}()
 
@@ -309,11 +1614,11 @@ func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, outp
 			if text != "" {
 				part := string(text)
 				transcript = mergeTranscript(transcript, part)
-				if err := output.Add(textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, part, false)); err != nil {
+				if err := a.addOutput(output, epoch, textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, part, false)); err != nil {
 					return "", streamIDState.Get(), err
 				}
 			}
-			if err := output.Add(textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, "", true)); err != nil {
+			if err := a.addOutput(output, epoch, textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, "", true)); err != nil {
 				return "", streamIDState.Get(), err
 			}
 			continue
@@ -323,7 +1628,7 @@ func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, outp
 		}
 		part := string(text)
 		transcript = mergeTranscript(transcript, part)
-		if err := output.Add(textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, part, false)); err != nil {
+		if err := a.addOutput(output, epoch, textChunk(genx.RoleUser, transcriptLabel, streamIDState.Get(), transcriptLabel, part, false)); err != nil {
 			return "", streamIDState.Get(), err
 		}
 	}
@@ -335,14 +1640,14 @@ func (a *agent) transcribeInputTurn(ctx context.Context, input genx.Stream, outp
 		result.streamID = defaultInputStreamID
 	}
 	if !transcriptEOS {
-		if err := output.Add(textChunk(genx.RoleUser, transcriptLabel, result.streamID, transcriptLabel, "", true)); err != nil {
+		if err := a.addOutput(output, epoch, textChunk(genx.RoleUser, transcriptLabel, result.streamID, transcriptLabel, "", true)); err != nil {
 			return "", result.streamID, err
 		}
 	}
 	return transcript, result.streamID, nil
 }
 
-func (a *agent) synthesize(ctx context.Context, streamID, nodeID, voice, text string, output *genx.StreamBuilder) error {
+func (a *agent) synthesize(ctx context.Context, streamID, nodeID, voice, text string, output *genx.StreamBuilder, epoch uint64) error {
 	transformer := a.transformers.Transformer()
 	input := []*genx.MessageChunk{
 		textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, text, false),
@@ -353,7 +1658,25 @@ func (a *agent) synthesize(ctx context.Context, streamID, nodeID, voice, text st
 		return fmt.Errorf("flowcraft: start TTS voice %q: %w", voice, err)
 	}
 	defer func() { _ = tts.Close() }()
-	return drainTTSOutput(streamID, nodeID, voice, tts, output)
+	return a.drainTTSOutput(ctx, streamID, nodeID, voice, tts, output, epoch, true)
+}
+
+func (a *agent) synthesizeTextSegment(ctx context.Context, streamID, nodeID, voice, text string, output *genx.StreamBuilder, epoch uint64, emitEOS bool) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	transformer := a.transformers.Transformer()
+	input := []*genx.MessageChunk{
+		textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, text, false),
+		textChunk(genx.RoleModel, nodeID, streamID, assistantLabel, "", true),
+	}
+	tts, err := transformer.Transform(ctx, "voice/"+voice, &sliceStream{chunks: input})
+	if err != nil {
+		return fmt.Errorf("flowcraft: start TTS voice %q: %w", voice, err)
+	}
+	defer func() { _ = tts.Close() }()
+	return a.drainTTSOutput(ctx, streamID, nodeID, voice, tts, output, epoch, emitEOS)
 }
 
 type ttsSession struct {
@@ -363,7 +1686,7 @@ type ttsSession struct {
 	nodeID   string
 }
 
-func (a *agent) startTTS(ctx context.Context, streamID, nodeID, voice string, output *genx.StreamBuilder) (*ttsSession, error) {
+func (a *agent) startTTS(ctx context.Context, streamID, nodeID, voice string, output *genx.StreamBuilder, epoch uint64) (*ttsSession, error) {
 	transformer := a.transformers.Transformer()
 	input := genx.NewStreamBuilder((&genx.ModelContextBuilder{}).Build(), 64)
 	tts, err := transformer.Transform(ctx, "voice/"+voice, input.Stream())
@@ -378,7 +1701,7 @@ func (a *agent) startTTS(ctx context.Context, streamID, nodeID, voice string, ou
 	}
 	go func() {
 		defer func() { _ = tts.Close() }()
-		session.done <- drainTTSOutput(streamID, nodeID, voice, tts, output)
+		session.done <- a.drainTTSOutput(ctx, streamID, nodeID, voice, tts, output, epoch, true)
 	}()
 	return session, nil
 }
@@ -407,9 +1730,12 @@ func (s *ttsSession) Wait() error {
 	return <-s.done
 }
 
-func drainTTSOutput(streamID, nodeID, voice string, tts genx.Stream, output *genx.StreamBuilder) error {
-	var oggAudio bytes.Buffer
+func (a *agent) drainTTSOutput(ctx context.Context, streamID, nodeID, voice string, tts genx.Stream, output *genx.StreamBuilder, epoch uint64, emitEOS bool) error {
+	oggDecoder := newOggOpusFrameDecoder()
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		chunk, err := tts.Next()
 		if err != nil {
 			if agenthost.IsStreamDone(err) {
@@ -423,36 +1749,49 @@ func drainTTSOutput(streamID, nodeID, voice string, tts genx.Stream, output *gen
 		}
 		switch baseMIME(blob.MIMEType) {
 		case "audio/opus":
-			if err := output.Add(audioChunk(nodeID, streamID, blob.Data, false)); err != nil {
+			if err := a.addOutput(output, epoch, audioChunk(nodeID, streamID, blob.Data, false)); err != nil {
+				return err
+			}
+			if err := a.waitOpusFrame(ctx, epoch); err != nil {
 				return err
 			}
 		case "audio/ogg", "application/ogg":
-			_, _ = oggAudio.Write(blob.Data)
+			frames, err := oggDecoder.Write(blob.Data)
+			if err != nil {
+				return fmt.Errorf("flowcraft: decode TTS ogg opus: %w", err)
+			}
+			for _, frame := range frames {
+				if err := a.addOutput(output, epoch, audioChunk(nodeID, streamID, frame, false)); err != nil {
+					return err
+				}
+				if err := a.waitOpusFrame(ctx, epoch); err != nil {
+					return err
+				}
+			}
 		default:
 			return fmt.Errorf("flowcraft: unsupported TTS audio MIME %q; want audio/ogg or audio/opus", blob.MIMEType)
 		}
 	}
-	if oggAudio.Len() > 0 {
-		frames, err := opusFramesFromOgg(oggAudio.Bytes())
-		if err != nil {
-			return fmt.Errorf("flowcraft: decode TTS ogg opus: %w", err)
-		}
-		for _, frame := range frames {
-			if err := output.Add(audioChunk(nodeID, streamID, frame, false)); err != nil {
-				return err
-			}
-		}
+	if err := oggDecoder.Close(); err != nil {
+		return fmt.Errorf("flowcraft: decode TTS ogg opus: %w", err)
 	}
-	return output.Add(audioChunk(nodeID, streamID, nil, true))
+	if !emitEOS {
+		return nil
+	}
+	return a.addOutput(output, epoch, audioChunk(nodeID, streamID, nil, true))
 }
 
-func (a *agent) voiceForNode(nodeID string) string {
+func (a *agent) voiceForNode(nodeID string) (string, bool) {
 	if a.nodeVoices != nil {
 		if voice := strings.TrimSpace(a.nodeVoices[nodeID]); voice != "" {
-			return voice
+			return voice, true
+		}
+		if len(a.nodeVoices) > 0 {
+			return "", false
 		}
 	}
-	return a.defaultVoice
+	voice := strings.TrimSpace(a.defaultVoice)
+	return voice, voice != ""
 }
 
 type feedASRResult struct {
@@ -460,8 +1799,12 @@ type feedASRResult struct {
 	err      error
 }
 
-func feedASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamBuilder, streamIDState *lockedString) feedASRResult {
-	streamID := defaultInputStreamID
+func feedASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamBuilder, streamIDState *lockedString, defaultStreamID string) feedASRResult {
+	streamID := strings.TrimSpace(defaultStreamID)
+	if streamID == "" {
+		streamID = defaultInputStreamID
+	}
+	audioSeen := false
 	fail := func(err error) feedASRResult {
 		_ = asrInput.Unexpected(genx.Usage{}, err)
 		return feedASRResult{streamID: streamID, err: err}
@@ -480,6 +1823,9 @@ func feedASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamB
 				if err := asrInput.Done(genx.Usage{}); err != nil {
 					return feedASRResult{streamID: streamID, err: err}
 				}
+				if !audioSeen {
+					return feedASRResult{streamID: streamID, err: io.EOF}
+				}
 				return feedASRResult{streamID: streamID}
 			}
 			return fail(err)
@@ -492,6 +1838,7 @@ func feedASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamB
 			streamIDState.Set(streamID)
 		}
 		if blob, ok := chunk.Part.(*genx.Blob); ok && isAudioMIME(blob.MIMEType) && len(blob.Data) > 0 {
+			audioSeen = true
 			if err := asrInput.Add(chunk.Clone()); err != nil {
 				return feedASRResult{streamID: streamID, err: err}
 			}
@@ -517,6 +1864,71 @@ func feedASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamB
 			return feedASRResult{streamID: streamID}
 		}
 	}
+}
+
+func feedRealtimeASRInput(ctx context.Context, input genx.Stream, asrInput *genx.StreamBuilder, streamIDState *lockedString) feedASRResult {
+	streamID := streamIDState.Get()
+	if streamID == "" {
+		streamID = defaultInputStreamID
+		streamIDState.Set(streamID)
+	}
+	fail := func(err error) feedASRResult {
+		_ = asrInput.Unexpected(genx.Usage{}, err)
+		return feedASRResult{streamID: streamID, err: err}
+	}
+	if input == nil {
+		return fail(fmt.Errorf("flowcraft: input stream is required"))
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
+		chunk, err := input.Next()
+		if err != nil {
+			if agenthost.IsStreamDone(err) || errors.Is(err, io.EOF) {
+				if err := asrInput.Done(genx.Usage{}); err != nil {
+					return feedASRResult{streamID: streamID, err: err}
+				}
+				return feedASRResult{streamID: streamID}
+			}
+			return fail(err)
+		}
+		if chunk == nil {
+			continue
+		}
+		if chunk.Ctrl != nil && strings.TrimSpace(chunk.Ctrl.StreamID) != "" {
+			streamID = strings.TrimSpace(chunk.Ctrl.StreamID)
+			streamIDState.Set(streamID)
+		}
+		if chunk.IsBeginOfStream() {
+			continue
+		}
+		blob, ok := chunk.Part.(*genx.Blob)
+		if !ok || !isAudioMIME(blob.MIMEType) {
+			continue
+		}
+		next := chunk.Clone()
+		if next.Ctrl == nil {
+			next.Ctrl = &genx.StreamCtrl{}
+		}
+		if strings.TrimSpace(next.Ctrl.StreamID) == "" {
+			next.Ctrl.StreamID = streamID
+		}
+		if err := asrInput.Add(next); err != nil {
+			return feedASRResult{streamID: streamID, err: err}
+		}
+	}
+}
+
+func realtimeTurnStreamID(prefix string, index int) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = defaultInputStreamID
+	}
+	if index <= 0 {
+		index = 1
+	}
+	return fmt.Sprintf("%s:rt:%d", prefix, index)
 }
 
 type lockedString struct {
@@ -569,7 +1981,27 @@ func mergeTranscript(current, next string) string {
 	if strings.HasPrefix(current, next) {
 		return current
 	}
+	currentNorm := normalizeTranscriptText(current)
+	nextNorm := normalizeTranscriptText(next)
+	if currentNorm != "" && nextNorm != "" {
+		if strings.HasPrefix(nextNorm, currentNorm) {
+			return next
+		}
+		if strings.HasPrefix(currentNorm, nextNorm) {
+			return current
+		}
+	}
 	return current + next
+}
+
+func normalizeTranscriptText(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || (r >= '\u4e00' && r <= '\u9fff') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func opusFramesFromOgg(raw []byte) ([][]byte, error) {
@@ -585,6 +2017,132 @@ func opusFramesFromOgg(raw []byte) ([][]byte, error) {
 	}
 	if len(frames) == 0 {
 		return nil, fmt.Errorf("no opus audio packets found")
+	}
+	return frames, nil
+}
+
+type oggOpusFrameDecoder struct {
+	pending               []byte
+	packet                []byte
+	expectingContinuation bool
+	currentPacketBOS      bool
+}
+
+func newOggOpusFrameDecoder() *oggOpusFrameDecoder {
+	return &oggOpusFrameDecoder{}
+}
+
+func (d *oggOpusFrameDecoder) Write(data []byte) ([][]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	d.pending = append(d.pending, data...)
+	var frames [][]byte
+	for {
+		page, ok, err := d.nextPage()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return frames, nil
+		}
+		pageFrames, err := d.consumePage(page)
+		if err != nil {
+			return nil, err
+		}
+		frames = append(frames, pageFrames...)
+	}
+}
+
+func (d *oggOpusFrameDecoder) Close() error {
+	if len(d.pending) != 0 {
+		return fmt.Errorf("truncated ogg page: %d pending bytes", len(d.pending))
+	}
+	if d.expectingContinuation || len(d.packet) != 0 {
+		return fmt.Errorf("stream ended with unterminated ogg packet")
+	}
+	return nil
+}
+
+func (d *oggOpusFrameDecoder) nextPage() (*ogg.Page, bool, error) {
+	const oggPageHeaderSize = 27
+	if len(d.pending) == 0 {
+		return nil, false, nil
+	}
+	if len(d.pending) < oggPageHeaderSize {
+		if len(d.pending) < len(ogg.CapturePattern) && !strings.HasPrefix(ogg.CapturePattern, string(d.pending)) {
+			return nil, false, fmt.Errorf("invalid ogg capture pattern prefix %q", d.pending)
+		}
+		if len(d.pending) >= len(ogg.CapturePattern) && string(d.pending[:len(ogg.CapturePattern)]) != ogg.CapturePattern {
+			return nil, false, fmt.Errorf("invalid ogg capture pattern prefix %q", d.pending)
+		}
+		return nil, false, nil
+	}
+	if string(d.pending[:4]) != ogg.CapturePattern {
+		return nil, false, fmt.Errorf("invalid ogg capture pattern %q", d.pending[:4])
+	}
+	segmentCount := int(d.pending[26])
+	headerLen := oggPageHeaderSize + segmentCount
+	if len(d.pending) < headerLen {
+		return nil, false, nil
+	}
+	payloadLen := 0
+	for _, segment := range d.pending[oggPageHeaderSize:headerLen] {
+		payloadLen += int(segment)
+	}
+	pageLen := headerLen + payloadLen
+	if len(d.pending) < pageLen {
+		return nil, false, nil
+	}
+	page, err := ogg.ParsePage(d.pending[:pageLen])
+	if err != nil {
+		return nil, false, err
+	}
+	d.pending = d.pending[pageLen:]
+	return page, true, nil
+}
+
+func (d *oggOpusFrameDecoder) consumePage(page *ogg.Page) ([][]byte, error) {
+	if page == nil {
+		return nil, fmt.Errorf("ogg page is nil")
+	}
+	if page.HasContinuation() {
+		if !d.expectingContinuation {
+			return nil, fmt.Errorf("unexpected ogg continuation page")
+		}
+	} else if d.expectingContinuation {
+		return nil, fmt.Errorf("missing ogg continuation page")
+	}
+
+	var frames [][]byte
+	payloadOffset := 0
+	for segmentIndex, segment := range page.Segments {
+		if !d.expectingContinuation && len(d.packet) == 0 {
+			d.currentPacketBOS = page.HasBOS() && segmentIndex == 0
+		}
+		chunkLen := int(segment)
+		if payloadOffset+chunkLen > len(page.Payload) {
+			return nil, fmt.Errorf("ogg segment overflows payload")
+		}
+		if chunkLen > 0 {
+			d.packet = append(d.packet, page.Payload[payloadOffset:payloadOffset+chunkLen]...)
+		}
+		payloadOffset += chunkLen
+		if segment == 255 {
+			d.expectingContinuation = true
+			continue
+		}
+		packet := append([]byte(nil), d.packet...)
+		d.packet = d.packet[:0]
+		d.expectingContinuation = false
+		d.currentPacketBOS = false
+		if len(packet) == 0 || codecconv.IsOpusHeadPacket(packet) || codecconv.IsOpusTagsPacket(packet) {
+			continue
+		}
+		frames = append(frames, packet)
+	}
+	if payloadOffset != len(page.Payload) {
+		return nil, fmt.Errorf("ogg page has trailing payload")
 	}
 	return frames, nil
 }
@@ -648,13 +2206,9 @@ func buildClawConfig(ctx context.Context, genxService *peergenx.Service, spec ag
 	if out == nil {
 		out = map[string]any{}
 	}
-	var workspaceParams *apitypes.FlowcraftWorkspaceParameters
-	if spec.Workspace.Parameters != nil {
-		typed, err := spec.Workspace.Parameters.AsFlowcraftWorkspaceParameters()
-		if err != nil {
-			return nil, fmt.Errorf("flowcraft: decode workspace parameters: %w", err)
-		}
-		workspaceParams = &typed
+	workspaceParams, err := flowcraftWorkspaceParameters(spec.Workspace.Parameters)
+	if err != nil {
+		return nil, err
 	}
 	settings := ensureMap(out, "settings")
 	models := ensureMap(out, "models")
@@ -747,7 +2301,7 @@ func modelIDForRole(parameters *apitypes.FlowcraftWorkspaceParameters, cfg map[s
 		}
 		if value != nil {
 			if text := strings.TrimSpace(*value); text != "" {
-				return strings.TrimSpace(text), true, nil
+				return text, true, nil
 			}
 		}
 	}
@@ -760,6 +2314,21 @@ func modelIDForRole(parameters *apitypes.FlowcraftWorkspaceParameters, cfg map[s
 		return "", false, fmt.Errorf("flowcraft: %s is required", key)
 	}
 	return "", false, nil
+}
+
+func normalizeInputMode(value any) inputMode {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "push", "push_to_talk", "push-to-talk", "ptt":
+		return inputModePushToTalk
+	case "realtime", "real_time", "real-time":
+		return inputModeRealtime
+	default:
+		return ""
+	}
 }
 
 func clawModelConfig(cfg peergenx.GeneratorConfig) (map[string]any, error) {

@@ -1,11 +1,11 @@
 package agenthost
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/workspace"
 )
 
 const workspaceAgentTypeParameter = "agent_type"
@@ -15,7 +15,7 @@ type Spec struct {
 	Workspace apitypes.Workspace
 	Workflow  apitypes.WorkflowDocument
 	AgentType string
-	Runtime   WorkspaceRuntime
+	Runtime   workspace.Runtime
 }
 
 func resolveAgentType(workspace apitypes.Workspace, workflow apitypes.WorkflowDocument) (string, error) {
@@ -34,12 +34,12 @@ func resolveAgentType(workspace apitypes.Workspace, workflow apitypes.WorkflowDo
 }
 
 func agentTypeFromWorkflow(workflow apitypes.WorkflowDocument) (string, error) {
-	agentType := strings.TrimSpace(string(workflow.Spec.Driver))
-	if agentType == "" {
-		return "", errors.New("agenthost: workflow spec.driver is required")
+	driver := strings.TrimSpace(string(workflow.Spec.Driver))
+	if driver == "" {
+		return "", fmt.Errorf("agenthost: workflow spec.driver is required")
 	}
 	if !workflow.Spec.Driver.Valid() {
 		return "", fmt.Errorf("agenthost: unsupported workflow spec.driver %q", workflow.Spec.Driver)
 	}
-	return agentType, nil
+	return driver, nil
 }

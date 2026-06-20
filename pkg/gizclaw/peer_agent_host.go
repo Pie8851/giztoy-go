@@ -15,7 +15,6 @@ func newPeerAgentHost(base *agenthost.Host, peerGenX *peergenx.Service) *agentho
 	}
 	host := agenthost.New(base.Resolver)
 	host.Coordinator = base.Coordinator
-	host.WorkspaceStore = base.WorkspaceStore
 
 	var transformer genx.Transformer
 	if peerGenX != nil {

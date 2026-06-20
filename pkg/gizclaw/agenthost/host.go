@@ -10,10 +10,9 @@ import (
 var _ genx.Transformer = (*Host)(nil)
 
 type Host struct {
-	Resolver       Resolver
-	Registry       *Registry
-	Coordinator    Coordinator
-	WorkspaceStore WorkspaceStore
+	Resolver    Resolver
+	Registry    *Registry
+	Coordinator Coordinator
 }
 
 func New(resolver Resolver) *Host {
@@ -83,25 +82,16 @@ func (h *Host) OpenAgent(ctx context.Context, pattern string) (Agent, func(), er
 	release := func() {
 		_ = lease.Release(context.Background())
 	}
-	if h.WorkspaceStore != nil {
-		runtime, err := h.WorkspaceStore.PrepareWorkspace(ctx, workspaceName)
-		if err != nil {
-			release()
-			return nil, nil, err
-		}
-		spec.Runtime = runtime
-	}
 	factory, ok := h.registry().Get(spec.AgentType)
 	if !ok {
 		release()
 		return nil, nil, fmt.Errorf("agenthost: agent factory not found for %q", spec.AgentType)
 	}
-	transformer, err := factory.NewAgent(ctx, spec)
+	agent, err := factory.NewAgent(ctx, spec)
 	if err != nil {
 		release()
 		return nil, nil, err
 	}
-	agent := asAgent(transformer)
 	if agent == nil {
 		release()
 		return nil, nil, fmt.Errorf("agenthost: factory %q returned nil agent", spec.AgentType)

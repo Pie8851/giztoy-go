@@ -2,7 +2,6 @@ package agenthost
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -64,15 +63,18 @@ func TestParseWorkspacePattern(t *testing.T) {
 
 func TestServiceResolverResolvesWorkspaceAndWorkflow(t *testing.T) {
 	workflow := mustWorkflow(t, "workflow-1")
-	params := testFlowcraftWorkspaceParameters()
+	var params apitypes.WorkspaceParameters
+	if err := params.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
 	resolver := ServiceResolver{
 		Workspaces: fakeWorkspaceService{items: map[string]apitypes.Workspace{
 			"demo": {
 				Name:         "demo",
-				Parameters:   params,
+				Parameters:   &params,
 				WorkflowName: "workflow-1",
 			},
-		}},
+		}, runtime: workspace.Runtime{ObjectPrefix: "workspaces/demo", LocalDir: "/tmp/demo"}},
 		Workflows: fakeWorkflowService{items: map[string]apitypes.WorkflowDocument{
 			"workflow-1": workflow,
 		}},
@@ -87,6 +89,9 @@ func TestServiceResolverResolvesWorkspaceAndWorkflow(t *testing.T) {
 	}
 	if spec.AgentType != "flowcraft" {
 		t.Fatalf("AgentType = %q, want flowcraft", spec.AgentType)
+	}
+	if spec.Runtime.ObjectPrefix != "workspaces/demo" {
+		t.Fatalf("Runtime = %#v", spec.Runtime)
 	}
 }
 
@@ -127,9 +132,6 @@ func TestAgentTypeFromWorkflowDriver(t *testing.T) {
 		}
 	}
 
-	if _, err := agentTypeFromWorkflow(rawWorkflow(t, "bad")); err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("unsupported driver error = %v", err)
-	}
 	if _, err := agentTypeFromWorkflow(rawWorkflow(t, "")); err == nil || !strings.Contains(err.Error(), "spec.driver is required") {
 		t.Fatalf("empty driver error = %v", err)
 	}
@@ -150,25 +152,18 @@ func TestServiceResolverErrors(t *testing.T) {
 		t.Fatalf("missing workflow error = %v", err)
 	}
 	var params apitypes.WorkspaceParameters
+	if err := params.UnmarshalJSON([]byte(`{"agent_type":1}`)); err != nil {
+		t.Fatalf("UnmarshalJSON() error = %v", err)
+	}
 	resolver.Workflows = fakeWorkflowService{items: map[string]apitypes.WorkflowDocument{
 		"bad-agent-type": mustWorkflow(t, "bad-agent-type"),
 	}}
 	resolver.Workspaces = fakeWorkspaceService{items: map[string]apitypes.Workspace{
 		"demo": {Name: "demo", Parameters: &params, WorkflowName: "bad-agent-type"},
 	}}
-	if _, err := resolver.Resolve(context.Background(), "demo"); err == nil || !strings.Contains(err.Error(), "workspace parameters") {
+	if _, err := resolver.Resolve(context.Background(), "demo"); err == nil || !strings.Contains(err.Error(), "agent_type") {
 		t.Fatalf("bad agent_type error = %v", err)
 	}
-}
-
-func testFlowcraftWorkspaceParameters() *apitypes.WorkspaceParameters {
-	var params apitypes.WorkspaceParameters
-	if err := params.FromFlowcraftWorkspaceParameters(apitypes.FlowcraftWorkspaceParameters{
-		AgentType: apitypes.FlowcraftWorkspaceParametersAgentTypeFlowcraft,
-	}); err != nil {
-		panic(err)
-	}
-	return &params
 }
 
 func TestHostTransformRunsAgentAndReleasesOnClose(t *testing.T) {
@@ -201,12 +196,15 @@ func TestHostTransformRunsAgentAndReleasesOnClose(t *testing.T) {
 	}
 }
 
-func TestHostTransformPreparesWorkspaceRuntime(t *testing.T) {
-	host := New(fakeResolver{spec: Spec{Workspace: apitypes.Workspace{Name: "demo"}, AgentType: "echo"}})
-	host.WorkspaceStore = fakeWorkspaceStore{runtime: WorkspaceRuntime{
-		ObjectPrefix: "workspaces/demo",
-		LocalDir:     "/tmp/gizclaw-agenthost/workspaces/demo",
-	}}
+func TestHostTransformUsesResolvedWorkspaceRuntime(t *testing.T) {
+	host := New(fakeResolver{spec: Spec{
+		Workspace: apitypes.Workspace{Name: "demo"},
+		AgentType: "echo",
+		Runtime: workspace.Runtime{
+			ObjectPrefix: "workspaces/demo",
+			LocalDir:     "/tmp/gizclaw-agenthost/workspaces/demo",
+		},
+	}})
 	if err := host.Register("echo", FactoryFunc(func(_ context.Context, spec Spec) (genx.Transformer, error) {
 		if spec.Runtime.ObjectPrefix != "workspaces/demo" {
 			t.Fatalf("runtime object prefix = %q, want workspaces/demo", spec.Runtime.ObjectPrefix)
@@ -363,18 +361,10 @@ func (r fakeResolver) Resolve(context.Context, string) (Spec, error) {
 	return r.spec, nil
 }
 
-type fakeWorkspaceStore struct {
-	runtime WorkspaceRuntime
-	err     error
-}
-
-func (s fakeWorkspaceStore) PrepareWorkspace(context.Context, string) (WorkspaceRuntime, error) {
-	return s.runtime, s.err
-}
-
 type fakeWorkspaceService struct {
 	workspace.WorkspaceAdminService
-	items map[string]apitypes.Workspace
+	items   map[string]apitypes.Workspace
+	runtime workspace.Runtime
 }
 
 func (s fakeWorkspaceService) GetWorkspace(_ context.Context, request adminservice.GetWorkspaceRequestObject) (adminservice.GetWorkspaceResponseObject, error) {
@@ -383,6 +373,10 @@ func (s fakeWorkspaceService) GetWorkspace(_ context.Context, request adminservi
 		return adminservice.GetWorkspace404JSONResponse(apitypes.NewErrorResponse("WORKSPACE_NOT_FOUND", "not found")), nil
 	}
 	return adminservice.GetWorkspace200JSONResponse(item), nil
+}
+
+func (s fakeWorkspaceService) GetWorkspaceRuntime(context.Context, string) (workspace.Runtime, error) {
+	return s.runtime, nil
 }
 
 type fakeWorkflowService struct {
@@ -405,21 +399,18 @@ func mustWorkflow(t *testing.T, name string) apitypes.WorkflowDocument {
 		Metadata: apitypes.WorkflowMetadata{Name: name},
 		Spec: apitypes.WorkflowSpec{
 			Driver: apitypes.WorkflowDriverFlowcraft,
-			Flowcraft: &apitypes.FlowcraftWorkflowSpec{
-				"nodes": []interface{}{},
-			},
 		},
 	}
 }
 
 func rawWorkflow(t *testing.T, driver string) apitypes.WorkflowDocument {
 	t.Helper()
-	data := []byte(`{"metadata":{"name":"workflow"},"spec":{"driver":"` + driver + `"}}`)
-	var doc apitypes.WorkflowDocument
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatalf("unmarshal raw workflow: %v", err)
+	return apitypes.WorkflowDocument{
+		Metadata: apitypes.WorkflowMetadata{Name: "workflow"},
+		Spec: apitypes.WorkflowSpec{
+			Driver: apitypes.WorkflowDriver(driver),
+		},
 	}
-	return doc
 }
 
 type passthroughTransformer struct{}

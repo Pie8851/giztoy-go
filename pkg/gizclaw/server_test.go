@@ -12,6 +12,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/friendgroup"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/publiclogin"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/workspace"
 
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/peer"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
@@ -162,7 +163,7 @@ func TestServerInitConfiguresPeerRunService(t *testing.T) {
 	}
 }
 
-func TestServerInitConfiguresAgentHostWorkspaceStore(t *testing.T) {
+func TestServerInitConfiguresWorkspaceRuntimeStore(t *testing.T) {
 	keyPair, err := giznet.GenerateKeyPair()
 	if err != nil {
 		t.Fatalf("GenerateKeyPair error = %v", err)
@@ -175,8 +176,9 @@ func TestServerInitConfiguresAgentHostWorkspaceStore(t *testing.T) {
 	if err := server.init(); err != nil {
 		t.Fatalf("init() error = %v", err)
 	}
-	if server.manager == nil || server.manager.AgentHost == nil || server.manager.AgentHost.WorkspaceStore == nil {
-		t.Fatalf("agenthost workspace store not configured: %+v", server.manager)
+	workspaces, ok := server.manager.Workspaces.(*workspace.Server)
+	if server.manager == nil || !ok || workspaces.RuntimeStore == nil {
+		t.Fatalf("workspace runtime store not configured: %+v", server.manager)
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 )
 
+func stringPtr(value string) *string { return &value }
+
 func testDoubaoRealtimeWorkspaceParameters(values map[string]any) *apitypes.WorkspaceParameters {
 	typed := apitypes.DoubaoRealtimeWorkspaceParameters{
 		AgentType: apitypes.DoubaoRealtimeWorkspaceParametersAgentTypeDoubaoRealtime,
@@ -251,6 +253,63 @@ func TestFactoryUsesWorkspaceModelAndRealtimeParams(t *testing.T) {
 		!strings.Contains(got, "temperature=0.4") ||
 		strings.Contains(got, "format=") {
 		t.Fatalf("pattern = %q, want workspace realtime params", got)
+	}
+}
+
+func TestMergeDoubaoRealtimeTypedParamsCoversOptionalSections(t *testing.T) {
+	input := apitypes.WorkspaceInputModeRealtime
+	temperature := float32(0.7)
+	vad := 320
+	searchEnabled := true
+	resultCount := 3
+	musicEnabled := true
+	var voice apitypes.DoubaoRealtimeVoiceParameters
+	if err := voice.FromDoubaoRealtimeInternalSpeakerParameters(apitypes.DoubaoRealtimeInternalSpeakerParameters{RealtimeSpeakerId: "speaker-a"}); err != nil {
+		t.Fatalf("FromDoubaoRealtimeInternalSpeakerParameters() error = %v", err)
+	}
+	params := mergeDoubaoRealtimeTypedParams(nil, apitypes.DoubaoRealtimeWorkspaceParameters{
+		Input:       &input,
+		Temperature: &temperature,
+		Session: &apitypes.DoubaoRealtimeSessionParameters{
+			BotName:           stringPtr("bot"),
+			SystemRole:        stringPtr("role"),
+			UpstreamModel:     stringPtr("model"),
+			VadWindowMs:       &vad,
+			SpeakingStyle:     stringPtr("calm"),
+			CharacterManifest: stringPtr("manifest"),
+			ResourceId:        stringPtr("resource"),
+		},
+		Search: &apitypes.DoubaoRealtimeSearchParameters{
+			Enabled:         &searchEnabled,
+			Type:            stringPtr("web"),
+			BotId:           stringPtr("bot-id"),
+			ResultCount:     &resultCount,
+			NoResultMessage: stringPtr("none"),
+		},
+		Music: &apitypes.DoubaoRealtimeMusicParameters{Enabled: &musicEnabled},
+		Voice: &voice,
+	})
+	for key, want := range map[string]any{
+		"mode":                     "realtime",
+		"temperature":              temperature,
+		"bot_name":                 "bot",
+		"system_role":              "role",
+		"upstream_model":           "model",
+		"vad_window_ms":            vad,
+		"speaking_style":           "calm",
+		"character_manifest":       "manifest",
+		"resource_id":              "resource",
+		"search_enabled":           true,
+		"search_type":              "web",
+		"search_bot_id":            "bot-id",
+		"search_result_count":      resultCount,
+		"search_no_result_message": "none",
+		"music_enabled":            true,
+		"speaker":                  "speaker-a",
+	} {
+		if got := params[key]; got != want {
+			t.Fatalf("params[%q] = %#v, want %#v; params=%#v", key, got, want, params)
+		}
 	}
 }
 

@@ -9,16 +9,20 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
 )
 
-// Factory constructs an agent transformer from a resolved workspace spec.
+// Factory constructs an agent runtime from a resolved workspace spec.
 type Factory interface {
-	NewAgent(context.Context, Spec) (genx.Transformer, error)
+	NewAgent(context.Context, Spec) (Agent, error)
 }
 
 // FactoryFunc adapts a function to Factory.
 type FactoryFunc func(context.Context, Spec) (genx.Transformer, error)
 
-func (f FactoryFunc) NewAgent(ctx context.Context, spec Spec) (genx.Transformer, error) {
-	return f(ctx, spec)
+func (f FactoryFunc) NewAgent(ctx context.Context, spec Spec) (Agent, error) {
+	transformer, err := f(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	return asAgent(transformer), nil
 }
 
 // Registry stores agent factories keyed by agent type.

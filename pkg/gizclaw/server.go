@@ -322,6 +322,9 @@ func (s *Server) init() error {
 
 	workflowServer := &workflow.Server{Store: workflowStore}
 	workspaceServer := &workspace.Server{Store: workspaceStore, WorkflowStore: workflowStore}
+	if s.AgentHostStore != nil {
+		workspaceServer.RuntimeStore = workspace.NewObjectRuntimeStore(s.AgentHostStore)
+	}
 	credentialServer := &credential.Server{Store: credentialStore}
 	firmwareServer := &firmware.Server{Store: firmwareStore, Assets: s.FirmwareAssets}
 	modelServer := &model.Server{Store: modelStore}
@@ -398,9 +401,6 @@ func (s *Server) init() error {
 		Workspaces: workspaceServer,
 		Workflows:  workflowServer,
 	})
-	if s.AgentHostStore != nil {
-		manager.AgentHost.WorkspaceStore = agenthost.NewObjectWorkspaceStore(s.AgentHostStore)
-	}
 	manager.Workspaces = workspaceServer
 	manager.Workflows = workflowServer
 	manager.Firmwares = firmwareServer

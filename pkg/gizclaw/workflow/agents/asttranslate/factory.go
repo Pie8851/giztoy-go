@@ -23,7 +23,7 @@ type Factory struct {
 	Transformer genx.Transformer
 }
 
-func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (genx.Transformer, error) {
+func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (agenthost.Agent, error) {
 	if f.Transformer == nil {
 		return nil, fmt.Errorf("asttranslate: transformer is required")
 	}
@@ -32,13 +32,13 @@ func (f Factory) NewAgent(_ context.Context, spec agenthost.Spec) (genx.Transfor
 		return nil, err
 	}
 	if resolved.ttsVoice == "" {
-		return patternTransformer{Transformer: f.Transformer, Pattern: resolved.astPattern}, nil
+		return agenthost.NewTransformerAgent(patternTransformer{Transformer: f.Transformer, Pattern: resolved.astPattern}), nil
 	}
-	return externalVoiceTransformer{
+	return agenthost.NewTransformerAgent(externalVoiceTransformer{
 		Transformer: f.Transformer,
 		ASTPattern:  resolved.astPattern,
 		TTSPattern:  voicePattern(resolved.ttsVoice),
-	}, nil
+	}), nil
 }
 
 type patternTransformer struct {

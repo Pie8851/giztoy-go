@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -106,14 +105,14 @@ func TestServiceResolverErrors(t *testing.T) {
 }
 
 func TestWorkflowTypeFromDriver(t *testing.T) {
-	got, err := resolveWorkflowType(rawWorkflow(t, "flowcraft"))
+	got, err := resolveWorkflowType(rawWorkflow(t, apitypes.WorkflowDriverFlowcraft))
 	if err != nil {
 		t.Fatalf("resolveWorkflowType() error = %v", err)
 	}
 	if got != "flowcraft" {
 		t.Fatalf("resolveWorkflowType() = %q, want flowcraft", got)
 	}
-	if _, err := resolveWorkflowType(rawWorkflow(t, "bad")); err == nil || !strings.Contains(err.Error(), "unsupported") {
+	if _, err := resolveWorkflowType(rawWorkflow(t, apitypes.WorkflowDriver("bad"))); err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("unsupported driver error = %v", err)
 	}
 	if _, err := resolveWorkflowType(rawWorkflow(t, "")); err == nil || !strings.Contains(err.Error(), "spec.driver is required") {
@@ -462,20 +461,22 @@ func mustWorkflow(name string) apitypes.WorkflowDocument {
 	return apitypes.WorkflowDocument{
 		Metadata: apitypes.WorkflowMetadata{Name: name},
 		Spec: apitypes.WorkflowSpec{
-			Driver:    apitypes.WorkflowDriverFlowcraft,
-			Flowcraft: &apitypes.FlowcraftWorkflowSpec{},
+			Driver: apitypes.WorkflowDriverFlowcraft,
 		},
 	}
 }
 
-func rawWorkflow(t *testing.T, driver string) apitypes.WorkflowDocument {
+func rawWorkflow(t *testing.T, driver apitypes.WorkflowDriver) apitypes.WorkflowDocument {
 	t.Helper()
-	var doc apitypes.WorkflowDocument
-	if err := json.Unmarshal([]byte(`{
-		"metadata": {"name": "workflow"},
-		"spec": {"driver": "`+driver+`"}
-	}`), &doc); err != nil {
-		t.Fatalf("unmarshal workflow: %v", err)
+	spec := apitypes.FlowcraftWorkflowSpec{}
+	doc := apitypes.WorkflowDocument{
+		Metadata: apitypes.WorkflowMetadata{Name: "workflow"},
+		Spec: apitypes.WorkflowSpec{
+			Driver: driver,
+		},
+	}
+	if driver == apitypes.WorkflowDriverFlowcraft {
+		doc.Spec.Flowcraft = &spec
 	}
 	return doc
 }

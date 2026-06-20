@@ -21,6 +21,10 @@ type ServiceResolver struct {
 	Workflows  workflow.WorkflowAdminService
 }
 
+type workspaceRuntimeProvider interface {
+	GetWorkspaceRuntime(context.Context, string) (workspace.Runtime, error)
+}
+
 func (r ServiceResolver) Resolve(ctx context.Context, pattern string) (Spec, error) {
 	workspaceName, err := ParseWorkspacePattern(pattern)
 	if err != nil {
@@ -33,22 +37,30 @@ func (r ServiceResolver) Resolve(ctx context.Context, pattern string) (Spec, err
 		return Spec{}, fmt.Errorf("agenthost: workflow service is required")
 	}
 
-	workspace, err := r.getWorkspace(ctx, workspaceName)
+	ws, err := r.getWorkspace(ctx, workspaceName)
 	if err != nil {
 		return Spec{}, err
 	}
-	workflow, err := r.getWorkflow(ctx, string(workspace.WorkflowName))
+	workflow, err := r.getWorkflow(ctx, string(ws.WorkflowName))
 	if err != nil {
 		return Spec{}, err
 	}
-	agentType, err := resolveAgentType(workspace, workflow)
+	agentType, err := resolveAgentType(ws, workflow)
 	if err != nil {
 		return Spec{}, err
+	}
+	var runtime workspace.Runtime
+	if provider, ok := r.Workspaces.(workspaceRuntimeProvider); ok {
+		runtime, err = provider.GetWorkspaceRuntime(ctx, string(ws.Name))
+		if err != nil {
+			return Spec{}, err
+		}
 	}
 	return Spec{
-		Workspace: workspace,
+		Workspace: ws,
 		Workflow:  workflow,
 		AgentType: agentType,
+		Runtime:   runtime,
 	}, nil
 }
 

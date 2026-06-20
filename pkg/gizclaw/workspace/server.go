@@ -27,6 +27,7 @@ const (
 type Server struct {
 	Store         kv.Store
 	WorkflowStore kv.Store
+	RuntimeStore  RuntimeStore
 }
 
 type WorkspaceAdminService interface {
@@ -88,6 +89,11 @@ func (s *Server) CreateWorkspace(ctx context.Context, request adminservice.Creat
 		UpdatedAt:    now,
 		WorkflowName: normalized.WorkflowName,
 	}
+	if s.RuntimeStore != nil {
+		if _, err := s.RuntimeStore.PrepareWorkspace(ctx, workspace.Name); err != nil {
+			return adminservice.CreateWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+		}
+	}
 	if err := writeWorkspace(ctx, store, workspace); err != nil {
 		return adminservice.CreateWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
 	}
@@ -106,9 +112,19 @@ func (s *Server) DeleteWorkspace(ctx context.Context, request adminservice.Delet
 	workspace, err := getWorkspace(ctx, store, name)
 	if err != nil {
 		if errors.Is(err, kv.ErrNotFound) {
+			if s.RuntimeStore != nil {
+				if err := s.RuntimeStore.DeleteWorkspaceRuntime(ctx, name); err != nil {
+					return adminservice.DeleteWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+				}
+			}
 			return adminservice.DeleteWorkspace404JSONResponse(apitypes.NewErrorResponse("WORKSPACE_NOT_FOUND", fmt.Sprintf("workspace %q not found", name))), nil
 		}
 		return adminservice.DeleteWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+	}
+	if s.RuntimeStore != nil {
+		if err := s.RuntimeStore.DeleteWorkspaceRuntime(ctx, workspace.Name); err != nil {
+			return adminservice.DeleteWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+		}
 	}
 	if err := store.BatchDelete(ctx, []kv.Key{
 		workspaceKey(string(workspace.Name)),
@@ -135,6 +151,13 @@ func (s *Server) GetWorkspace(ctx context.Context, request adminservice.GetWorks
 		return adminservice.GetWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
 	}
 	return adminservice.GetWorkspace200JSONResponse(workspace), nil
+}
+
+func (s *Server) GetWorkspaceRuntime(ctx context.Context, name string) (Runtime, error) {
+	if s == nil || s.RuntimeStore == nil {
+		return Runtime{}, nil
+	}
+	return s.RuntimeStore.GetWorkspaceRuntime(ctx, name)
 }
 
 func (s *Server) PutWorkspace(ctx context.Context, request adminservice.PutWorkspaceRequestObject) (adminservice.PutWorkspaceResponseObject, error) {
@@ -174,6 +197,11 @@ func (s *Server) PutWorkspace(ctx context.Context, request adminservice.PutWorks
 	}
 	if err == nil {
 		workspace.CreatedAt = previous.CreatedAt
+	}
+	if s.RuntimeStore != nil {
+		if _, err := s.RuntimeStore.PrepareWorkspace(ctx, workspace.Name); err != nil {
+			return adminservice.PutWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
+		}
 	}
 	if err := writeWorkspace(ctx, store, workspace); err != nil {
 		return adminservice.PutWorkspace500JSONResponse(apitypes.NewErrorResponse("INTERNAL_ERROR", err.Error())), nil
