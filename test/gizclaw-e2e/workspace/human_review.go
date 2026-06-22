@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/audio/pcm"
 	"github.com/GizClaw/gizclaw-go/pkg/audio/portaudio"
 	"github.com/GizClaw/gizclaw-go/pkg/buffer"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 )
 
 const humanReviewOpusFrameDuration = 20 * time.Millisecond
@@ -24,6 +26,8 @@ const humanReviewOutputPrebuffer = 800 * time.Millisecond
 const humanReviewOutputIdleKeepalive = 1500 * time.Millisecond
 const humanReviewOutputUnderflowRetries = 3
 const humanReviewPlaybackQueueSize = 1024
+const humanReviewHistoryReplayMax = 2
+const humanReviewHistoryReplayWait = 60 * time.Second
 
 type opusPacketDecoder interface {
 	Decode(packet []byte, frameSize int, fec bool) ([]int16, error)
@@ -94,6 +98,9 @@ func runHumanReview(ctx context.Context, d *personaDriver) ([]roundStats, error)
 		d.newTransport = baseNewTransport
 	}()
 	rounds, err := d.runConversation(ctx, conversationMode{SkipAssistantAudioASR: true})
+	if err == nil {
+		_, err = d.runHumanReviewHistoryReplay(ctx, humanReviewHistoryReplayTarget(len(rounds), humanReviewHistoryReplayMax))
+	}
 	detachHumanReviewPlayback(d.transport, playback)
 	return rounds, err
 }
@@ -106,6 +113,119 @@ func detachHumanReviewPlayback(transport *chatTransport, playback *humanReviewPl
 	if transport != nil && transport.audioTap == playback {
 		transport.audioTap = nil
 	}
+}
+
+func humanReviewHistoryReplayTarget(rounds, maxReplay int) int {
+	if maxReplay < 1 {
+		maxReplay = 1
+	}
+	if rounds > 0 && rounds < maxReplay {
+		return rounds
+	}
+	return maxReplay
+}
+
+func (d *personaDriver) runHumanReviewHistoryReplay(ctx context.Context, target int) ([]historyReplayStats, error) {
+	if target <= 0 {
+		return nil, nil
+	}
+	if d == nil {
+		return nil, fmt.Errorf("persona driver is nil")
+	}
+	if d.runtimeClient == nil {
+		return nil, fmt.Errorf("human review history replay requires runtime client")
+	}
+	if d.transport == nil {
+		return nil, fmt.Errorf("human review history replay requires active transport")
+	}
+	items, err := d.waitHumanReviewHistoryReplayItems(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	stats := make([]historyReplayStats, 0, len(items))
+	for i, item := range items {
+		d.drainTransport()
+		fmt.Printf("workspace_progress event=human_review_history_replay_start workspace=%s index=%d history_id=%s text_chars=%d\n", d.cfg.Workspace, i+1, item.Id, runeCount(item.Text))
+		play, err := d.runtimeClient.PlayServerRunWorkspaceHistory(ctx, fmt.Sprintf("workspacetest.human_review.history.play.%d", i+1), rpcapi.ServerPlayRunWorkspaceHistoryRequest{
+			HistoryId: item.Id,
+		})
+		if err != nil {
+			return stats, fmt.Errorf("human review history replay %q: play: %w", item.Id, err)
+		}
+		if play == nil || !play.Accepted {
+			state := ""
+			message := ""
+			if play != nil {
+				state = string(play.State)
+				if play.Message != nil {
+					message = *play.Message
+				}
+			}
+			return stats, fmt.Errorf("human review history replay %q rejected state=%s: %s", item.Id, state, message)
+		}
+		replay, err := d.verifyHistoryReplay(ctx, item)
+		if err != nil {
+			return stats, fmt.Errorf("human review history replay %q output: %w", item.Id, err)
+		}
+		stats = append(stats, replay)
+		fmt.Printf("human_review_history_replay=%s\n", encodeJSONLine(map[string]any{
+			"index":            i + 1,
+			"history_id":       item.Id,
+			"text":             replay.Text,
+			"audio_asr":        replay.AudioASR,
+			"downlink_packets": replay.DownlinkPackets,
+			"state":            play.State,
+		}))
+	}
+	return stats, nil
+}
+
+func (d *personaDriver) waitHumanReviewHistoryReplayItems(ctx context.Context, target int) ([]rpcapi.PeerRunHistoryEntry, error) {
+	if target <= 0 {
+		return nil, nil
+	}
+	limit := 50
+	deadline := time.NewTimer(humanReviewHistoryReplayWait)
+	defer deadline.Stop()
+	for {
+		history, err := d.runtimeClient.ListServerRunWorkspaceHistory(ctx, "workspacetest.human_review.history", rpcapi.ServerListRunWorkspaceHistoryRequest{Limit: &limit})
+		if err != nil {
+			return nil, fmt.Errorf("human review history replay list: %w", err)
+		}
+		if history != nil && history.Available {
+			items := humanReviewReplayItems(history.Items, target)
+			if len(items) >= target {
+				return items, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("human review history replay has fewer than %d replayable items: %w", target, ctx.Err())
+		case <-deadline.C:
+			return nil, fmt.Errorf("human review history replay has fewer than %d replayable items", target)
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+func humanReviewReplayItems(items []rpcapi.PeerRunHistoryEntry, limit int) []rpcapi.PeerRunHistoryEntry {
+	if limit <= 0 {
+		return nil
+	}
+	replayable := make([]rpcapi.PeerRunHistoryEntry, 0, limit)
+	for _, item := range items {
+		if item.Type != rpcapi.PeerRunHistoryEntryTypeAgent || !item.ReplayAvailable || strings.TrimSpace(item.Text) == "" {
+			continue
+		}
+		replayable = append(replayable, item)
+	}
+	sort.SliceStable(replayable, func(i, j int) bool {
+		return replayable[i].CreatedAt.Before(replayable[j].CreatedAt)
+	})
+	if len(replayable) > limit {
+		replayable = replayable[:limit]
+	}
+	return replayable
 }
 
 func newHumanReviewPlayback() (*humanReviewPlayback, error) {

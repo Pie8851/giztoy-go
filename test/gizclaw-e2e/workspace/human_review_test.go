@@ -6,9 +6,11 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkg/audio/pcm"
 	"github.com/GizClaw/gizclaw-go/pkg/buffer"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/rpcapi"
 )
 
 type fakeOpusPacketDecoder struct {
@@ -244,5 +246,41 @@ func TestDetachHumanReviewPlaybackOnlyClearsMatchingTap(t *testing.T) {
 	detachHumanReviewPlayback(transport, playback)
 	if transport.audioTap != nil {
 		t.Fatalf("matching playback not detached")
+	}
+}
+
+func TestHumanReviewHistoryReplayTarget(t *testing.T) {
+	tests := []struct {
+		rounds int
+		max    int
+		want   int
+	}{
+		{rounds: 3, max: 2, want: 2},
+		{rounds: 1, max: 2, want: 1},
+		{rounds: 0, max: 2, want: 2},
+		{rounds: 3, max: 0, want: 1},
+	}
+	for _, tt := range tests {
+		if got := humanReviewHistoryReplayTarget(tt.rounds, tt.max); got != tt.want {
+			t.Fatalf("humanReviewHistoryReplayTarget(%d, %d) = %d, want %d", tt.rounds, tt.max, got, tt.want)
+		}
+	}
+}
+
+func TestHumanReviewReplayItemsSelectsOldestReplayableAgentEntries(t *testing.T) {
+	base := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	items := []rpcapi.PeerRunHistoryEntry{
+		{Id: "newer", CreatedAt: base.Add(2 * time.Second), Text: "新回复", ReplayAvailable: true, Type: rpcapi.PeerRunHistoryEntryTypeAgent},
+		{Id: "gear", CreatedAt: base.Add(-time.Second), Text: "用户输入", ReplayAvailable: true, Type: rpcapi.PeerRunHistoryEntryTypeGear},
+		{Id: "empty", CreatedAt: base, Text: "  ", ReplayAvailable: true, Type: rpcapi.PeerRunHistoryEntryTypeAgent},
+		{Id: "oldest", CreatedAt: base.Add(time.Second), Text: "旧回复", ReplayAvailable: true, Type: rpcapi.PeerRunHistoryEntryTypeAgent},
+		{Id: "disabled", CreatedAt: base.Add(3 * time.Second), Text: "不可播放", ReplayAvailable: false, Type: rpcapi.PeerRunHistoryEntryTypeAgent},
+	}
+	got := humanReviewReplayItems(items, 2)
+	if len(got) != 2 {
+		t.Fatalf("len(humanReviewReplayItems) = %d, want 2", len(got))
+	}
+	if got[0].Id != "oldest" || got[1].Id != "newer" {
+		t.Fatalf("humanReviewReplayItems ids = %q, %q; want oldest, newer", got[0].Id, got[1].Id)
 	}
 }
