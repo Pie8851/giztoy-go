@@ -184,6 +184,65 @@ func TestServerACLBoundaries(t *testing.T) {
 	}
 }
 
+func TestServerWorkspaceListPrefixUsesACLDiscovery(t *testing.T) {
+	ctx := context.Background()
+	auth := newListingAuthorizer()
+	srv := newTestResourceServer()
+	srv.ACL = auth
+
+	auth.allow(acl.ResourceKindWorkflow, "flow-a", apitypes.ACLPermissionWorkflowAdmin)
+	auth.allow(acl.ResourceKindWorkflow, "flow-a", apitypes.ACLPermissionWorkflowUse)
+	auth.allow(acl.ResourceKindWorkspace, "social-direct-visible", apitypes.ACLPermissionWorkspaceAdmin)
+	auth.allow(acl.ResourceKindWorkspace, "social-direct-hidden", apitypes.ACLPermissionWorkspaceAdmin)
+	auth.allow(acl.ResourceKindWorkspace, "social-group-visible", apitypes.ACLPermissionWorkspaceAdmin)
+	requireNoRPCError(t, callRPC(t, srv, "workflow-create", rpcapi.RPCMethodServerWorkflowCreate, rpcParams(t, (*rpcapi.RPCRequest_Params).FromWorkflowCreateRequest, workflowDoc("flow-a"))))
+	for _, name := range []string{"social-direct-visible", "social-direct-hidden", "social-group-visible"} {
+		requireNoRPCError(t, callRPC(t, srv, "workspace-create-"+name, rpcapi.RPCMethodServerWorkspaceCreate, rpcParams(t, (*rpcapi.RPCRequest_Params).FromWorkspaceCreateRequest, rpcapi.WorkspaceCreateRequest{
+			Name:         name,
+			WorkflowName: "flow-a",
+		})))
+	}
+
+	auth.bindings = []apitypes.ACLPolicyBinding{
+		{Id: "binding-hidden", Policy: apitypes.ACLPolicy{Subject: acl.PublicKeySubject(srv.Caller.String()), Resource: acl.WorkspaceResource("social-direct-hidden"), Role: "workspace-member"}},
+		{Id: "binding-missing", Policy: apitypes.ACLPolicy{Subject: acl.PublicKeySubject(srv.Caller.String()), Resource: acl.WorkspaceResource("social-direct-missing"), Role: "workspace-member"}},
+		{Id: "binding-visible", Policy: apitypes.ACLPolicy{Subject: acl.PublicKeySubject(srv.Caller.String()), Resource: acl.WorkspaceResource("social-direct-visible"), Role: "workspace-member"}},
+		{Id: "binding-group", Policy: apitypes.ACLPolicy{Subject: acl.PublicKeySubject(srv.Caller.String()), Resource: acl.WorkspaceResource("social-group-visible"), Role: "workspace-member"}},
+	}
+	auth.allow(acl.ResourceKindWorkspace, "social-direct-missing", apitypes.ACLPermissionWorkspaceRead)
+	auth.allow(acl.ResourceKindWorkspace, "social-direct-visible", apitypes.ACLPermissionWorkspaceRead)
+
+	limit := 1
+	resp := callRPC(t, srv, "workspace-list-prefix", rpcapi.RPCMethodServerWorkspaceList, rpcParams(t, (*rpcapi.RPCRequest_Params).FromWorkspaceListRequest, rpcapi.WorkspaceListRequest{
+		Prefix: stringPtr("social-direct-"),
+		Limit:  &limit,
+	}))
+	got := mustResult(t, resp.Result.AsWorkspaceListResponse)
+	if len(got.Items) != 1 || got.Items[0].Name != "social-direct-visible" {
+		t.Fatalf("workspace.list prefix = %#v", got)
+	}
+	if got.HasNext || got.NextCursor != nil {
+		t.Fatalf("workspace.list prefix pagination = hasNext:%v next:%v", got.HasNext, got.NextCursor)
+	}
+	if len(auth.listRequests) == 0 {
+		t.Fatal("workspace.list prefix did not list ACL policy bindings")
+	}
+	req := auth.listRequests[0]
+	if req.SubjectKind != acl.SubjectKindPublicKey || req.SubjectID != srv.Caller.String() || req.ResourceKind != acl.ResourceKindWorkspace ||
+		req.ResourceIDPrefix != "social-direct-" || req.Permission != apitypes.ACLPermissionWorkspaceRead {
+		t.Fatalf("ACL discovery request = %+v", req)
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkspace, "social-direct-visible", apitypes.ACLPermissionWorkspaceRead); got == 0 {
+		t.Fatal("workspace.list prefix did not authorize visible workspace")
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkspace, "social-direct-hidden", apitypes.ACLPermissionWorkspaceRead); got == 0 {
+		t.Fatal("workspace.list prefix did not authorize hidden workspace")
+	}
+	if got := auth.count(ctx, acl.ResourceKindWorkspace, "social-group-visible", apitypes.ACLPermissionWorkspaceRead); got != 0 {
+		t.Fatal("workspace.list prefix checked workspace outside requested prefix")
+	}
+}
+
 func TestServerWorkspaceWorkflowCreateUsesCollectionACL(t *testing.T) {
 	ctx := context.Background()
 	auth := newRuleAuthorizer()
@@ -659,6 +718,21 @@ func TestHelpers(t *testing.T) {
 	if got := int32Ptr(nil); got != nil {
 		t.Fatalf("int32Ptr(nil) = %#v", got)
 	}
+	if got := peerListLimit(nil); got != 50 {
+		t.Fatalf("peerListLimit(nil) = %d, want 50", got)
+	}
+	zero := 0
+	if got := peerListLimit(&zero); got != 50 {
+		t.Fatalf("peerListLimit(0) = %d, want 50", got)
+	}
+	tooHigh := 201
+	if got := peerListLimit(&tooHigh); got != 200 {
+		t.Fatalf("peerListLimit(201) = %d, want 200", got)
+	}
+	inRange := 7
+	if got := peerListLimit(&inRange); got != 7 {
+		t.Fatalf("peerListLimit(7) = %d", got)
+	}
 	if resp := statusError("status", http.StatusTeapot, ""); resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeInternalError {
 		t.Fatalf("statusError(418) = %#v", resp)
 	}
@@ -898,4 +972,50 @@ func (a *ruleAuthorizer) Authorize(_ context.Context, request acl.AuthorizeReque
 		return acl.ErrDenied
 	}
 	return nil
+}
+
+type listingAuthorizer struct {
+	*ruleAuthorizer
+	bindings     []apitypes.ACLPolicyBinding
+	listRequests []acl.ListPolicyBindingsRequest
+}
+
+func newListingAuthorizer() *listingAuthorizer {
+	return &listingAuthorizer{ruleAuthorizer: newRuleAuthorizer()}
+}
+
+func (a *listingAuthorizer) ListPolicyBindings(_ context.Context, request acl.ListPolicyBindingsRequest) ([]apitypes.ACLPolicyBinding, bool, *string, error) {
+	a.listRequests = append(a.listRequests, request)
+	limit := request.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	cursorPassed := request.Cursor == ""
+	filtered := make([]apitypes.ACLPolicyBinding, 0, len(a.bindings))
+	for _, binding := range a.bindings {
+		if !cursorPassed {
+			if binding.Id == request.Cursor {
+				cursorPassed = true
+			}
+			continue
+		}
+		if request.SubjectKind != "" && binding.Policy.Subject.Kind != request.SubjectKind {
+			continue
+		}
+		if request.SubjectID != "" && binding.Policy.Subject.Id != request.SubjectID {
+			continue
+		}
+		if request.ResourceKind != "" && binding.Policy.Resource.Kind != request.ResourceKind {
+			continue
+		}
+		if request.ResourceIDPrefix != "" && !strings.HasPrefix(binding.Policy.Resource.Id, request.ResourceIDPrefix) {
+			continue
+		}
+		filtered = append(filtered, binding)
+	}
+	if len(filtered) <= limit {
+		return filtered, false, nil, nil
+	}
+	nextCursor := filtered[limit-1].Id
+	return filtered[:limit], true, &nextCursor, nil
 }

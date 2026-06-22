@@ -16,15 +16,16 @@ const (
 )
 
 type ListPolicyBindingsRequest struct {
-	Cursor       string
-	Limit        int
-	OrderBy      string
-	SubjectKind  apitypes.ACLSubjectKind
-	SubjectID    string
-	ResourceKind apitypes.ACLResourceKind
-	ResourceID   string
-	Role         string
-	Permission   apitypes.ACLPermission
+	Cursor           string
+	Limit            int
+	OrderBy          string
+	SubjectKind      apitypes.ACLSubjectKind
+	SubjectID        string
+	ResourceKind     apitypes.ACLResourceKind
+	ResourceID       string
+	ResourceIDPrefix string
+	Role             string
+	Permission       apitypes.ACLPermission
 }
 
 func (s *Server) ListPolicyBindings(ctx context.Context, request ListPolicyBindingsRequest) ([]apitypes.ACLPolicyBinding, bool, *string, error) {
@@ -114,6 +115,11 @@ WHERE 1 = 1`)
   AND resource_id = ?`)
 		args = append(args, strings.TrimSpace(request.ResourceID))
 	}
+	if strings.TrimSpace(request.ResourceIDPrefix) != "" {
+		query.WriteString(`
+  AND resource_id LIKE ? ESCAPE '\'`)
+		args = append(args, likePrefixPattern(strings.TrimSpace(request.ResourceIDPrefix)))
+	}
 	if strings.TrimSpace(request.Role) != "" {
 		query.WriteString(`
   AND role = ?`)
@@ -145,6 +151,11 @@ ORDER BY id`)
 LIMIT ?`)
 	args = append(args, limit+1)
 	return query.String(), args, nil
+}
+
+func likePrefixPattern(prefix string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(prefix) + "%"
 }
 
 func (s *Server) CreatePolicyBinding(ctx context.Context, id string, displayOrder float64, policy apitypes.ACLPolicy) (apitypes.ACLPolicyBinding, error) {

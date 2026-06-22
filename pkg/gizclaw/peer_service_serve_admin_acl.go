@@ -181,15 +181,16 @@ func (s *adminService) ListACLPolicyBindings(ctx context.Context, request admins
 		permission = *request.Params.Permission
 	}
 	items, hasNext, nextCursor, err := server.ListPolicyBindings(ctx, acl.ListPolicyBindingsRequest{
-		Cursor:       cursor,
-		Limit:        limit,
-		OrderBy:      valueOrZero(request.Params.OrderBy),
-		SubjectKind:  valueOrZero(request.Params.SubjectKind),
-		SubjectID:    valueOrZero(request.Params.SubjectId),
-		ResourceKind: valueOrZero(request.Params.ResourceKind),
-		ResourceID:   valueOrZero(request.Params.ResourceId),
-		Role:         valueOrZero(request.Params.Role),
-		Permission:   permission,
+		Cursor:           cursor,
+		Limit:            limit,
+		OrderBy:          valueOrZero(request.Params.OrderBy),
+		SubjectKind:      valueOrZero(request.Params.SubjectKind),
+		SubjectID:        valueOrZero(request.Params.SubjectId),
+		ResourceKind:     valueOrZero(request.Params.ResourceKind),
+		ResourceID:       valueOrZero(request.Params.ResourceId),
+		ResourceIDPrefix: valueOrZero(request.Params.ResourceIdPrefix),
+		Role:             valueOrZero(request.Params.Role),
+		Permission:       permission,
 	})
 	if err != nil {
 		return adminservice.ListACLPolicyBindings500JSONResponse(apitypes.NewErrorResponse("ACL_LIST_POLICY_BINDINGS_FAILED", err.Error())), nil

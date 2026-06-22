@@ -15,6 +15,10 @@ type aclAuthorizer interface {
 	Authorize(context.Context, acl.AuthorizeRequest) error
 }
 
+type aclPolicyBindingLister interface {
+	ListPolicyBindings(context.Context, acl.ListPolicyBindingsRequest) ([]apitypes.ACLPolicyBinding, bool, *string, error)
+}
+
 type peerConfigGetter interface {
 	GetPeerConfig(context.Context, adminservice.GetPeerConfigRequestObject) (adminservice.GetPeerConfigResponseObject, error)
 }
@@ -46,6 +50,14 @@ func (a peerAuthorizer) Authorize(ctx context.Context, request acl.AuthorizeRequ
 		return err
 	}
 	return viewErr
+}
+
+func (a peerAuthorizer) ListPolicyBindings(ctx context.Context, request acl.ListPolicyBindingsRequest) ([]apitypes.ACLPolicyBinding, bool, *string, error) {
+	lister, ok := a.ACL.(aclPolicyBindingLister)
+	if !ok {
+		return nil, false, nil, errors.New("acl policy binding listing not configured")
+	}
+	return lister.ListPolicyBindings(ctx, request)
 }
 
 func (a peerAuthorizer) authorizeWithCollectionFallback(ctx context.Context, request acl.AuthorizeRequest) error {

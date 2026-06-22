@@ -1278,6 +1278,15 @@
             }
           },
           {
+            "name": "resource_id_prefix",
+            "in": "query",
+            "required": false,
+            "description": "Filter by ACL resource identifier prefix",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "role",
             "in": "query",
             "required": false,

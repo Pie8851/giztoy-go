@@ -361,6 +361,9 @@ type ListACLPolicyBindingsParams struct {
 	// ResourceId Filter by ACL resource identifier
 	ResourceId *string `form:"resource_id,omitempty" json:"resource_id,omitempty"`
 
+	// ResourceIdPrefix Filter by ACL resource identifier prefix
+	ResourceIdPrefix *string `form:"resource_id_prefix,omitempty" json:"resource_id_prefix,omitempty"`
+
 	// Role Filter by ACL role name
 	Role *string `form:"role,omitempty" json:"role,omitempty"`
 
@@ -2789,6 +2792,22 @@ func NewListACLPolicyBindingsRequest(server string, params *ListACLPolicyBinding
 		if params.ResourceId != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "resource_id", *params.ResourceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ResourceIdPrefix != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "resource_id_prefix", *params.ResourceIdPrefix, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -15350,6 +15369,13 @@ func (siw *ServerInterfaceWrapper) ListACLPolicyBindings(c *fiber.Ctx) error {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "resource_id", query, &params.ResourceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter resource_id: %w", err).Error())
+	}
+
+	// ------------- Optional query parameter "resource_id_prefix" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "resource_id_prefix", query, &params.ResourceIdPrefix, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter resource_id_prefix: %w", err).Error())
 	}
 
 	// ------------- Optional query parameter "role" -------------

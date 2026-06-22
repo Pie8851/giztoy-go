@@ -71,6 +71,7 @@ func TestServerResourceRPCUserStory(t *testing.T) {
 	if !hasWorkspace(workspaceList.Items, "seed-workspace") {
 		t.Fatalf("workspace.list missing seed-workspace: %#v", workspaceList.Items)
 	}
+	assertWorkspacePrefixList(t, ctx, peer)
 	seedWorkspace, err := peer.GetWorkspace(ctx, "workspace.get.seeded", rpcapi.WorkspaceGetRequest{Name: "seed-workspace"})
 	if err != nil {
 		t.Fatalf("workspace.get seeded: %v", err)
@@ -301,6 +302,23 @@ func assertWorkspacePagination(t *testing.T, ctx context.Context, peer *gizcli.C
 	}
 }
 
+func assertWorkspacePrefixList(t *testing.T, ctx context.Context, peer *gizcli.Client) {
+	t.Helper()
+
+	limit := 10
+	prefix := "social-direct-"
+	list, err := peer.ListWorkspaces(ctx, "workspace.list.prefix", rpcapi.WorkspaceListRequest{Prefix: &prefix, Limit: &limit})
+	if err != nil {
+		t.Fatalf("workspace.list prefix: %v", err)
+	}
+	if len(list.Items) != 1 || list.Items[0].Name != "social-direct-visible" {
+		t.Fatalf("workspace.list prefix items = %#v", list.Items)
+	}
+	if hasWorkspace(list.Items, "social-direct-hidden") || hasWorkspace(list.Items, "social-group-visible") {
+		t.Fatalf("workspace.list prefix leaked workspace = %#v", list.Items)
+	}
+}
+
 func assertModelPagination(t *testing.T, ctx context.Context, peer *gizcli.Client, wantA, wantB string) {
 	t.Helper()
 
@@ -421,6 +439,8 @@ func seedPeerResources(t *testing.T, h *clitest.Harness) {
 		{Kind: apitypes.ACLResourceKindWorkflow, Id: "peer-flow"},
 		{Kind: apitypes.ACLResourceKindWorkspace, Id: "seed-workspace"},
 		{Kind: apitypes.ACLResourceKindWorkspace, Id: "peer-workspace"},
+		{Kind: apitypes.ACLResourceKindWorkspace, Id: "social-direct-visible"},
+		{Kind: apitypes.ACLResourceKindWorkspace, Id: "social-group-visible"},
 		{Kind: apitypes.ACLResourceKindModel, Id: "seed-model"},
 		{Kind: apitypes.ACLResourceKindModel, Id: "peer-model"},
 		{Kind: apitypes.ACLResourceKindCredential, Id: "seed-credential"},
@@ -460,6 +480,17 @@ func seedPeerResources(t *testing.T, h *clitest.Harness) {
 		t.Fatalf("seed workspace: %v", err)
 	} else if resp.JSON200 == nil {
 		t.Fatalf("seed workspace status %d: %s", resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+	}
+	for _, name := range []string{"social-direct-visible", "social-direct-hidden", "social-group-visible"} {
+		if resp, err := api.CreateWorkspaceWithResponse(ctx, adminservice.WorkspaceUpsert{
+			Name:         name,
+			WorkflowName: "seed-flow",
+			Parameters:   &params,
+		}); err != nil {
+			t.Fatalf("seed workspace %s: %v", name, err)
+		} else if resp.JSON200 == nil {
+			t.Fatalf("seed workspace %s status %d: %s", name, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+		}
 	}
 	if resp, err := api.CreateModelWithResponse(ctx, adminservice.ModelUpsert{
 		Id:     "seed-model",

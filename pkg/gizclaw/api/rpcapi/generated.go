@@ -2442,6 +2442,7 @@ type WorkspaceInputMode string
 type WorkspaceListRequest struct {
 	Cursor *string `json:"cursor,omitempty"`
 	Limit  *int    `json:"limit,omitempty"`
+	Prefix *string `json:"prefix,omitempty"`
 }
 
 // WorkspaceListResponse defines model for WorkspaceListResponse.

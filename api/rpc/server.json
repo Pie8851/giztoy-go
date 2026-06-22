@@ -302,6 +302,9 @@
           "cursor": {
             "type": "string"
           },
+          "prefix": {
+            "type": "string"
+          },
           "limit": {
             "type": "integer",
             "minimum": 1

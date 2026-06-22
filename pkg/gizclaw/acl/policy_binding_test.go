@@ -216,6 +216,79 @@ func TestListPolicyBindingsFilters(t *testing.T) {
 	}
 }
 
+func TestListPolicyBindingsResourceIDPrefixAndPagination(t *testing.T) {
+	server := migratedTestServer(t)
+	ctx := context.Background()
+	if _, err := server.CreateRole(ctx, "workspace-reader", apitypes.ACLPermissionList{"workspace.read"}); err != nil {
+		t.Fatalf("CreateRole(reader) error = %v", err)
+	}
+	if _, err := server.CreateRole(ctx, "workspace-user", apitypes.ACLPermissionList{"workspace.use"}); err != nil {
+		t.Fatalf("CreateRole(user) error = %v", err)
+	}
+	bindings := []struct {
+		id       string
+		subject  string
+		resource string
+		role     string
+	}{
+		{id: "binding-social-a", subject: "subject-a", resource: "social-direct-a", role: "workspace-reader"},
+		{id: "binding-social-b", subject: "subject-a", resource: "social-direct-b", role: "workspace-reader"},
+		{id: "binding-social-c-use", subject: "subject-a", resource: "social-direct-c", role: "workspace-user"},
+		{id: "binding-group-a", subject: "subject-a", resource: "social-group-a", role: "workspace-reader"},
+		{id: "binding-other-subject", subject: "subject-b", resource: "social-direct-c", role: "workspace-reader"},
+	}
+	for _, binding := range bindings {
+		if _, err := server.CreatePolicyBinding(ctx, binding.id, 0, apitypes.ACLPolicy{
+			Subject:  PublicKeySubject(binding.subject),
+			Resource: WorkspaceResource(binding.resource),
+			Role:     binding.role,
+		}); err != nil {
+			t.Fatalf("CreatePolicyBinding(%s) error = %v", binding.id, err)
+		}
+	}
+
+	first, hasNext, nextCursor, err := server.ListPolicyBindings(ctx, ListPolicyBindingsRequest{
+		Limit:            1,
+		SubjectKind:      SubjectKindPublicKey,
+		SubjectID:        "subject-a",
+		ResourceKind:     ResourceKindWorkspace,
+		ResourceIDPrefix: "social-direct-",
+		Permission:       "workspace.read",
+	})
+	if err != nil {
+		t.Fatalf("ListPolicyBindings(prefix page 1) error = %v", err)
+	}
+	if len(first) != 1 || first[0].Id != "binding-social-a" || !hasNext || nextCursor == nil || *nextCursor != "binding-social-a" {
+		t.Fatalf("ListPolicyBindings(prefix page 1) = items:%#v hasNext:%v next:%v", first, hasNext, nextCursor)
+	}
+	second, hasNext, nextCursor, err := server.ListPolicyBindings(ctx, ListPolicyBindingsRequest{
+		Cursor:           *nextCursor,
+		Limit:            1,
+		SubjectKind:      SubjectKindPublicKey,
+		SubjectID:        "subject-a",
+		ResourceKind:     ResourceKindWorkspace,
+		ResourceIDPrefix: "social-direct-",
+		Permission:       "workspace.read",
+	})
+	if err != nil {
+		t.Fatalf("ListPolicyBindings(prefix page 2) error = %v", err)
+	}
+	if len(second) != 1 || second[0].Id != "binding-social-b" || hasNext || nextCursor != nil {
+		t.Fatalf("ListPolicyBindings(prefix page 2) = items:%#v hasNext:%v next:%v", second, hasNext, nextCursor)
+	}
+
+	exact, _, _, err := server.ListPolicyBindings(ctx, ListPolicyBindingsRequest{
+		ResourceID:       "social-group-a",
+		ResourceIDPrefix: "social-direct-",
+	})
+	if err != nil {
+		t.Fatalf("ListPolicyBindings(exact and prefix) error = %v", err)
+	}
+	if len(exact) != 0 {
+		t.Fatalf("ListPolicyBindings(exact and prefix) = %#v, want none", exact)
+	}
+}
+
 func TestListPolicyBindingsDisplayOrder(t *testing.T) {
 	server := migratedTestServer(t)
 	ctx := context.Background()

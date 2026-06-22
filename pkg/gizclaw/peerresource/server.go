@@ -36,6 +36,10 @@ type Authorizer interface {
 	Authorize(context.Context, acl.AuthorizeRequest) error
 }
 
+type policyBindingLister interface {
+	ListPolicyBindings(context.Context, acl.ListPolicyBindingsRequest) ([]apitypes.ACLPolicyBinding, bool, *string, error)
+}
+
 type Server struct {
 	Caller       giznet.PublicKey
 	ACL          Authorizer
@@ -274,6 +278,9 @@ func (s *Server) handleWorkspaceList(ctx context.Context, req *rpcapi.RPCRequest
 	if !ok {
 		return invalidParams(req.Id)
 	}
+	if strings.TrimSpace(valueOrZero(params.Prefix)) != "" {
+		return s.handleWorkspaceListByPrefix(ctx, req.Id, params)
+	}
 	resp, err := s.Workspaces.ListWorkspaces(ctx, adminservice.ListWorkspacesRequestObject{
 		Params: adminservice.ListWorkspacesParams{Cursor: params.Cursor, Limit: int32Ptr(params.Limit)},
 	})
@@ -299,6 +306,84 @@ func (s *Server) handleWorkspaceList(ctx context.Context, req *rpcapi.RPCRequest
 		items = append(items, item)
 	}
 	return resultResponse(req.Id, adminservice.WorkspaceList{Items: items, HasNext: list.HasNext, NextCursor: list.NextCursor}, (*rpcapi.RPCResponse_Result).FromWorkspaceListResponse)
+}
+
+func (s *Server) handleWorkspaceListByPrefix(ctx context.Context, requestID string, params rpcapi.WorkspaceListRequest) *rpcapi.RPCResponse {
+	lister, ok := s.ACL.(policyBindingLister)
+	if !ok {
+		return internalError(requestID, "acl policy binding listing not configured")
+	}
+	cursor := strings.TrimSpace(valueOrZero(params.Cursor))
+	limit := peerListLimit(params.Limit)
+	prefix := strings.TrimSpace(valueOrZero(params.Prefix))
+	items := make([]apitypes.Workspace, 0, limit)
+	seen := make(map[string]struct{})
+	var nextCursor *string
+	hasNext := false
+	for len(items) < limit {
+		bindings, bindingHasNext, bindingCursor, err := lister.ListPolicyBindings(ctx, acl.ListPolicyBindingsRequest{
+			Cursor:           cursor,
+			Limit:            limit,
+			SubjectKind:      acl.SubjectKindPublicKey,
+			SubjectID:        s.Caller.String(),
+			ResourceKind:     acl.ResourceKindWorkspace,
+			ResourceIDPrefix: prefix,
+			Permission:       apitypes.ACLPermissionWorkspaceRead,
+		})
+		if err != nil {
+			return internalError(requestID, err.Error())
+		}
+		hasNext = bindingHasNext
+		nextCursor = bindingCursor
+		for _, binding := range bindings {
+			resourceID := strings.TrimSpace(binding.Policy.Resource.Id)
+			if resourceID == "" || resourceID == acl.CollectionResourceID {
+				continue
+			}
+			if _, ok := seen[resourceID]; ok {
+				continue
+			}
+			seen[resourceID] = struct{}{}
+			err := s.authorizeErr(ctx, acl.WorkspaceResource(resourceID), apitypes.ACLPermissionWorkspaceRead)
+			if errors.Is(err, acl.ErrDenied) {
+				continue
+			}
+			if err != nil {
+				return authError(requestID, err)
+			}
+			workspace, rpcResp, err := s.getWorkspaceForList(ctx, requestID, resourceID)
+			if err != nil {
+				return internalError(requestID, err.Error())
+			}
+			if rpcResp != nil {
+				if rpcResp.Error != nil && rpcResp.Error.Code == rpcapi.RPCErrorCodeNotFound {
+					continue
+				}
+				return rpcResp
+			}
+			items = append(items, workspace)
+			if len(items) == limit {
+				break
+			}
+		}
+		if !hasNext || nextCursor == nil || *nextCursor == cursor {
+			break
+		}
+		cursor = *nextCursor
+	}
+	return resultResponse(requestID, adminservice.WorkspaceList{Items: items, HasNext: hasNext, NextCursor: nextCursor}, (*rpcapi.RPCResponse_Result).FromWorkspaceListResponse)
+}
+
+func (s *Server) getWorkspaceForList(ctx context.Context, requestID, name string) (apitypes.Workspace, *rpcapi.RPCResponse, error) {
+	resp, err := s.Workspaces.GetWorkspace(ctx, adminservice.GetWorkspaceRequestObject{Name: name})
+	if err != nil {
+		return apitypes.Workspace{}, nil, err
+	}
+	workspace, rpcResp, err := adminResult[apitypes.Workspace](resp.VisitGetWorkspaceResponse)
+	if rpcResp != nil {
+		rpcResp = withRequestID(requestID, rpcResp)
+	}
+	return workspace, rpcResp, err
 }
 
 func (s *Server) handleWorkspaceGet(ctx context.Context, req *rpcapi.RPCRequest) *rpcapi.RPCResponse {
@@ -969,6 +1054,24 @@ func int32Ptr(value *int) *int32 {
 	}
 	converted := int32(*value)
 	return &converted
+}
+
+func peerListLimit(value *int) int {
+	if value == nil || *value <= 0 {
+		return 50
+	}
+	if *value > 200 {
+		return 200
+	}
+	return *value
+}
+
+func valueOrZero[T any](value *T) T {
+	if value == nil {
+		var zero T
+		return zero
+	}
+	return *value
 }
 
 func workflowResource(name string) apitypes.ACLResource {

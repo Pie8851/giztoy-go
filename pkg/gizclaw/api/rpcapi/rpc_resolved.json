@@ -4449,6 +4449,9 @@
           "limit": {
             "minimum": 1,
             "type": "integer"
+          },
+          "prefix": {
+            "type": "string"
           }
         },
         "type": "object"
