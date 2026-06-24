@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,11 @@ const (
 	SeedWorkspaceName       = "ui-seed-workspace"
 	SeedAltWorkspaceName    = "ui-alt-workspace"
 	pollInterval            = 20 * time.Millisecond
+)
+
+const (
+	defaultClientConfigHome = "test/gizclaw-e2e/testdata/gizclaw-config-home"
+	defaultClientContext    = "e2e-client"
 )
 
 type Story struct {
@@ -303,7 +309,12 @@ func setupSeed(t testing.TB) Seed {
 
 func setupClientPublicKey(t testing.TB) string {
 	t.Helper()
-	path := getenvDefault("GIZCLAW_E2E_CLIENT_IDENTITY_KEY", "test/gizclaw-e2e/testdata/gizclaw-config-home/gizclaw/e2e-client/identity.key")
+	path := strings.TrimSpace(os.Getenv("GIZCLAW_E2E_CLIENT_IDENTITY_KEY"))
+	if path == "" {
+		configHome := getenvDefault("GIZCLAW_E2E_CLIENT_CONFIG_HOME", defaultClientConfigHome)
+		contextName := getenvDefault("GIZCLAW_E2E_CLIENT_CONTEXT", defaultClientContext)
+		path = filepath.Join(configHome, "gizclaw", contextName, "identity.key")
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

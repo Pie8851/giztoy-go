@@ -18,9 +18,10 @@ so they are not pulled into ordinary `go test ./...` runs.
 ## Standard Flow
 
 1. Copy `test/gizclaw-e2e/.env.example` to `test/gizclaw-e2e/.env`, then fill
-   provider credential values. Runtime addresses, resource names, resource IDs,
-   model IDs, voice IDs, and e2e identity keys are committed fixtures, not env
-   values.
+   provider credential values. The same file may also override context roles
+   when running against existing local or remote dev contexts. Runtime
+   addresses, resource names, resource IDs, model IDs, voice IDs, and e2e
+   identity keys are committed fixtures, not env values.
 
 2. Build the e2e CLI binary:
 
@@ -94,6 +95,32 @@ binaries under `testdata/bin/` stay ignored.
 and committed client `identity.key` fixtures. Context config files must store
 the server `public-key` directly; do not point contexts at the server
 `identity.key`, because that file is the server private key.
+
+Optional role overrides in `.env` let e2e suites target existing context homes
+without changing test code:
+
+- `GIZCLAW_E2E_ADMIN_SETUP_CONFIG_HOME` / `GIZCLAW_E2E_ADMIN_SETUP_CONTEXT`:
+  setup resource initialization.
+- `GIZCLAW_E2E_ADMIN_CLI_CONFIG_HOME` / `GIZCLAW_E2E_ADMIN_CLI_CONTEXT`:
+  admin CLI story target role.
+- `GIZCLAW_E2E_CLIENT_CONFIG_HOME` / `GIZCLAW_E2E_CLIENT_CONTEXT`: ordinary
+  client, workspace, and RPC cases.
+- `GIZCLAW_E2E_SOCIAL_PERSON_A_CONFIG_HOME` /
+  `GIZCLAW_E2E_SOCIAL_PERSON_A_CONTEXT`: social role A.
+- `GIZCLAW_E2E_SOCIAL_PERSON_B_CONFIG_HOME` /
+  `GIZCLAW_E2E_SOCIAL_PERSON_B_CONTEXT`: social role B.
+- `GIZCLAW_E2E_PLAY_UI_CONFIG_HOME` / `GIZCLAW_E2E_PLAY_UI_CONTEXT`: Play UI
+  launcher.
+- `GIZCLAW_E2E_PLAY_CLI_CONFIG_HOME` / `GIZCLAW_E2E_PLAY_CLI_CONTEXT`: play CLI
+  story target role.
+
+Unset values fall back to the committed `testdata` config homes and context
+names.
+
+The setup scripts, workspace client tests, UI seed lookup, and social peer A/B
+harness read their matching role overrides. Most `cmd/*` story tests still
+create isolated sandbox contexts unless a specific story opts into one of the
+CLI target roles.
 
 ## Client Tests
 

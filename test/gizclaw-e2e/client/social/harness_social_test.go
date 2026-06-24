@@ -35,11 +35,33 @@ func newSocialSimulatorHarness(t *testing.T) *clitest.Harness {
 		t.Fatalf("create admin client: %v", err)
 	}
 	applySocialResourceFile(t, api, chatroomWorkflow)
-	for _, peer := range []string{"peer-a", "peer-b", "peer-c", "peer-d"} {
+	configureSocialPeerContext(t, h, "peer-a", "GIZCLAW_E2E_SOCIAL_PERSON_A_CONFIG_HOME", "GIZCLAW_E2E_SOCIAL_PERSON_A_CONTEXT", "client-social-peer-a-sn")
+	configureSocialPeerContext(t, h, "peer-b", "GIZCLAW_E2E_SOCIAL_PERSON_B_CONFIG_HOME", "GIZCLAW_E2E_SOCIAL_PERSON_B_CONTEXT", "client-social-peer-b-sn")
+	for _, peer := range []string{"peer-c", "peer-d"} {
 		h.CreateContext(peer).MustSucceed(t)
 		h.RegisterContext(peer, "--sn", "client-social-"+peer+"-sn").MustSucceed(t)
 	}
 	return h
+}
+
+func configureSocialPeerContext(t *testing.T, h *clitest.Harness, alias, homeEnv, contextEnv, sn string) {
+	t.Helper()
+
+	configHome := strings.TrimSpace(os.Getenv(homeEnv))
+	contextName := strings.TrimSpace(os.Getenv(contextEnv))
+	if configHome == "" && contextName == "" {
+		h.CreateContext(alias).MustSucceed(t)
+		h.RegisterContext(alias, "--sn", sn).MustSucceed(t)
+		return
+	}
+	if configHome == "" {
+		t.Fatalf("%s must be set when %s is set", homeEnv, contextEnv)
+	}
+	if contextName == "" {
+		contextName = alias
+	}
+	h.SetContextAlias(alias, configHome, contextName)
+	h.RegisterContext(alias, "--sn", sn).MustSucceed(t)
 }
 
 func applySocialResourceFile(t *testing.T, api *adminservice.ClientWithResponses, resourcePath string) {

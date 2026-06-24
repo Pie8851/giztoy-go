@@ -41,7 +41,7 @@ func runLiveWorkspaceCase(t *testing.T, selected workspaceCase, paths []string) 
 	for _, path := range paths {
 		path := path
 		t.Run(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), func(t *testing.T) {
-			err := runConfig(path, "", selected)
+			err := runConfig(path, clientContextConfigPath(), selected)
 			if err == nil {
 				return
 			}
@@ -54,7 +54,11 @@ func runLiveWorkspaceCase(t *testing.T, selected workspaceCase, paths []string) 
 }
 
 func probeLiveWorkspaceSetup() error {
-	contextCfg, err := readSetupContextConfig(contextConfigDefaultPath)
+	contextPath := clientContextConfigPath()
+	if contextPath == "" {
+		contextPath = contextConfigDefaultPath
+	}
+	contextCfg, err := readSetupContextConfig(contextPath)
 	if err != nil {
 		return err
 	}

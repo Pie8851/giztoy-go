@@ -26,6 +26,9 @@ if [[ -f "$env_file" ]]; then
   set +a
 fi
 
+admin_setup_config_home="${GIZCLAW_E2E_ADMIN_SETUP_CONFIG_HOME:-$testdata_dir/admin-config-home}"
+admin_setup_context="${GIZCLAW_E2E_ADMIN_SETUP_CONTEXT:-e2e-admin}"
+
 # Preserve Flowcraft runtime placeholders while admin apply expands provider
 # credential placeholders from the setup environment.
 export input='${input}'
@@ -62,9 +65,6 @@ volc_ready() {
 init_data() {
   "$script_dir/start-server.sh" >/dev/null
 
-  XDG_CONFIG_HOME="$testdata_dir/gizclaw-config-home" \
-    "$bin_path" connect set-name "Seeded UI Device" --context e2e-client >/dev/null
-
   shopt -s nullglob
   local resource_files=("$resource_dir"/*.json)
   shopt -u nullglob
@@ -87,8 +87,8 @@ init_data() {
         fi
         ;;
     esac
-    XDG_CONFIG_HOME="$testdata_dir/admin-config-home" \
-      "$bin_path" admin apply --context e2e-admin -f "$resource_file"
+    XDG_CONFIG_HOME="$admin_setup_config_home" \
+      "$bin_path" admin apply --context "$admin_setup_context" -f "$resource_file"
   }
 
   local voice_acl_files=()
@@ -105,8 +105,8 @@ init_data() {
   if ! volc_ready; then
     voice_acl_files=()
   else
-    XDG_CONFIG_HOME="$testdata_dir/admin-config-home" \
-      "$bin_path" admin volc-tenants --context e2e-admin sync-voices e2e-volc-tenant >/dev/null
+    XDG_CONFIG_HOME="$admin_setup_config_home" \
+      "$bin_path" admin volc-tenants --context "$admin_setup_context" sync-voices e2e-volc-tenant >/dev/null
   fi
 
   if [[ ${#voice_acl_files[@]} -gt 0 ]]; then

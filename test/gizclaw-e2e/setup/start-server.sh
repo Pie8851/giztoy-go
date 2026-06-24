@@ -3,12 +3,24 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
+e2e_dir="$repo_root/test/gizclaw-e2e"
 testdata_dir="$repo_root/test/gizclaw-e2e/testdata"
 workspace_dir="$testdata_dir/server-workspace"
 bin_path="$testdata_dir/bin/gizclaw"
 pid_file="$workspace_dir/gizclaw-server.pid"
 log_file="$workspace_dir/gizclaw-server.log"
+env_file="${GIZCLAW_E2E_ENV:-$e2e_dir/.env}"
+
+if [[ -f "$env_file" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+fi
+
 config_home="$testdata_dir/admin-config-home"
+config_home="${GIZCLAW_E2E_ADMIN_SETUP_CONFIG_HOME:-$config_home}"
+context_name="${GIZCLAW_E2E_ADMIN_SETUP_CONTEXT:-e2e-admin}"
 launch_label="com.gizclaw.e2e.server.$(printf '%s' "$repo_root" | cksum | awk '{print $1}')"
 
 launchctl_supported() {
@@ -21,7 +33,7 @@ launchctl_pid() {
 
 wait_ready() {
   for _ in {1..300}; do
-    if XDG_CONFIG_HOME="$config_home" "$bin_path" connect ping --context e2e-admin >/dev/null 2>&1; then
+    if XDG_CONFIG_HOME="$config_home" "$bin_path" connect ping --context "$context_name" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1

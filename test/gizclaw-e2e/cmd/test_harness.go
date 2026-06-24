@@ -65,6 +65,7 @@ type Harness struct {
 	serverLog       *os.File
 	serverWaitCh    chan error
 	extraProcesses  []*managedProcess
+	contextAliases  map[string]contextAlias
 }
 
 type Result struct {
@@ -79,6 +80,11 @@ type cliContextConfig struct {
 		Address   string `yaml:"address"`
 		PublicKey string `yaml:"public-key"`
 	} `yaml:"server"`
+}
+
+type contextAlias struct {
+	ConfigHome string
+	Name       string
 }
 
 type serverWorkspaceConfig struct {
@@ -412,7 +418,7 @@ func (h *Harness) ContextPublicKey(name string) string {
 func (h *Harness) ContextKeyPair(name string) *giznet.KeyPair {
 	h.t.Helper()
 
-	keyPair, err := loadIdentity(filepath.Join(h.contextRoot(), name, "identity.key"))
+	keyPair, err := loadIdentity(filepath.Join(h.contextDir(name), "identity.key"))
 	if err != nil {
 		h.t.Fatalf("load context %q identity: %v", name, err)
 	}
@@ -464,6 +470,26 @@ func (h *Harness) ConnectClientFromContext(name string) *gizcli.Client {
 		h.t.Fatalf("connect client from context %q: %v", name, err)
 	}
 	return client
+}
+
+func (h *Harness) SetContextAlias(alias, configHome, contextName string) {
+	h.t.Helper()
+	alias = strings.TrimSpace(alias)
+	configHome = strings.TrimSpace(configHome)
+	contextName = strings.TrimSpace(contextName)
+	if alias == "" {
+		h.t.Fatal("context alias is required")
+	}
+	if configHome == "" {
+		h.t.Fatalf("context alias %q config home is required", alias)
+	}
+	if contextName == "" {
+		h.t.Fatalf("context alias %q context name is required", alias)
+	}
+	if h.contextAliases == nil {
+		h.contextAliases = make(map[string]contextAlias)
+	}
+	h.contextAliases[alias] = contextAlias{ConfigHome: configHome, Name: contextName}
 }
 
 func (h *Harness) StartUI(kind, contextName string) string {
@@ -535,7 +561,7 @@ func (h *Harness) RunCLI(args ...string) Result {
 }
 
 func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) {
-	contextDir := filepath.Join(h.contextRoot(), name)
+	contextDir := h.contextDir(name)
 	data, err := os.ReadFile(filepath.Join(contextDir, "config.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("read context config: %w", err)
@@ -678,8 +704,9 @@ func (h *Harness) waitForServerReady() {
 func (h *Harness) waitForSetupServerReady() {
 	h.t.Helper()
 
-	setupConfigHome := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "admin-config-home")
-	if err := h.probeSetupServer(setupConfigHome, 2*time.Second); err != nil {
+	setupConfigHome := setupAdminConfigHome(h.RepoRoot)
+	setupContext := setupAdminContextName()
+	if err := h.probeSetupServer(setupConfigHome, setupContext, 2*time.Second); err != nil {
 		startScript := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "setup", "start-server.sh")
 		cmd := exec.Command(startScript)
 		cmd.Dir = h.RepoRoot
@@ -689,18 +716,32 @@ func (h *Harness) waitForSetupServerReady() {
 		}
 	}
 	if err := waitUntil(readyTimeout, func() error {
-		return h.probeSetupServer(setupConfigHome, 2*time.Second)
+		return h.probeSetupServer(setupConfigHome, setupContext, 2*time.Second)
 	}); err != nil {
 		h.t.Fatalf("setup server did not become ready: %v\nrun test/gizclaw-e2e/setup/start-server.sh before setup-driven cmd tests", err)
 	}
 }
 
-func (h *Harness) probeSetupServer(setupConfigHome string, timeout time.Duration) error {
+func setupAdminConfigHome(repoRoot string) string {
+	if value := strings.TrimSpace(os.Getenv("GIZCLAW_E2E_ADMIN_SETUP_CONFIG_HOME")); value != "" {
+		return value
+	}
+	return filepath.Join(repoRoot, "test", "gizclaw-e2e", "testdata", "admin-config-home")
+}
+
+func setupAdminContextName() string {
+	if value := strings.TrimSpace(os.Getenv("GIZCLAW_E2E_ADMIN_SETUP_CONTEXT")); value != "" {
+		return value
+	}
+	return "e2e-admin"
+}
+
+func (h *Harness) probeSetupServer(setupConfigHome, setupContext string, timeout time.Duration) error {
 	h.t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, h.BinaryPath, "connect", "ping", "--context", "e2e-admin")
+	cmd := exec.CommandContext(ctx, h.BinaryPath, "connect", "ping", "--context", setupContext)
 	cmd.Dir = h.RepoRoot
 	cmd.Env = append(os.Environ(),
 		"HOME="+h.HomeDir,
@@ -765,6 +806,13 @@ func (h *Harness) baseEnv() []string {
 
 func (h *Harness) contextRoot() string {
 	return filepath.Join(h.XDGConfigHome, "gizclaw")
+}
+
+func (h *Harness) contextDir(name string) string {
+	if alias, ok := h.contextAliases[name]; ok {
+		return filepath.Join(alias.ConfigHome, "gizclaw", alias.Name)
+	}
+	return filepath.Join(h.contextRoot(), name)
 }
 
 func (h *Harness) serverPublicKeyFromContextConfig(cfg cliContextConfig) giznet.PublicKey {

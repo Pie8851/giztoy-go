@@ -14,7 +14,11 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-const contextConfigDefaultPath = "test/gizclaw-e2e/testdata/gizclaw-config-home/gizclaw/e2e-client/config.yaml"
+const (
+	contextConfigDefaultHome = "test/gizclaw-e2e/testdata/gizclaw-config-home"
+	contextConfigDefaultName = "e2e-client"
+	contextConfigDefaultPath = contextConfigDefaultHome + "/gizclaw/" + contextConfigDefaultName + "/config.yaml"
+)
 
 type config struct {
 	Server    serverConfig    `json:"server"`
@@ -194,6 +198,30 @@ func defaultContextConfigPath(configPath string) string {
 		}
 	}
 	return candidates[0]
+}
+
+func envContextConfigPath(homeEnv, contextEnv, defaultHome, defaultName string) string {
+	home := strings.TrimSpace(os.Getenv(homeEnv))
+	name := strings.TrimSpace(os.Getenv(contextEnv))
+	if home == "" && name == "" {
+		return ""
+	}
+	if home == "" {
+		home = defaultHome
+	}
+	if name == "" {
+		name = defaultName
+	}
+	return filepath.Join(home, "gizclaw", name, "config.yaml")
+}
+
+func clientContextConfigPath() string {
+	return envContextConfigPath(
+		"GIZCLAW_E2E_CLIENT_CONFIG_HOME",
+		"GIZCLAW_E2E_CLIENT_CONTEXT",
+		contextConfigDefaultHome,
+		contextConfigDefaultName,
+	)
 }
 
 func readSetupContextConfig(path string) (setupContextConfig, error) {
