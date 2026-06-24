@@ -9,7 +9,8 @@ so they are not pulled into ordinary `go test ./...` runs.
 
 - `testdata/`: committed e2e fixtures plus ignored generated runtime files.
 - `setup/`: lifecycle scripts for building the CLI, starting services,
-  resetting shared data, and stopping services.
+  resetting shared data, granting the default client view, and stopping
+  services.
 - `client/`: typed client and protocol-level e2e tests.
 - `cmd/`: user-facing `gizclaw` CLI command e2e tests.
 - `ui/`: browser UI e2e tests for Admin UI, Play UI, and cross-surface smoke
@@ -39,6 +40,13 @@ so they are not pulled into ordinary `go test ./...` runs.
 
 ```sh
 ./test/gizclaw-e2e/setup/reset_data.sh
+```
+
+To let another peer public key use the default seeded client view, apply a
+`PeerConfig` for that key:
+
+```sh
+./test/gizclaw-e2e/setup/apply_client_view.sh <peer-public-key>
 ```
 
 5. Run the needed client or CLI tests, for example:
