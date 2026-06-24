@@ -15,8 +15,8 @@ func TestContextIsolationBetweenStoryHomesUserStory(t *testing.T) {
 	first := clitest.NewHarness(t, "103-context-isolation-between-story-homes")
 	second := clitest.NewHarness(t, "103-context-isolation-between-story-homes")
 
-	first.CreateContextWith("alpha", server.ServerAddr, server.ServerPrivateKey).MustSucceed(t)
-	second.CreateContextWith("beta", server.ServerAddr, server.ServerPrivateKey).MustSucceed(t)
+	first.CreateContextWith("alpha", server.ServerAddr, server.ServerPublicKey).MustSucceed(t)
+	second.CreateContextWith("beta", server.ServerAddr, server.ServerPublicKey).MustSucceed(t)
 
 	firstList := first.ListContexts()
 	firstList.MustSucceed(t)

@@ -1,6 +1,6 @@
 listen: "127.0.0.1:9820"
 cipher-mode: "chacha_poly"
-admin-identity-key: "../admin-config-home/gizclaw/e2e-admin/identity.key"
+admin-public-key: "6Ww6ANsXDCf91Yp7Tvi65hqpywjMmXqAoZDiq33kfCee"
 storage:
   memory:
     kind: keyvalue

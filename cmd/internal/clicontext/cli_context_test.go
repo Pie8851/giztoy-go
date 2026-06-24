@@ -12,10 +12,8 @@ import (
 )
 
 var (
-	testServerPrivateKey  = testPrivateKeyText(0xab)
-	testServerPrivateKey2 = testPrivateKeyText(0xcd)
-	testServerPublicKey   = testPublicKeyText(0xab)
-	testServerPublicKey2  = testPublicKeyText(0xcd)
+	testServerPublicKey  = testPublicKeyText(0xab)
+	testServerPublicKey2 = testPublicKeyText(0xcd)
 )
 
 func testPrivateKey(fill byte) giznet.Key {
@@ -24,10 +22,6 @@ func testPrivateKey(fill byte) giznet.Key {
 		key[i] = fill
 	}
 	return key
-}
-
-func testPrivateKeyText(fill byte) string {
-	return testPrivateKey(fill).String()
 }
 
 func testPublicKeyText(fill byte) string {
@@ -51,8 +45,8 @@ func TestStoreCreateAndLoad(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 
 	if err := s.CreateWithOptions("local", "127.0.0.1:9820", CreateOptions{
-		ServerPrivateKey: testServerPrivateKey,
-		CipherMode:       giznet.CipherModeAES256GCM,
+		ServerPublicKey: testServerPublicKey,
+		CipherMode:      giznet.CipherModeAES256GCM,
 	}); err != nil {
 		t.Fatalf("Create err=%v", err)
 	}
@@ -87,35 +81,11 @@ func TestStoreCreateAndLoad(t *testing.T) {
 	}
 }
 
-func TestStoreCreateWithIdentityKey(t *testing.T) {
-	s := &Store{Root: t.TempDir()}
-	serverKP := testKeyPair(t, 0x24)
-	identityPath := filepath.Join(t.TempDir(), "server.identity")
-	if err := os.WriteFile(identityPath, serverKP.Private[:], 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := s.CreateWithOptions("local", "127.0.0.1:9820", CreateOptions{
-		ServerIdentityKey: identityPath,
-		CipherMode:        giznet.CipherModeChaChaPoly,
-	}); err != nil {
-		t.Fatalf("CreateWithOptions err=%v", err)
-	}
-
-	cliCtx, err := Load(filepath.Join(s.Root, "local"))
-	if err != nil {
-		t.Fatalf("Load err=%v", err)
-	}
-	if cliCtx.Config.Server.PublicKey != serverKP.Public {
-		t.Fatalf("PublicKey=%v, want %v", cliCtx.Config.Server.PublicKey, serverKP.Public)
-	}
-}
-
 func TestStoreCreateRejectsInvalidCipherMode(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 	err := s.CreateWithOptions("local", "127.0.0.1:9820", CreateOptions{
-		ServerPrivateKey: testServerPrivateKey,
-		CipherMode:       giznet.CipherMode("bad"),
+		ServerPublicKey: testServerPublicKey,
+		CipherMode:      giznet.CipherMode("bad"),
 	})
 	if err == nil {
 		t.Fatal("CreateWithOptions should reject invalid cipher mode")
@@ -124,10 +94,10 @@ func TestStoreCreateRejectsInvalidCipherMode(t *testing.T) {
 
 func TestStoreCreateDuplicate(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("dup", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("dup", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create("dup", "addr", testServerPrivateKey); err == nil {
+	if err := s.Create("dup", "addr", testServerPublicKey); err == nil {
 		t.Fatal("duplicate Create should fail")
 	}
 }
@@ -135,7 +105,7 @@ func TestStoreCreateDuplicate(t *testing.T) {
 func TestStoreCreateRejectsInvalidName(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 	for _, bad := range []string{"", "../escape", "a/b", ".", ".."} {
-		if err := s.Create(bad, "addr", testServerPrivateKey); err == nil {
+		if err := s.Create(bad, "addr", testServerPublicKey); err == nil {
 			t.Fatalf("Create(%q) should fail", bad)
 		}
 	}
@@ -143,7 +113,7 @@ func TestStoreCreateRejectsInvalidName(t *testing.T) {
 
 func TestStoreCurrentAutoSet(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("first", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("first", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,10 +142,10 @@ func TestStoreCurrentNone(t *testing.T) {
 
 func TestStoreUse(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("a", "addr-a", testServerPrivateKey); err != nil {
+	if err := s.Create("a", "addr-a", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create("b", "addr-b", testServerPrivateKey2); err != nil {
+	if err := s.Create("b", "addr-b", testServerPublicKey2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -201,10 +171,10 @@ func TestStoreUseNonExistent(t *testing.T) {
 
 func TestStoreDeleteNonCurrent(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("first", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("first", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create("second", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("second", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Delete("second"); err != nil {
@@ -224,7 +194,7 @@ func TestStoreDeleteNonCurrent(t *testing.T) {
 
 func TestStoreDeleteCurrentClearsCurrent(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("only", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("only", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Delete("only"); err != nil {
@@ -256,10 +226,10 @@ func TestStoreDeleteRejectsInvalidOrMissing(t *testing.T) {
 
 func TestStoreList(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("beta", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("beta", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create("alpha", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("alpha", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -292,7 +262,7 @@ func TestStoreListEmpty(t *testing.T) {
 func TestServerPublicKey(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 	pk := testServerPublicKey
-	if err := s.Create("spk", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("spk", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 	cliCtx, err := Load(filepath.Join(s.Root, "spk"))
@@ -308,10 +278,10 @@ func TestServerPublicKey(t *testing.T) {
 	}
 }
 
-func TestServerPrivateKeyInvalid(t *testing.T) {
+func TestServerPublicKeyInvalid(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 	if err := s.Create("badpk", "addr", "not-a-key"); err == nil {
-		t.Fatal("Create(invalid private key) should fail")
+		t.Fatal("Create(invalid public key) should fail")
 	}
 }
 
@@ -340,7 +310,7 @@ func TestLoadRejectsInvalidCipherMode(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
-  private-key: `+testServerPrivateKey+`
+  public-key: `+testServerPublicKey+`
   cipher-mode: bad
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -354,13 +324,13 @@ server:
 	}
 }
 
-func TestLoadDerivesServerPublicKeyFromPrivateKey(t *testing.T) {
+func TestLoadReadsServerPublicKey(t *testing.T) {
 	dir := t.TempDir()
 	serverKP := testKeyPair(t, 0x21)
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
-  private-key: `+serverKP.Private.String()+`
+  public-key: `+serverKP.Public.String()+`
   cipher-mode: chacha_poly
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -378,12 +348,8 @@ server:
 	}
 }
 
-func TestLoadDerivesServerPublicKeyFromIdentityKey(t *testing.T) {
+func TestLoadRejectsServerIdentityKey(t *testing.T) {
 	dir := t.TempDir()
-	serverKP := testKeyPair(t, 0x22)
-	if err := os.WriteFile(filepath.Join(dir, "server.identity"), serverKP.Private[:], 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
@@ -396,26 +362,18 @@ server:
 		t.Fatal(err)
 	}
 
-	cliCtx, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load err=%v", err)
-	}
-	if cliCtx.Config.Server.PublicKey != serverKP.Public {
-		t.Fatalf("PublicKey=%v, want %v", cliCtx.Config.Server.PublicKey, serverKP.Public)
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "server.identity-key is not supported") {
+		t.Fatalf("Load identity-key err=%v", err)
 	}
 }
 
-func TestLoadRejectsConflictingServerKeySources(t *testing.T) {
+func TestLoadRejectsServerPrivateKey(t *testing.T) {
 	dir := t.TempDir()
 	serverKP := testKeyPair(t, 0x23)
-	if err := os.WriteFile(filepath.Join(dir, "server.identity"), serverKP.Private[:], 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
   private-key: `+serverKP.Private.String()+`
-  identity-key: server.identity
   cipher-mode: chacha_poly
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -424,17 +382,16 @@ server:
 		t.Fatal(err)
 	}
 
-	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "configure only one") {
-		t.Fatalf("Load conflict err=%v", err)
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "server.private-key is not supported") {
+		t.Fatalf("Load private-key err=%v", err)
 	}
 }
 
-func TestLoadRejectsLegacyServerPublicKey(t *testing.T) {
+func TestLoadRejectsMissingServerPublicKey(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
-  public-key: `+testServerPublicKey+`
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -442,14 +399,14 @@ server:
 		t.Fatal(err)
 	}
 
-	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "server.public-key is no longer supported") {
-		t.Fatalf("Load legacy public key err=%v", err)
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "missing server.public-key") {
+		t.Fatalf("Load missing public key err=%v", err)
 	}
 }
 
 func TestStoreLoadByName(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("myctx", "127.0.0.1:9820", testServerPrivateKey); err != nil {
+	if err := s.Create("myctx", "127.0.0.1:9820", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -483,7 +440,7 @@ func TestStoreLoadByNameNotExist(t *testing.T) {
 
 func TestStoreSymlinkIsRelative(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("myctx", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("myctx", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 
@@ -502,10 +459,10 @@ func TestStoreSymlinkIsRelative(t *testing.T) {
 
 func TestStoreListAbsoluteCurrentSymlink(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if err := s.Create("alpha", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("alpha", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create("beta", "addr", testServerPrivateKey); err != nil {
+	if err := s.Create("beta", "addr", testServerPublicKey); err != nil {
 		t.Fatal(err)
 	}
 

@@ -22,9 +22,8 @@ type Store struct {
 
 // CreateOptions holds optional settings for a newly created CLI context.
 type CreateOptions struct {
-	CipherMode        giznet.CipherMode
-	ServerPrivateKey  string
-	ServerIdentityKey string
+	CipherMode      giznet.CipherMode
+	ServerPublicKey string
 }
 
 // DefaultStore returns a Store under the gizclaw config directory.
@@ -37,8 +36,8 @@ func DefaultStore() (*Store, error) {
 }
 
 // Create creates a new CLI context directory with a generated key pair and config.
-func (s *Store) Create(name, serverAddr, serverPrivateKey string) error {
-	return s.CreateWithOptions(name, serverAddr, CreateOptions{ServerPrivateKey: serverPrivateKey})
+func (s *Store) Create(name, serverAddr, serverPublicKey string) error {
+	return s.CreateWithOptions(name, serverAddr, CreateOptions{ServerPublicKey: serverPublicKey})
 }
 
 // CreateWithOptions creates a new CLI context directory with a generated key pair and config.
@@ -53,28 +52,16 @@ func (s *Store) CreateWithOptions(name, serverAddr string, opts CreateOptions) e
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("clicontext: %q already exists", name)
 	}
-	privateKeyText := strings.TrimSpace(opts.ServerPrivateKey)
-	identityPath := strings.TrimSpace(opts.ServerIdentityKey)
-	if (privateKeyText == "") == (identityPath == "") {
-		return fmt.Errorf("clicontext: configure exactly one of server private key or server identity key")
+	publicKeyText := strings.TrimSpace(opts.ServerPublicKey)
+	if publicKeyText == "" {
+		return fmt.Errorf("clicontext: missing server public key")
 	}
-	var serverPrivateKey *giznet.Key
-	if privateKeyText != "" {
-		var key giznet.Key
-		if err := key.UnmarshalText([]byte(privateKeyText)); err != nil {
-			return fmt.Errorf("clicontext: invalid server private key: %w", err)
-		}
-		if key.IsZero() {
-			return fmt.Errorf("clicontext: invalid server private key: zero key")
-		}
-		if _, err := giznet.NewKeyPair(key); err != nil {
-			return fmt.Errorf("clicontext: derive server public key: %w", err)
-		}
-		serverPrivateKey = &key
-	} else {
-		if _, err := resolveServerPublicKey(dir, nil, identityPath); err != nil {
-			return err
-		}
+	var serverPublicKey giznet.PublicKey
+	if err := serverPublicKey.UnmarshalText([]byte(publicKeyText)); err != nil {
+		return fmt.Errorf("clicontext: invalid server public key: %w", err)
+	}
+	if serverPublicKey.IsZero() {
+		return fmt.Errorf("clicontext: invalid server public key: zero key")
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -87,15 +74,13 @@ func (s *Store) CreateWithOptions(name, serverAddr string, opts CreateOptions) e
 
 	cfg := struct {
 		Server struct {
-			Address     string            `yaml:"address"`
-			PrivateKey  *giznet.Key       `yaml:"private-key,omitempty"`
-			IdentityKey string            `yaml:"identity-key,omitempty"`
-			CipherMode  giznet.CipherMode `yaml:"cipher-mode,omitempty"`
+			Address    string            `yaml:"address"`
+			PublicKey  giznet.PublicKey  `yaml:"public-key"`
+			CipherMode giznet.CipherMode `yaml:"cipher-mode,omitempty"`
 		} `yaml:"server"`
 	}{}
 	cfg.Server.Address = serverAddr
-	cfg.Server.PrivateKey = serverPrivateKey
-	cfg.Server.IdentityKey = identityPath
+	cfg.Server.PublicKey = serverPublicKey
 	cfg.Server.CipherMode = opts.CipherMode
 	data, err := yaml.Marshal(cfg)
 	if err != nil {

@@ -91,9 +91,9 @@ binaries under `testdata/bin/` stay ignored.
 
 `testdata/admin-config-home` and `testdata/gizclaw-config-home` are
 `XDG_CONFIG_HOME` roots. They must contain the normal `gizclaw/` config layout
-and committed `identity.key` fixtures. Do not hand-maintain derived public keys
-in committed config files; use `identity-key` or private-key fields and let the
-config loaders derive public keys at runtime.
+and committed client `identity.key` fixtures. Context config files must store
+the server `public-key` directly; do not point contexts at the server
+`identity.key`, because that file is the server private key.
 
 ## Client Tests
 

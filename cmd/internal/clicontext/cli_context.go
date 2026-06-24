@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/identity"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
@@ -45,23 +44,24 @@ func Load(dir string) (*CLIContext, error) {
 	if err := yaml.Unmarshal(data, &keyCheck); err != nil {
 		return nil, fmt.Errorf("clicontext: parse config: %w", err)
 	}
-	if _, ok := keyCheck.Server["public-key"]; ok {
-		return nil, fmt.Errorf("clicontext: server.public-key is no longer supported; use server.private-key or server.identity-key")
+	if _, ok := keyCheck.Server["private-key"]; ok {
+		return nil, fmt.Errorf("clicontext: server.private-key is not supported; use server.public-key")
+	}
+	if _, ok := keyCheck.Server["identity-key"]; ok {
+		return nil, fmt.Errorf("clicontext: server.identity-key is not supported; use server.public-key")
 	}
 	var raw struct {
 		Server struct {
-			Address     string            `yaml:"address"`
-			PrivateKey  *giznet.Key       `yaml:"private-key"`
-			IdentityKey string            `yaml:"identity-key"`
-			CipherMode  giznet.CipherMode `yaml:"cipher-mode"`
+			Address    string            `yaml:"address"`
+			PublicKey  giznet.PublicKey  `yaml:"public-key"`
+			CipherMode giznet.CipherMode `yaml:"cipher-mode"`
 		} `yaml:"server"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("clicontext: parse config: %w", err)
 	}
-	serverPublicKey, err := resolveServerPublicKey(dir, raw.Server.PrivateKey, raw.Server.IdentityKey)
-	if err != nil {
-		return nil, err
+	if raw.Server.PublicKey.IsZero() {
+		return nil, fmt.Errorf("clicontext: missing server.public-key")
 	}
 	if err := validateCipherMode(raw.Server.CipherMode); err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func Load(dir string) (*CLIContext, error) {
 	cfg := Config{
 		Server: ServerConfig{
 			Address:    raw.Server.Address,
-			PublicKey:  serverPublicKey,
+			PublicKey:  raw.Server.PublicKey,
 			CipherMode: raw.Server.CipherMode,
 		},
 	}
@@ -80,41 +80,6 @@ func Load(dir string) (*CLIContext, error) {
 	}
 
 	return &CLIContext{Name: name, Dir: dir, Config: cfg, KeyPair: kp}, nil
-}
-
-func resolveServerPublicKey(configDir string, privateKey *giznet.Key, identityPath string) (giznet.PublicKey, error) {
-	configured := 0
-	if privateKey != nil {
-		configured++
-	}
-	if strings.TrimSpace(identityPath) != "" {
-		configured++
-	}
-	if configured == 0 {
-		return giznet.PublicKey{}, fmt.Errorf("clicontext: parse server public key: missing private-key or identity-key")
-	}
-	if configured > 1 {
-		return giznet.PublicKey{}, fmt.Errorf("clicontext: configure only one of server.private-key or server.identity-key")
-	}
-	if privateKey != nil {
-		if privateKey.IsZero() {
-			return giznet.PublicKey{}, fmt.Errorf("clicontext: parse server private key: zero key")
-		}
-		kp, err := giznet.NewKeyPair(*privateKey)
-		if err != nil {
-			return giznet.PublicKey{}, fmt.Errorf("clicontext: derive server public key: %w", err)
-		}
-		return kp.Public, nil
-	}
-	identityPath = strings.TrimSpace(identityPath)
-	if !filepath.IsAbs(identityPath) {
-		identityPath = filepath.Join(configDir, identityPath)
-	}
-	kp, err := identity.Load(identityPath)
-	if err != nil {
-		return giznet.PublicKey{}, fmt.Errorf("clicontext: load server identity key: %w", err)
-	}
-	return kp.Public, nil
 }
 
 // ServerPublicKey parses and returns the server's public key.

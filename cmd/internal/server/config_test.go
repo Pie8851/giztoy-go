@@ -230,82 +230,59 @@ func TestConfigValidateRequiresStores(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsLegacyAdminPublicKey(t *testing.T) {
+func TestLoadConfigReadsAdminPublicKey(t *testing.T) {
+	adminKP := testKeyPair(t, 0x10)
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("admin-public-key: \""+testPublicKeyText(1)+"\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("admin-public-key: \""+adminKP.Public.String()+"\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "admin-public-key is no longer supported") {
-		t.Fatalf("LoadConfig legacy admin public key err = %v", err)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig error = %v", err)
+	}
+	if cfg.AdminPublicKey != adminKP.Public {
+		t.Fatalf("AdminPublicKey = %v, want %v", cfg.AdminPublicKey, adminKP.Public)
 	}
 }
 
-func TestLoadConfigRejectsInvalidAdminPrivateKey(t *testing.T) {
+func TestLoadConfigRejectsInvalidAdminPublicKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("admin-private-key: \"not-a-key\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("admin-public-key: \"not-a-key\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile invalid error = %v", err)
 	}
 	if _, err := LoadConfig(path); err == nil {
-		t.Fatal("LoadConfig should fail for invalid admin private key")
+		t.Fatal("LoadConfig should fail for invalid admin public key")
 	}
 
-	if err := os.WriteFile(path, []byte("admin-private-key: \""+testPrivateKey(0).String()+"\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("admin-public-key: \""+testPublicKey(0).String()+"\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile zero error = %v", err)
 	}
 	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "zero key") {
-		t.Fatalf("LoadConfig zero admin private key err = %v", err)
+		t.Fatalf("LoadConfig zero admin public key err = %v", err)
 	}
 }
 
-func TestLoadConfigDerivesAdminPublicKeyFromPrivateKey(t *testing.T) {
-	adminKP := testKeyPair(t, 0x11)
+func TestLoadConfigRejectsAdminPrivateKey(t *testing.T) {
+	adminKP := testKeyPair(t, 0x13)
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("admin-private-key: "+adminKP.Private.String()+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
 
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error = %v", err)
-	}
-	if cfg.AdminPublicKey != adminKP.Public {
-		t.Fatalf("AdminPublicKey = %v, want %v", cfg.AdminPublicKey, adminKP.Public)
+	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "admin-private-key is not supported") {
+		t.Fatalf("LoadConfig private key err = %v", err)
 	}
 }
 
-func TestLoadConfigDerivesAdminPublicKeyFromIdentityKey(t *testing.T) {
-	adminKP := testKeyPair(t, 0x12)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "admin.identity"), adminKP.Private[:], 0o600); err != nil {
-		t.Fatalf("WriteFile identity error = %v", err)
-	}
-	path := filepath.Join(dir, "config.yaml")
+func TestLoadConfigRejectsAdminIdentityKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("admin-identity-key: admin.identity\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile config error = %v", err)
-	}
-
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error = %v", err)
-	}
-	if cfg.AdminPublicKey != adminKP.Public {
-		t.Fatalf("AdminPublicKey = %v, want %v", cfg.AdminPublicKey, adminKP.Public)
-	}
-}
-
-func TestLoadConfigRejectsConflictingAdminKeySources(t *testing.T) {
-	adminKP := testKeyPair(t, 0x13)
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "admin.identity"), adminKP.Private[:], 0o600); err != nil {
-		t.Fatalf("WriteFile identity error = %v", err)
-	}
-	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte("admin-private-key: "+adminKP.Private.String()+"\nadmin-identity-key: admin.identity\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
 
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "configure only one") {
-		t.Fatalf("LoadConfig conflict err = %v", err)
+	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "admin-identity-key is not supported") {
+		t.Fatalf("LoadConfig identity key err = %v", err)
 	}
 }
 

@@ -26,10 +26,6 @@ func testPrivateKey(fill byte) giznet.Key {
 	return key
 }
 
-func testPrivateKeyText(fill byte) string {
-	return testPrivateKey(fill).String()
-}
-
 func TestContextCreateStoresCipherMode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
@@ -40,8 +36,8 @@ func TestContextCreateStoresCipherMode(t *testing.T) {
 		"local",
 		"--server",
 		"127.0.0.1:9820",
-		"--private-key",
-		testPrivateKeyText(0xab),
+		"--public-key",
+		testPublicKeyText(0xab),
 		"--cipher-mode",
 		string(giznet.CipherModeAES256GCM),
 	})
@@ -68,12 +64,12 @@ func TestContextCommandsManageContexts(t *testing.T) {
 	executeContextCmd(t,
 		"create", "alpha",
 		"--server", "127.0.0.1:9820",
-		"--private-key", testPrivateKeyText(0xab),
+		"--public-key", testPublicKeyText(0xab),
 	)
 	executeContextCmd(t,
 		"create", "beta",
 		"--server", "127.0.0.1:9821",
-		"--private-key", testPrivateKeyText(0xcd),
+		"--public-key", testPublicKeyText(0xcd),
 		"--cipher-mode", string(giznet.CipherModePlaintext),
 	)
 

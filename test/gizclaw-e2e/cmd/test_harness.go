@@ -55,7 +55,6 @@ type Harness struct {
 
 	BinaryPath       string
 	ServerAddr       string
-	ServerPrivateKey string
 	ServerPublicKey  string
 	ServerCipherMode string
 	ServerLogPath    string
@@ -77,8 +76,8 @@ type Result struct {
 
 type cliContextConfig struct {
 	Server struct {
-		Address    string `yaml:"address"`
-		PrivateKey string `yaml:"private-key"`
+		Address   string `yaml:"address"`
+		PublicKey string `yaml:"public-key"`
 	} `yaml:"server"`
 }
 
@@ -178,7 +177,6 @@ func (h *Harness) UseSetupServer() {
 
 	h.ServerWorkspace = workspaceDir
 	h.ServerAddr = strings.TrimSpace(cfg.Listen)
-	h.ServerPrivateKey = keyPair.Private.String()
 	h.ServerPublicKey = keyPair.Public.String()
 	h.ServerCipherMode = strings.TrimSpace(cfg.CipherMode)
 	h.waitForSetupServerReady()
@@ -270,15 +268,15 @@ func (h *Harness) startServerProcess() {
 
 func (h *Harness) CreateContext(name string) Result {
 	h.t.Helper()
-	return h.CreateContextWith(name, h.ServerAddr, h.ServerPrivateKey)
+	return h.CreateContextWith(name, h.ServerAddr, h.ServerPublicKey)
 }
 
-func (h *Harness) CreateContextWith(name, serverAddr, serverPrivateKey string) Result {
+func (h *Harness) CreateContextWith(name, serverAddr, serverPublicKey string) Result {
 	h.t.Helper()
 	args := []string{
 		"context", "create", name,
 		"--server", serverAddr,
-		"--private-key", serverPrivateKey,
+		"--public-key", serverPublicKey,
 	}
 	if h.ServerCipherMode != "" {
 		args = append(args, "--cipher-mode", h.ServerCipherMode)
@@ -302,7 +300,7 @@ func (h *Harness) EnsureContext(name string) Result {
 
 	cfg := cliContextConfig{}
 	cfg.Server.Address = h.ServerAddr
-	cfg.Server.PrivateKey = h.ServerPrivateKey
+	cfg.Server.PublicKey = h.ServerPublicKey
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return Result{Args: []string{"ensure-context", name}, Err: err, Stderr: err.Error()}
@@ -553,17 +551,10 @@ func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) 
 		return nil, fmt.Errorf("load context identity: %w", err)
 	}
 
-	var serverPrivateKey giznet.Key
-	if err := serverPrivateKey.UnmarshalText([]byte(cfg.Server.PrivateKey)); err != nil {
-		return nil, fmt.Errorf("parse server private key: %w", err)
-	}
-	serverKeyPair, err := giznet.NewKeyPair(serverPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("derive server public key: %w", err)
-	}
+	serverPublicKey := h.serverPublicKeyFromContextConfig(cfg)
 
 	client := &gizcli.Client{KeyPair: keyPair}
-	if err := client.Dial(serverKeyPair.Public, cfg.Server.Address); err != nil {
+	if err := client.Dial(serverPublicKey, cfg.Server.Address); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
@@ -625,7 +616,6 @@ func (h *Harness) waitForServerIdentity() {
 		if err != nil {
 			return err
 		}
-		h.ServerPrivateKey = keyPair.Private.String()
 		h.ServerPublicKey = keyPair.Public.String()
 		return nil
 	}); err != nil {
@@ -757,12 +747,6 @@ func (h *Harness) renderServerFixture(fixtureName string, replacements map[strin
 	if listenAddr := replacements[fixtureListenAddrToken]; listenAddr != "" {
 		rendered = strings.ReplaceAll(rendered, `listen: "127.0.0.1:9820"`, fmt.Sprintf(`listen: "%s"`, listenAddr))
 	}
-	adminIdentityPath := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "admin-config-home", "gizclaw", "e2e-admin", "identity.key")
-	rendered = strings.ReplaceAll(
-		rendered,
-		`admin-identity-key: "../admin-config-home/gizclaw/e2e-admin/identity.key"`,
-		fmt.Sprintf(`admin-identity-key: "%s"`, filepath.ToSlash(adminIdentityPath)),
-	)
 
 	targetPath := filepath.Join(h.ServerWorkspace, "config.yaml")
 	if err := os.WriteFile(targetPath, []byte(rendered), 0o644); err != nil {
@@ -781,6 +765,18 @@ func (h *Harness) baseEnv() []string {
 
 func (h *Harness) contextRoot() string {
 	return filepath.Join(h.XDGConfigHome, "gizclaw")
+}
+
+func (h *Harness) serverPublicKeyFromContextConfig(cfg cliContextConfig) giznet.PublicKey {
+	h.t.Helper()
+	var serverPublicKey giznet.PublicKey
+	if err := serverPublicKey.UnmarshalText([]byte(strings.TrimSpace(cfg.Server.PublicKey))); err != nil {
+		h.t.Fatalf("parse context server public key: %v", err)
+	}
+	if serverPublicKey.IsZero() {
+		h.t.Fatal("context server public key is zero")
+	}
+	return serverPublicKey
 }
 
 func (h *Harness) serverProcessError() error {

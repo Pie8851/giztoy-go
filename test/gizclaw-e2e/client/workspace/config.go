@@ -204,18 +204,16 @@ func readSetupContextConfig(path string) (setupContextConfig, error) {
 	contextDir := filepath.Dir(path)
 	var raw struct {
 		Server struct {
-			Address     string      `yaml:"address"`
-			PrivateKey  *giznet.Key `yaml:"private-key"`
-			IdentityKey string      `yaml:"identity-key"`
-			CipherMode  string      `yaml:"cipher-mode"`
+			Address    string           `yaml:"address"`
+			PublicKey  giznet.PublicKey `yaml:"public-key"`
+			CipherMode string           `yaml:"cipher-mode"`
 		} `yaml:"server"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return setupContextConfig{}, fmt.Errorf("decode context config %s: %w", path, err)
 	}
-	serverPublicKey, err := setupServerPublicKey(contextDir, raw.Server.PrivateKey, raw.Server.IdentityKey)
-	if err != nil {
-		return setupContextConfig{}, fmt.Errorf("decode context config %s: %w", path, err)
+	if raw.Server.PublicKey.IsZero() {
+		return setupContextConfig{}, fmt.Errorf("decode context config %s: missing server public-key", path)
 	}
 	identityData, err := os.ReadFile(filepath.Join(contextDir, "identity.key"))
 	if err != nil {
@@ -229,53 +227,12 @@ func readSetupContextConfig(path string) (setupContextConfig, error) {
 	cfg := setupContextConfig{
 		Server: serverConfig{
 			Addr:       raw.Server.Address,
-			PublicKey:  serverPublicKey.String(),
+			PublicKey:  raw.Server.PublicKey.String(),
 			CipherMode: raw.Server.CipherMode,
 		},
 		ClientPrivateKey: privateKey.String(),
 	}
 	return cfg, nil
-}
-
-func setupServerPublicKey(contextDir string, privateKey *giznet.Key, identityPath string) (giznet.PublicKey, error) {
-	configured := 0
-	if privateKey != nil {
-		configured++
-	}
-	if strings.TrimSpace(identityPath) != "" {
-		configured++
-	}
-	if configured == 0 {
-		return giznet.PublicKey{}, fmt.Errorf("missing server private-key or identity-key")
-	}
-	if configured > 1 {
-		return giznet.PublicKey{}, fmt.Errorf("configure only one of server private-key or identity-key")
-	}
-	if privateKey != nil {
-		kp, err := giznet.NewKeyPair(*privateKey)
-		if err != nil {
-			return giznet.PublicKey{}, fmt.Errorf("derive server public key: %w", err)
-		}
-		return kp.Public, nil
-	}
-	identityPath = strings.TrimSpace(identityPath)
-	if !filepath.IsAbs(identityPath) {
-		identityPath = filepath.Join(contextDir, identityPath)
-	}
-	data, err := os.ReadFile(identityPath)
-	if err != nil {
-		return giznet.PublicKey{}, fmt.Errorf("read server identity %s: %w", identityPath, err)
-	}
-	if len(data) != giznet.KeySize {
-		return giznet.PublicKey{}, fmt.Errorf("server identity length: got %d, want %d", len(data), giznet.KeySize)
-	}
-	var key giznet.Key
-	copy(key[:], data)
-	kp, err := giznet.NewKeyPair(key)
-	if err != nil {
-		return giznet.PublicKey{}, fmt.Errorf("derive server public key: %w", err)
-	}
-	return kp.Public, nil
 }
 
 func (c *config) applySetupContextConfig(contextCfg setupContextConfig) {

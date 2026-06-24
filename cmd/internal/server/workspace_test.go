@@ -17,7 +17,7 @@ func TestPrepareWorkspaceConfigLoadsWorkspaceConfig(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, workspaceConfigFile), []byte(fmt.Sprintf(`
 listen: "127.0.0.1:39001"
-admin-private-key: %q
+admin-public-key: %q
 storage:
   memory:
     kind: keyvalue
@@ -99,7 +99,7 @@ system_tasks:
     cooldown: 30m
   pet_action:
     generator: model/pet-action
-`, testPrivateKey(0xab).String())), 0o644); err != nil {
+`, testKeyPair(t, 0xab).Public.String())), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
 
