@@ -1,0 +1,28 @@
+//go:build gizclaw_e2e
+
+package admin_test
+
+import (
+	"strings"
+	"testing"
+
+	clitest "github.com/GizClaw/gizclaw-go/test/gizclaw-e2e/cmd"
+)
+
+func TestAdminMiniMaxTenantsUserStory(t *testing.T) {
+	h := clitest.NewSetupHarness(t, "505-admin-minimax-tenants")
+	h.CreateContext("admin-a").MustSucceed(t)
+	h.RegisterContext("admin-a", "--sn", "admin-sn").MustSucceed(t)
+
+	list := h.RunCLI("admin", "minimax-tenants", "list", "--context", "admin-a")
+	list.MustSucceed(t)
+	if !strings.Contains(list.Stdout, `"name":"ui-seed-tenant"`) {
+		t.Fatalf("minimax tenants list missing created item:\n%s", list.Stdout)
+	}
+
+	get := h.RunCLI("admin", "minimax-tenants", "get", "ui-seed-tenant", "--context", "admin-a")
+	get.MustSucceed(t)
+	if !strings.Contains(get.Stdout, `"credential_name":"ui-seed-credential"`) {
+		t.Fatalf("minimax tenants get missing credential:\n%s", get.Stdout)
+	}
+}

@@ -45,11 +45,23 @@ func resetConnectHooks(t *testing.T) {
 }
 
 func testServerPublicKeyText(fill byte) string {
-	var key giznet.PublicKey
+	kp, err := giznet.NewKeyPair(testServerPrivateKey(fill))
+	if err != nil {
+		panic(err)
+	}
+	return kp.Public.String()
+}
+
+func testServerPrivateKey(fill byte) giznet.Key {
+	var key giznet.Key
 	for i := range key {
 		key[i] = fill
 	}
-	return key.String()
+	return key
+}
+
+func testServerPrivateKeyText(fill byte) string {
+	return testServerPrivateKey(fill).String()
 }
 
 func TestDialFromContextNoActiveContext(t *testing.T) {
@@ -64,27 +76,27 @@ func TestDialFromContextNoActiveContext(t *testing.T) {
 	}
 }
 
-func TestDialFromContextInvalidServerPublicKey(t *testing.T) {
+func TestDialFromContextInvalidServerPrivateKey(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	store, err := clicontext.DefaultStore()
 	if err != nil {
 		t.Fatalf("DefaultStore error = %v", err)
 	}
-	if err := store.Create("local", "127.0.0.1:9820", testServerPublicKeyText(0xab)); err != nil {
+	if err := store.Create("local", "127.0.0.1:9820", testServerPrivateKeyText(0xab)); err != nil {
 		t.Fatalf("Create error = %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(store.Root, "local", "config.yaml"), []byte(`
 server:
   address: 127.0.0.1:9820
-  public-key: not-a-key
+  private-key: not-a-key
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
 
 	_, _, _, err = DialFromContext("local")
 	if err == nil {
-		t.Fatal("DialFromContext should fail on invalid server public key")
+		t.Fatal("DialFromContext should fail on invalid server private key")
 	}
 	if !strings.Contains(err.Error(), "parse config") {
 		t.Fatalf("DialFromContext error = %v", err)
@@ -98,8 +110,9 @@ func TestDialFromContextUsesCipherMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultStore error = %v", err)
 	}
-	if err := store.CreateWithOptions("local", "127.0.0.1:9820", testServerPublicKeyText(0xab), clicontext.CreateOptions{
-		CipherMode: giznet.CipherModeAES256GCM,
+	if err := store.CreateWithOptions("local", "127.0.0.1:9820", clicontext.CreateOptions{
+		ServerPrivateKey: testServerPrivateKeyText(0xab),
+		CipherMode:       giznet.CipherModeAES256GCM,
 	}); err != nil {
 		t.Fatalf("CreateWithOptions error = %v", err)
 	}
@@ -120,7 +133,7 @@ func TestDialFromContextUsesCurrentContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultStore error = %v", err)
 	}
-	if err := store.Create("local", "127.0.0.1:9820", testServerPublicKeyText(0xab)); err != nil {
+	if err := store.Create("local", "127.0.0.1:9820", testServerPrivateKeyText(0xab)); err != nil {
 		t.Fatalf("Create error = %v", err)
 	}
 

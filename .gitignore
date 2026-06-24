@@ -23,6 +23,11 @@ coverage.out
 # Local build scratch
 .tmp/
 
+# Local e2e runtime
+test/gizclaw-e2e/.env
+test/gizclaw-e2e/setup/.env
+test/gizclaw-e2e/.testbench/
+
 # Local workspace metadata
 .agents/
 .cursor/

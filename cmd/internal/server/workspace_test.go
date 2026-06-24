@@ -17,7 +17,7 @@ func TestPrepareWorkspaceConfigLoadsWorkspaceConfig(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, workspaceConfigFile), []byte(fmt.Sprintf(`
 listen: "127.0.0.1:39001"
-admin-public-key: %q
+admin-private-key: %q
 storage:
   memory:
     kind: keyvalue
@@ -99,7 +99,7 @@ system_tasks:
     cooldown: 30m
   pet_action:
     generator: model/pet-action
-`, testPublicKeyText(0xab))), 0o644); err != nil {
+`, testPrivateKey(0xab).String())), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
 
@@ -113,7 +113,7 @@ system_tasks:
 	if cfg.ListenAddr != "127.0.0.1:39001" {
 		t.Fatalf("ListenAddr = %q", cfg.ListenAddr)
 	}
-	adminKey := testPublicKey(0xab)
+	adminKey := testKeyPair(t, 0xab).Public
 	if cfg.AdminPublicKey != adminKey {
 		t.Fatalf("AdminPublicKey = %v", cfg.AdminPublicKey)
 	}

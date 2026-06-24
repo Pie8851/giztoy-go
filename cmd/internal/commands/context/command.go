@@ -3,6 +3,8 @@ package contextcmd
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/GizClaw/gizclaw-go/cmd/internal/clicontext"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
@@ -48,7 +50,7 @@ func buildContextInfo(ctx *clicontext.CLIContext, current string) contextInfo {
 }
 
 func newCreateCmd() *cobra.Command {
-	var serverAddr, pubkey, cipherMode string
+	var serverAddr, privateKey, identityKey, cipherMode string
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -60,8 +62,17 @@ func newCreateCmd() *cobra.Command {
 				return err
 			}
 			name := args[0]
-			if err := store.CreateWithOptions(name, serverAddr, pubkey, clicontext.CreateOptions{
-				CipherMode: giznet.CipherMode(cipherMode),
+			if strings.TrimSpace(identityKey) != "" {
+				abs, err := filepath.Abs(identityKey)
+				if err != nil {
+					return fmt.Errorf("resolve identity key path: %w", err)
+				}
+				identityKey = abs
+			}
+			if err := store.CreateWithOptions(name, serverAddr, clicontext.CreateOptions{
+				ServerPrivateKey:  privateKey,
+				ServerIdentityKey: identityKey,
+				CipherMode:        giznet.CipherMode(cipherMode),
 			}); err != nil {
 				return err
 			}
@@ -71,10 +82,10 @@ func newCreateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&serverAddr, "server", "", "server address (host:port)")
-	cmd.Flags().StringVar(&pubkey, "pubkey", "", "server public key (base58btc)")
+	cmd.Flags().StringVar(&privateKey, "private-key", "", "server private key (base58btc)")
+	cmd.Flags().StringVar(&identityKey, "identity-key", "", "path to server identity.key")
 	cmd.Flags().StringVar(&cipherMode, "cipher-mode", "", "giznet cipher mode: chacha_poly, aes_256_gcm, or plaintext")
 	_ = cmd.MarkFlagRequired("server")
-	_ = cmd.MarkFlagRequired("pubkey")
 
 	return cmd
 }

@@ -3,9 +3,11 @@ package server
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/GizClaw/gizclaw-go/cmd/internal/identity"
 	"github.com/GizClaw/gizclaw-go/cmd/internal/storage"
 	"github.com/GizClaw/gizclaw-go/cmd/internal/stores"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
@@ -52,7 +54,7 @@ type GeneratorTaskConfig struct {
 type ConfigFile struct {
 	ListenAddr     string                    `yaml:"listen"`
 	CipherMode     giznet.CipherMode         `yaml:"cipher-mode"`
-	AdminPublicKey giznet.PublicKey          `yaml:"admin-public-key"`
+	AdminPublicKey giznet.PublicKey          `yaml:"-"`
 	Storage        map[string]storage.Config `yaml:"storage"`
 	Stores         map[string]stores.Config  `yaml:"stores"`
 	Friends        FriendsConfig             `yaml:"friends"`
@@ -92,25 +94,30 @@ func LoadConfig(path string) (ConfigFile, error) {
 	if err != nil {
 		return ConfigFile{}, err
 	}
+	var keyCheck map[string]any
+	if err := yaml.Unmarshal(data, &keyCheck); err != nil {
+		return ConfigFile{}, err
+	}
+	if _, ok := keyCheck["admin-public-key"]; ok {
+		return ConfigFile{}, fmt.Errorf("server: admin-public-key is no longer supported; use admin-private-key or admin-identity-key")
+	}
 	var raw struct {
-		ListenAddr     string                    `yaml:"listen"`
-		CipherMode     giznet.CipherMode         `yaml:"cipher-mode"`
-		AdminPublicKey *giznet.PublicKey         `yaml:"admin-public-key"`
-		Storage        map[string]storage.Config `yaml:"storage"`
-		Stores         map[string]stores.Config  `yaml:"stores"`
-		Friends        FriendsConfig             `yaml:"friends"`
-		FriendGroups   FriendGroupsConfig        `yaml:"friend_groups"`
-		SystemTasks    SystemTasksConfig         `yaml:"system_tasks"`
+		ListenAddr       string                    `yaml:"listen"`
+		CipherMode       giznet.CipherMode         `yaml:"cipher-mode"`
+		AdminPrivateKey  *giznet.Key               `yaml:"admin-private-key"`
+		AdminIdentityKey string                    `yaml:"admin-identity-key"`
+		Storage          map[string]storage.Config `yaml:"storage"`
+		Stores           map[string]stores.Config  `yaml:"stores"`
+		Friends          FriendsConfig             `yaml:"friends"`
+		FriendGroups     FriendGroupsConfig        `yaml:"friend_groups"`
+		SystemTasks      SystemTasksConfig         `yaml:"system_tasks"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return ConfigFile{}, err
 	}
-	var adminPublicKey giznet.PublicKey
-	if raw.AdminPublicKey != nil {
-		if raw.AdminPublicKey.IsZero() {
-			return ConfigFile{}, fmt.Errorf("server: invalid admin-public-key: zero key")
-		}
-		adminPublicKey = *raw.AdminPublicKey
+	adminPublicKey, err := resolveAdminPublicKey(filepath.Dir(path), raw.AdminPrivateKey, raw.AdminIdentityKey)
+	if err != nil {
+		return ConfigFile{}, err
 	}
 	cfg := ConfigFile{
 		ListenAddr:     raw.ListenAddr,
@@ -123,6 +130,41 @@ func LoadConfig(path string) (ConfigFile, error) {
 		SystemTasks:    raw.SystemTasks,
 	}
 	return cfg, nil
+}
+
+func resolveAdminPublicKey(configDir string, privateKey *giznet.Key, identityPath string) (giznet.PublicKey, error) {
+	configured := 0
+	if privateKey != nil {
+		configured++
+	}
+	if strings.TrimSpace(identityPath) != "" {
+		configured++
+	}
+	if configured > 1 {
+		return giznet.PublicKey{}, fmt.Errorf("server: configure only one of admin-private-key or admin-identity-key")
+	}
+	if privateKey != nil {
+		if privateKey.IsZero() {
+			return giznet.PublicKey{}, fmt.Errorf("server: invalid admin-private-key: zero key")
+		}
+		kp, err := giznet.NewKeyPair(*privateKey)
+		if err != nil {
+			return giznet.PublicKey{}, fmt.Errorf("server: derive admin public key: %w", err)
+		}
+		return kp.Public, nil
+	}
+	identityPath = strings.TrimSpace(identityPath)
+	if identityPath == "" {
+		return giznet.PublicKey{}, nil
+	}
+	if !filepath.IsAbs(identityPath) {
+		identityPath = filepath.Join(configDir, identityPath)
+	}
+	kp, err := identity.Load(identityPath)
+	if err != nil {
+		return giznet.PublicKey{}, fmt.Errorf("server: load admin identity key: %w", err)
+	}
+	return kp.Public, nil
 }
 
 func DefaultConfig() Config {

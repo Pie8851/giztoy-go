@@ -1,3 +1,5 @@
+//go:build gizclaw_e2e
+
 package clitest
 
 import (
@@ -22,13 +24,15 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/publiclogin"
 	"github.com/GizClaw/gizclaw-go/pkg/giznet"
-	itest "github.com/GizClaw/gizclaw-go/test/gizclaw-e2e/testutil"
 	"github.com/goccy/go-yaml"
 )
 
 const (
 	fixtureListenAddrToken = "__LISTEN_ADDR__"
 	serverStopTimeout      = 5 * time.Second
+	readyTimeout           = 30 * time.Second
+	probeTimeout           = time.Second
+	pollInterval           = 20 * time.Millisecond
 )
 
 var (
@@ -49,10 +53,12 @@ type Harness struct {
 	ServerWorkspace string
 	LogsDir         string
 
-	BinaryPath      string
-	ServerAddr      string
-	ServerPublicKey string
-	ServerLogPath   string
+	BinaryPath       string
+	ServerAddr       string
+	ServerPrivateKey string
+	ServerPublicKey  string
+	ServerCipherMode string
+	ServerLogPath    string
 
 	lastFixtureName string
 	serverRuns      int
@@ -71,9 +77,14 @@ type Result struct {
 
 type cliContextConfig struct {
 	Server struct {
-		Address   string `yaml:"address"`
-		PublicKey string `yaml:"public-key"`
+		Address    string `yaml:"address"`
+		PrivateKey string `yaml:"private-key"`
 	} `yaml:"server"`
+}
+
+type serverWorkspaceConfig struct {
+	Listen     string `yaml:"listen"`
+	CipherMode string `yaml:"cipher-mode"`
 }
 
 type managedProcess struct {
@@ -96,6 +107,14 @@ func NewHarness(t testing.TB, story string) *Harness {
 	t.Helper()
 
 	return NewHarnessForRoot(t, "test/gizclaw-e2e/cmd", story)
+}
+
+func NewSetupHarness(t testing.TB, story string) *Harness {
+	t.Helper()
+
+	h := NewHarness(t, story)
+	h.UseSetupServer()
+	return h
 }
 
 func NewHarnessForRoot(t testing.TB, storyRoot, story string) *Harness {
@@ -136,11 +155,40 @@ func NewPersistentHarnessForRoot(t testing.TB, storyRoot, story, sandboxDir stri
 	return h
 }
 
+func (h *Harness) UseSetupServer() {
+	h.t.Helper()
+
+	workspaceDir := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "server-workspace")
+	configPath := filepath.Join(workspaceDir, "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		h.t.Fatalf("read setup server config %q: %v", configPath, err)
+	}
+	var cfg serverWorkspaceConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		h.t.Fatalf("parse setup server config %q: %v", configPath, err)
+	}
+	keyPair, err := loadIdentity(filepath.Join(workspaceDir, "identity.key"))
+	if err != nil {
+		h.t.Fatalf("load setup server identity: %v", err)
+	}
+	if strings.TrimSpace(cfg.Listen) == "" {
+		h.t.Fatalf("setup server config %q has empty listen address", configPath)
+	}
+
+	h.ServerWorkspace = workspaceDir
+	h.ServerAddr = strings.TrimSpace(cfg.Listen)
+	h.ServerPrivateKey = keyPair.Private.String()
+	h.ServerPublicKey = keyPair.Public.String()
+	h.ServerCipherMode = strings.TrimSpace(cfg.CipherMode)
+	h.waitForSetupServerReady()
+}
+
 func (h *Harness) StartServerFromFixture(fixtureName string) {
 	h.t.Helper()
 
 	if h.ServerAddr == "" {
-		h.ServerAddr = itest.AllocateUDPAddr(h.t)
+		h.ServerAddr = allocateUDPAddr(h.t)
 	}
 	h.lastFixtureName = fixtureName
 	h.PrepareServerWorkspaceFromFixture(fixtureName)
@@ -222,16 +270,20 @@ func (h *Harness) startServerProcess() {
 
 func (h *Harness) CreateContext(name string) Result {
 	h.t.Helper()
-	return h.CreateContextWith(name, h.ServerAddr, h.ServerPublicKey)
+	return h.CreateContextWith(name, h.ServerAddr, h.ServerPrivateKey)
 }
 
-func (h *Harness) CreateContextWith(name, serverAddr, serverPublicKey string) Result {
+func (h *Harness) CreateContextWith(name, serverAddr, serverPrivateKey string) Result {
 	h.t.Helper()
-	return h.RunCLI(
+	args := []string{
 		"context", "create", name,
 		"--server", serverAddr,
-		"--pubkey", serverPublicKey,
-	)
+		"--private-key", serverPrivateKey,
+	}
+	if h.ServerCipherMode != "" {
+		args = append(args, "--cipher-mode", h.ServerCipherMode)
+	}
+	return h.RunCLI(args...)
 }
 
 func (h *Harness) EnsureContext(name string) Result {
@@ -250,12 +302,12 @@ func (h *Harness) EnsureContext(name string) Result {
 
 	cfg := cliContextConfig{}
 	cfg.Server.Address = h.ServerAddr
-	cfg.Server.PublicKey = h.ServerPublicKey
+	cfg.Server.PrivateKey = h.ServerPrivateKey
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return Result{Args: []string{"ensure-context", name}, Err: err, Stderr: err.Error()}
 	}
-	if err := os.WriteFile(filepath.Join(contextDir, "config.yaml"), data, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(contextDir, "config.yaml"), data, 0o600); err != nil {
 		return Result{Args: []string{"ensure-context", name}, Err: err, Stderr: err.Error()}
 	}
 	return h.UseContext(name)
@@ -277,7 +329,7 @@ func (h *Harness) RegisterContext(name string, extraArgs ...string) Result {
 	if err != nil {
 		return Result{Args: []string{"register-context", name}, Err: err, Stderr: err.Error()}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), itest.ReadyTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
 	defer cancel()
 	resp, err := c.PutServerInfo(ctx, "server.info.put", rpcReq)
 	if err != nil {
@@ -501,13 +553,17 @@ func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) 
 		return nil, fmt.Errorf("load context identity: %w", err)
 	}
 
-	var serverPublicKey giznet.PublicKey
-	if err := serverPublicKey.UnmarshalText([]byte(cfg.Server.PublicKey)); err != nil {
-		return nil, fmt.Errorf("parse server public key: %w", err)
+	var serverPrivateKey giznet.Key
+	if err := serverPrivateKey.UnmarshalText([]byte(cfg.Server.PrivateKey)); err != nil {
+		return nil, fmt.Errorf("parse server private key: %w", err)
+	}
+	serverKeyPair, err := giznet.NewKeyPair(serverPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("derive server public key: %w", err)
 	}
 
 	client := &gizcli.Client{KeyPair: keyPair}
-	if err := client.Dial(serverPublicKey, cfg.Server.Address); err != nil {
+	if err := client.Dial(serverKeyPair.Public, cfg.Server.Address); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
@@ -516,7 +572,7 @@ func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) 
 		errCh <- client.Serve()
 	}()
 
-	deadline := time.Now().Add(itest.ReadyTimeout)
+	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		select {
 		case err := <-errCh:
@@ -529,7 +585,7 @@ func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) 
 		default:
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), itest.ProbeTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 		err := probeServerPublicReady(ctx, client)
 		cancel()
 		if err == nil {
@@ -545,7 +601,7 @@ func (h *Harness) connectClientFromContext(name string) (*gizcli.Client, error) 
 
 func (h *Harness) RunCLIUntilSuccess(args ...string) (Result, error) {
 	var last Result
-	if err := itest.WaitUntil(itest.ReadyTimeout, func() error {
+	if err := waitUntil(readyTimeout, func() error {
 		last = h.RunCLI(args...)
 		if last.Err != nil {
 			return fmt.Errorf("command %q failed: %w\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), last.Err, last.Stdout, last.Stderr)
@@ -561,7 +617,7 @@ func (h *Harness) waitForServerIdentity() {
 	h.t.Helper()
 
 	identityPath := filepath.Join(h.ServerWorkspace, "identity.key")
-	if err := itest.WaitUntil(itest.ReadyTimeout, func() error {
+	if err := waitUntil(readyTimeout, func() error {
 		if err := h.serverProcessError(); err != nil {
 			return err
 		}
@@ -569,6 +625,7 @@ func (h *Harness) waitForServerIdentity() {
 		if err != nil {
 			return err
 		}
+		h.ServerPrivateKey = keyPair.Private.String()
 		h.ServerPublicKey = keyPair.Public.String()
 		return nil
 	}); err != nil {
@@ -584,7 +641,7 @@ func (h *Harness) waitForServerReady() {
 		h.t.Fatalf("parse server public key: %v", err)
 	}
 
-	if err := itest.WaitUntil(itest.ReadyTimeout, func() error {
+	if err := waitUntil(readyTimeout, func() error {
 		if err := h.serverProcessError(); err != nil {
 			return err
 		}
@@ -614,7 +671,7 @@ func (h *Harness) waitForServerReady() {
 			default:
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), itest.ProbeTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 			err = probeServerPublicReady(ctx, client)
 			cancel()
 			if err == nil {
@@ -628,19 +685,84 @@ func (h *Harness) waitForServerReady() {
 	}
 }
 
+func (h *Harness) waitForSetupServerReady() {
+	h.t.Helper()
+
+	setupConfigHome := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "admin-config-home")
+	if err := h.probeSetupServer(setupConfigHome, 2*time.Second); err != nil {
+		startScript := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "setup", "start-server.sh")
+		cmd := exec.Command(startScript)
+		cmd.Dir = h.RepoRoot
+		output, startErr := cmd.CombinedOutput()
+		if startErr != nil {
+			h.t.Fatalf("start setup server: %v\n%s", startErr, string(output))
+		}
+	}
+	if err := waitUntil(readyTimeout, func() error {
+		return h.probeSetupServer(setupConfigHome, 2*time.Second)
+	}); err != nil {
+		h.t.Fatalf("setup server did not become ready: %v\nrun test/gizclaw-e2e/setup/start-server.sh before setup-driven cmd tests", err)
+	}
+}
+
+func (h *Harness) probeSetupServer(setupConfigHome string, timeout time.Duration) error {
+	h.t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, h.BinaryPath, "connect", "ping", "--context", "e2e-admin")
+	cmd.Dir = h.RepoRoot
+	cmd.Env = append(os.Environ(),
+		"HOME="+h.HomeDir,
+		"XDG_CONFIG_HOME="+setupConfigHome,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("setup ping failed: %w\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	return nil
+}
+
 func (h *Harness) renderServerFixture(fixtureName string, replacements map[string]string) {
 	h.t.Helper()
 
-	fixturePath := filepath.Join(h.StoryDir, fixtureName)
-	data, err := os.ReadFile(fixturePath)
-	if err != nil {
-		h.t.Fatalf("read fixture %q: %v", fixturePath, err)
+	var data []byte
+	if fixtureName == "server_config.yaml" {
+		fixturePath := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "server-workspace", "config.yaml")
+		var err error
+		data, err = os.ReadFile(fixturePath)
+		if err != nil {
+			h.t.Fatalf("read shared server fixture %q: %v", fixturePath, err)
+		}
+		h.ServerCipherMode = "chacha_poly"
+	} else {
+		fixturePath := filepath.Join(h.StoryDir, fixtureName)
+		var err error
+		data, err = os.ReadFile(fixturePath)
+		if err != nil {
+			h.t.Fatalf("read fixture %q: %v", fixturePath, err)
+		}
 	}
 
 	rendered := string(data)
 	for old, newValue := range replacements {
 		rendered = strings.ReplaceAll(rendered, old, newValue)
 	}
+	if listenAddr := replacements[fixtureListenAddrToken]; listenAddr != "" {
+		rendered = strings.ReplaceAll(rendered, `listen: "127.0.0.1:9820"`, fmt.Sprintf(`listen: "%s"`, listenAddr))
+	}
+	adminIdentityPath := filepath.Join(h.RepoRoot, "test", "gizclaw-e2e", "testdata", "admin-config-home", "gizclaw", "e2e-admin", "identity.key")
+	rendered = strings.ReplaceAll(
+		rendered,
+		`admin-identity-key: "../admin-config-home/gizclaw/e2e-admin/identity.key"`,
+		fmt.Sprintf(`admin-identity-key: "%s"`, filepath.ToSlash(adminIdentityPath)),
+	)
 
 	targetPath := filepath.Join(h.ServerWorkspace, "config.yaml")
 	if err := os.WriteFile(targetPath, []byte(rendered), 0o644); err != nil {
@@ -756,8 +878,8 @@ func (p *managedProcess) errorIfExited() error {
 }
 
 func waitForHTTP(url string, process *managedProcess) error {
-	client := &http.Client{Timeout: itest.ProbeTimeout}
-	return itest.WaitUntil(itest.ReadyTimeout, func() error {
+	client := &http.Client{Timeout: probeTimeout}
+	return waitUntil(readyTimeout, func() error {
 		if err := process.errorIfExited(); err != nil {
 			return err
 		}
@@ -774,6 +896,26 @@ func waitForHTTP(url string, process *managedProcess) error {
 	})
 }
 
+func allocateUDPAddr(t testing.TB) string {
+	t.Helper()
+	for range 20 {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("allocateUDPAddr tcp: %v", err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			_ = pc.Close()
+			_ = l.Close()
+			return fmt.Sprintf("127.0.0.1:%d", port)
+		}
+		_ = l.Close()
+	}
+	t.Fatalf("allocateUDPAddr: could not find a TCP/UDP-free port")
+	return ""
+}
+
 func freeTCPAddr(t testing.TB) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -783,6 +925,23 @@ func freeTCPAddr(t testing.TB) string {
 	addr := listener.Addr().String()
 	_ = listener.Close()
 	return addr
+}
+
+func waitUntil(timeout time.Duration, check func() error) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := check(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(pollInterval)
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("condition not satisfied before timeout")
 }
 
 func mustRepoRoot(t testing.TB) string {
@@ -799,13 +958,16 @@ func mustBuildCLI(t testing.TB, repoRoot string) string {
 	t.Helper()
 
 	buildBinaryOnce.Do(func() {
-		outDir, err := os.MkdirTemp("", "gizclaw-cli-bin-*")
-		if err != nil {
+		binaryPath := filepath.Join(repoRoot, "test", "gizclaw-e2e", "testdata", "bin", "gizclaw")
+		if info, err := os.Stat(binaryPath); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			buildBinaryPath = binaryPath
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
 			buildBinaryErr = err
 			return
 		}
 
-		binaryPath := filepath.Join(outDir, "gizclaw")
 		cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/gizclaw")
 		cmd.Dir = repoRoot
 		output, err := cmd.CombinedOutput()

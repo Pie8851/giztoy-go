@@ -231,6 +231,18 @@ func (c *Client) GetServerRuntime(ctx context.Context, id string) (*rpcapi.Serve
 	})
 }
 
+func (c *Client) GetServerStatus(ctx context.Context, id string) (*rpcapi.ServerGetStatusResponse, error) {
+	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.ServerGetStatusResponse, error) {
+		return client.GetServerStatus(ctx, conn, id)
+	})
+}
+
+func (c *Client) PutServerStatus(ctx context.Context, id string, request rpcapi.ServerPutStatusRequest) (*rpcapi.ServerPutStatusResponse, error) {
+	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.ServerPutStatusResponse, error) {
+		return client.PutServerStatus(ctx, conn, id, request)
+	})
+}
+
 func (c *Client) GetServerRunAgent(ctx context.Context, id string) (*rpcapi.ServerGetRunAgentResponse, error) {
 	return callClientRPC(c, func(client *rpcClient, conn net.Conn) (*rpcapi.ServerGetRunAgentResponse, error) {
 		return client.GetServerRunAgent(ctx, conn, id)
