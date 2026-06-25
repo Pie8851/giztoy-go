@@ -53,6 +53,7 @@ To let another peer public key use the default seeded client view, apply a
 
 ```sh
 go test -tags gizclaw_e2e -count=1 ./test/gizclaw-e2e/client/workspace
+go test -tags gizclaw_e2e -count=1 ./test/gizclaw-e2e/client/admin
 go test -tags gizclaw_e2e -count=1 ./test/gizclaw-e2e/client/rpc
 go test -tags gizclaw_e2e -count=1 ./test/gizclaw-e2e/cmd/connect
 ```
@@ -183,6 +184,11 @@ create isolated sandbox contexts unless a specific story opts into one of the
 CLI target roles.
 
 ## Client Tests
+
+`client/admin` contains typed Admin HTTP API contract coverage using the
+generated `adminservice` client. It verifies Swagger-defined request/response
+schemas, pagination, binary upload/download where the current Admin API exposes
+it, and selected mutation-safe paths against the shared setup server.
 
 `client/rpc` contains typed RPC coverage. Test files should be grouped by RPC
 module prefix, and individual methods should be split by `Test...` functions.
