@@ -27,6 +27,7 @@ coverage.out
 test/gizclaw-e2e/.env
 test/gizclaw-e2e/setup/.env
 test/gizclaw-e2e/.testbench/
+tests/genx-e2e/.env
 
 # Local workspace metadata
 .agents/

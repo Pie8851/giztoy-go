@@ -603,6 +603,97 @@
         },
         "type": "object"
       },
+      "DoubaoRealtimeAIGCMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "content_producer": {
+            "type": "string"
+          },
+          "content_propagator": {
+            "type": "string"
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "produce_id": {
+            "type": "string"
+          },
+          "propagate_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeASRContext": {
+        "additionalProperties": false,
+        "properties": {
+          "correct_words": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "hotwords": {
+            "items": {
+              "$ref": "#/components/schemas/DoubaoRealtimeASRHotword"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeASRExtension": {
+        "additionalProperties": false,
+        "properties": {
+          "extra": {
+            "$ref": "#/components/schemas/DoubaoRealtimeASRExtra"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeASRExtra": {
+        "additionalProperties": false,
+        "properties": {
+          "boosting_table_id": {
+            "type": "string"
+          },
+          "boosting_table_name": {
+            "type": "string"
+          },
+          "context": {
+            "$ref": "#/components/schemas/DoubaoRealtimeASRContext"
+          },
+          "enable_asr_twopass": {
+            "type": "boolean"
+          },
+          "enable_custom_vad": {
+            "type": "boolean"
+          },
+          "end_smooth_window_ms": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "regex_correct_table_id": {
+            "type": "string"
+          },
+          "regex_correct_table_name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeASRHotword": {
+        "additionalProperties": false,
+        "properties": {
+          "word": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "word"
+        ],
+        "type": "object"
+      },
       "DoubaoRealtimeAudio": {
         "additionalProperties": false,
         "properties": {
@@ -690,11 +781,42 @@
           "audit_response": {
             "type": "string"
           },
+          "enable_conversation_truncate": {
+            "type": "boolean"
+          },
           "enable_loudness_norm": {
             "type": "boolean"
           },
           "enable_music": {
             "type": "boolean"
+          },
+          "enable_user_query_exit": {
+            "type": "boolean"
+          },
+          "enable_volc_websearch": {
+            "type": "boolean"
+          },
+          "strict_audit": {
+            "type": "boolean"
+          },
+          "volc_websearch_bot_id": {
+            "type": "string"
+          },
+          "volc_websearch_no_result_message": {
+            "type": "string"
+          },
+          "volc_websearch_result_count": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "volc_websearch_type": {
+            "enum": [
+              "web",
+              "web_summary",
+              "web_agent"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -702,8 +824,14 @@
       "DoubaoRealtimeExtension": {
         "additionalProperties": false,
         "properties": {
+          "asr": {
+            "$ref": "#/components/schemas/DoubaoRealtimeASRExtension"
+          },
           "dialog": {
             "$ref": "#/components/schemas/DoubaoRealtimeDialogExtension"
+          },
+          "tts": {
+            "$ref": "#/components/schemas/DoubaoRealtimeTTSExtension"
           }
         },
         "type": "object"
@@ -785,6 +913,30 @@
             "type": "array"
           },
           "type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeTTSExtension": {
+        "additionalProperties": false,
+        "properties": {
+          "extra": {
+            "$ref": "#/components/schemas/DoubaoRealtimeTTSExtra"
+          }
+        },
+        "type": "object"
+      },
+      "DoubaoRealtimeTTSExtra": {
+        "additionalProperties": false,
+        "properties": {
+          "aigc_metadata": {
+            "$ref": "#/components/schemas/DoubaoRealtimeAIGCMetadata"
+          },
+          "explicit_dialect": {
+            "type": "string"
+          },
+          "tts_2.0_model": {
             "type": "string"
           }
         },
@@ -4070,6 +4222,9 @@
             "type": "string"
           },
           "openapi_access_key_id": {
+            "type": "string"
+          },
+          "search_api_key": {
             "type": "string"
           }
         },

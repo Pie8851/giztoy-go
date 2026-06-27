@@ -22,18 +22,19 @@ const (
 )
 
 type config struct {
-	Server    serverConfig    `json:"server"`
-	Workspace string          `json:"workspace"`
-	Agent     string          `json:"agent"`
-	Ensure    *bool           `json:"ensure_workspace,omitempty"`
-	Models    modelConfig     `json:"models"`
-	Workflow  workflowConfig  `json:"workflow"`
-	Voice     string          `json:"voice"`
-	Interrupt interruptConfig `json:"interrupt,omitempty"`
-	Rounds    int             `json:"rounds"`
-	Timeout   string          `json:"timeout"`
-	Persona   string          `json:"persona"`
-	OutputDir string          `json:"output_dir,omitempty"`
+	Server     serverConfig    `json:"server"`
+	Workspace  string          `json:"workspace"`
+	Agent      string          `json:"agent"`
+	Ensure     *bool           `json:"ensure_workspace,omitempty"`
+	Models     modelConfig     `json:"models"`
+	Workflow   workflowConfig  `json:"workflow"`
+	Voice      string          `json:"voice"`
+	Interrupt  interruptConfig `json:"interrupt,omitempty"`
+	Rounds     int             `json:"rounds"`
+	Timeout    string          `json:"timeout"`
+	Persona    string          `json:"persona"`
+	Utterances []string        `json:"utterances,omitempty"`
+	OutputDir  string          `json:"output_dir,omitempty"`
 
 	ClientPrivateKey string        `json:"-"`
 	timeout          time.Duration `json:"-"`
@@ -171,6 +172,19 @@ func defaultContextConfigPath(configPath string) string {
 		filepath.Clean(filepath.Join(configDir, "..", "gizclaw-config-home", "gizclaw", "e2e-client", "config.yaml")),
 		filepath.Clean(filepath.Join(configDir, "..", "..", "testdata", "gizclaw-config-home", "gizclaw", "e2e-client", "config.yaml")),
 		filepath.Clean(contextConfigDefaultPath),
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+func defaultClientContextConfigPath() string {
+	candidates := []string{
+		filepath.Clean(contextConfigDefaultPath),
+		filepath.Clean(filepath.Join("..", "..", "testdata", "gizclaw-config-home", "gizclaw", contextConfigDefaultName, "config.yaml")),
 	}
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {

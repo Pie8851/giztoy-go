@@ -20,6 +20,16 @@ func (d *personaDriver) useRoundtripUtterances() {
 	if d.generateUtterance != nil {
 		return
 	}
+	if len(d.cfg.Utterances) > 0 {
+		utterances := append([]string(nil), d.cfg.Utterances...)
+		d.generateUtterance = func(_ context.Context, index int) (string, error) {
+			if index <= 0 {
+				index = 1
+			}
+			return utterances[(index-1)%len(utterances)], nil
+		}
+		return
+	}
 	d.generateUtterance = func(_ context.Context, index int) (string, error) {
 		return roundtripUtterance(index), nil
 	}

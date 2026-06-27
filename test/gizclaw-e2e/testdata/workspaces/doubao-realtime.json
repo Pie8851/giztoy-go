@@ -13,9 +13,9 @@
   },
   "workflow": {
     "name": "doubao-realtime-conversation",
-    "description": "Doubao realtime duplex workflow",
+    "description": "Doubao realtime conversation workflow",
     "model": "doubao-realtime-dialog",
-    "instructions": "你是一个简短、自然的中文语音聊天助手。",
+    "instructions": "你是一个简短、自然的中文语音聊天助手。遇到天气、新闻、今天、现在等实时问题时，使用内置搜索能力回答。",
     "audio": {
       "input": {
         "format": {
@@ -33,24 +33,16 @@
         "loudness": 0
       }
     },
-    "tools": [
-      {
-        "type": "function",
-        "name": "get_weather",
-        "description": "查询指定城市的当前天气。",
-        "strict": true,
-        "parameters": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["city"],
-          "properties": {
-            "city": {
-              "type": "string"
-            }
-          }
+    "extension": {
+      "dialog": {
+        "extra": {
+          "enable_volc_websearch": true,
+          "volc_websearch_type": "web",
+          "volc_websearch_result_count": 3,
+          "volc_websearch_no_result_message": "没有找到相关搜索结果。"
         }
       }
-    ],
+    },
     "parameters": {
       "input": "push-to-talk"
     }
@@ -58,5 +50,10 @@
   "voice": "volc-tenant:volc-main:zh_female_vv_mars_bigtts",
   "rounds": 3,
   "timeout": "300s",
-  "persona": "You are a concise Chinese voice chat test user. Keep every utterance short and speech friendly."
+  "persona": "You are a concise Chinese voice chat test user. Keep every utterance short and speech friendly.",
+  "utterances": [
+    "请查询今天北京天气怎么样，用一句话回答",
+    "请问你能听清楚我说话吗",
+    "好的我们继续下一轮测试"
+  ]
 }

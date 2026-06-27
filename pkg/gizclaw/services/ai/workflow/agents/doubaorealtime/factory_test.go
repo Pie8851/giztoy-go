@@ -9,6 +9,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/services/ai/workspace"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/services/runtime/agenthost"
 )
 
@@ -89,6 +90,7 @@ func TestFactoryUsesWorkflowDuplexConfig(t *testing.T) {
 	agent, err := factory.NewAgent(context.Background(), agenthost.Spec{
 		Workspace: apitypes.Workspace{Name: "demo", Parameters: params},
 		Workflow:  workflow,
+		Runtime:   workspace.Runtime{DialogID: "workspace-dialog-id"},
 	})
 	if err != nil {
 		t.Fatalf("NewAgent() error = %v", err)
@@ -106,6 +108,7 @@ func TestFactoryUsesWorkflowDuplexConfig(t *testing.T) {
 		"output_sample_rate": "24000",
 		"output_voice":       "workspace-voice",
 		"output_loudness":    "-1",
+		"dialog_id":          "workspace-dialog-id",
 	} {
 		if got := query.Get(key); got != want {
 			t.Fatalf("query[%s] = %q, want %q; pattern=%s", key, got, want, got)

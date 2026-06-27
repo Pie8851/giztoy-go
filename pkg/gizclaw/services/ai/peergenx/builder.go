@@ -285,7 +285,7 @@ func (b DefaultBuilder) buildVolcRealtime(cfg TransformerConfig) (genx.Transform
 	}
 	data := mergeParams(nil, cfg.Params)
 	clientOpts := []doubaospeech.Option{doubaospeech.WithResourceID(doubaospeech.ResourceRealtime)}
-	if resourceID := firstString(providerData.ResourceId, mapString(data, "resource_id")); resourceID != "" {
+	if resourceID := firstString(mapString(data, "resource_id"), providerData.ResourceId); resourceID != "" {
 		clientOpts[0] = doubaospeech.WithResourceID(resourceID)
 	}
 	apiKey := firstString(credentialBody.ApiKey)
@@ -298,14 +298,48 @@ func (b DefaultBuilder) buildVolcRealtime(cfg TransformerConfig) (genx.Transform
 	}
 	clientOpts = append(clientOpts, doubaospeech.WithAPIKey(apiKey))
 
-	opts := []transformers.DoubaoRealtimeOption{}
-	modelName := firstString(providerData.UpstreamModel)
+	modelName := firstString(mapString(data, "upstream_model", "model"), providerData.UpstreamModel)
 	if modelName == "" {
 		return nil, fmt.Errorf("%w: model %q missing upstream_model for doubao realtime", ErrInvalid, cfg.Model.Id)
 	}
-	opts = append(opts, transformers.WithDoubaoRealtimeModel(modelName))
-	if value := mapString(data, "instructions"); value != "" {
-		opts = append(opts, transformers.WithDoubaoRealtimeInstructions(value))
+	mode := transformers.DoubaoRealtimeModePushToTalk
+	if value := mapString(data, "mode", "input_mode", "input"); value != "" {
+		parsed, err := doubaoRealtimeMode(value)
+		if err != nil {
+			return nil, err
+		}
+		mode = parsed
+	}
+
+	client := doubaospeech.NewClient(appID, clientOpts...)
+	opts := []transformers.DoubaoRealtimeOption{
+		transformers.WithDoubaoRealtimeModel(modelName),
+		transformers.WithDoubaoRealtimeMode(mode),
+	}
+	if value := mapString(data, "instructions", "system_role"); value != "" {
+		opts = append(opts, transformers.WithDoubaoRealtimeSystemRole(value))
+	}
+	if value := mapString(data, "dialog_id"); value != "" {
+		opts = append(opts, transformers.WithDoubaoRealtimeDialogID(value))
+	}
+	extension, err := doubaoRealtimeExtension(data)
+	if err != nil {
+		return nil, err
+	}
+	if asrExtra := doubaoRealtimeASRExtra(extension); asrExtra != nil {
+		opts = append(opts, transformers.WithDoubaoRealtimeASRExtra(*asrExtra))
+	}
+	if ttsExtra := doubaoRealtimeTTSExtra(extension); ttsExtra != nil {
+		opts = append(opts, transformers.WithDoubaoRealtimeTTSExtra(*ttsExtra))
+	}
+	dialogExtra := doubaoRealtimeDialogExtra(extension)
+	if dialogExtra != nil {
+		opts = append(opts, transformers.WithDoubaoRealtimeDialogExtra(*dialogExtra))
+		if doubaoRealtimeWebsearchEnabled(dialogExtra) {
+			if value := firstString(credentialBody.SearchApiKey); value != "" {
+				opts = append(opts, transformers.WithDoubaoRealtimeSearchAPIKey(value))
+			}
+		}
 	}
 	if value := mapString(data, "output_voice", "voice", "speaker"); value != "" {
 		opts = append(opts, transformers.WithDoubaoRealtimeSpeaker(value))
@@ -315,6 +349,12 @@ func (b DefaultBuilder) buildVolcRealtime(cfg TransformerConfig) (genx.Transform
 	}
 	if value, ok := mapInt(data, "output_sample_rate", "sample_rate"); ok {
 		opts = append(opts, transformers.WithDoubaoRealtimeSampleRate(value))
+	}
+	if value, ok := mapInt(data, "output_speed", "speech_rate", "speed"); ok {
+		opts = append(opts, transformers.WithDoubaoRealtimeSpeechRate(value))
+	}
+	if value, ok := mapInt(data, "output_loudness", "loudness_rate", "loudness"); ok {
+		opts = append(opts, transformers.WithDoubaoRealtimeLoudnessRate(value))
 	}
 	if value := mapString(data, "input_format"); value != "" {
 		opts = append(opts, transformers.WithDoubaoRealtimeInputFormat(value))
@@ -328,31 +368,157 @@ func (b DefaultBuilder) buildVolcRealtime(cfg TransformerConfig) (genx.Transform
 	if value, ok := mapBool(data, "input_transcode"); ok {
 		opts = append(opts, transformers.WithDoubaoRealtimeInputTranscode(value))
 	}
-	if value, ok := mapInt(data, "output_speed"); ok {
-		opts = append(opts, transformers.WithDoubaoRealtimeOutputSpeed(value))
+	if value := mapString(data, "bot_name"); value != "" {
+		opts = append(opts, transformers.WithDoubaoRealtimeBotName(value))
 	}
-	if value, ok := mapInt(data, "output_loudness"); ok {
-		opts = append(opts, transformers.WithDoubaoRealtimeOutputLoudness(value))
+	if value, ok := mapInt(data, "vad_window_ms"); ok {
+		opts = append(opts, transformers.WithDoubaoRealtimeVADWindow(value))
 	}
-	if tools, err := doubaoRealtimeTools(data["tools"]); err != nil {
-		return nil, err
-	} else if len(tools) > 0 {
-		opts = append(opts, transformers.WithDoubaoRealtimeTools(tools))
+	if value := mapString(data, "speaking_style"); value != "" {
+		opts = append(opts, transformers.WithDoubaoRealtimeSpeakingStyle(value))
 	}
-	if extension, err := doubaoRealtimeExtension(data["extension"]); err != nil {
-		return nil, err
-	} else if extension != nil {
-		opts = append(opts, transformers.WithDoubaoRealtimeExtension(extension))
+	if value := mapString(data, "character_manifest"); value != "" {
+		opts = append(opts, transformers.WithDoubaoRealtimeCharacterManifest(value))
 	}
-	if value := mapString(data, "mode", "input_mode", "input"); value != "" {
-		mode, err := doubaoRealtimeMode(value)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, transformers.WithDoubaoRealtimeMode(mode))
-	}
-	client := doubaospeech.NewClient(appID, clientOpts...)
 	return transformers.NewDoubaoRealtime(client, opts...), nil
+}
+
+func doubaoRealtimeExtension(data map[string]any) (*apitypes.DoubaoRealtimeExtension, error) {
+	raw, ok := data["extension"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	var extension apitypes.DoubaoRealtimeExtension
+	switch typed := raw.(type) {
+	case apitypes.DoubaoRealtimeExtension:
+		extension = typed
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil, nil
+		}
+		if err := json.Unmarshal([]byte(typed), &extension); err != nil {
+			return nil, fmt.Errorf("%w: decode doubao realtime extension: %w", ErrInvalid, err)
+		}
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return nil, fmt.Errorf("%w: encode doubao realtime extension: %w", ErrInvalid, err)
+		}
+		if err := json.Unmarshal(data, &extension); err != nil {
+			return nil, fmt.Errorf("%w: decode doubao realtime extension: %w", ErrInvalid, err)
+		}
+	}
+	return &extension, nil
+}
+
+func doubaoRealtimeASRExtra(extension *apitypes.DoubaoRealtimeExtension) *doubaospeech.RealtimeASRExtra {
+	if extension == nil || extension.Asr == nil || extension.Asr.Extra == nil {
+		return nil
+	}
+	extra := extension.Asr.Extra
+	out := &doubaospeech.RealtimeASRExtra{
+		BoostingTableID:       firstString(extra.BoostingTableId),
+		BoostingTableName:     firstString(extra.BoostingTableName),
+		RegexCorrectTableID:   firstString(extra.RegexCorrectTableId),
+		RegexCorrectTableName: firstString(extra.RegexCorrectTableName),
+	}
+	if extra.EndSmoothWindowMs != nil {
+		out.EndSmoothWindowMS = *extra.EndSmoothWindowMs
+	}
+	if extra.EnableCustomVad != nil {
+		value := *extra.EnableCustomVad
+		out.EnableCustomVAD = &value
+	}
+	if extra.EnableAsrTwopass != nil {
+		value := *extra.EnableAsrTwopass
+		out.EnableASRTwopass = &value
+	}
+	if extra.Context != nil {
+		out.Context = &doubaospeech.RealtimeASRContext{}
+		if extra.Context.Hotwords != nil {
+			for _, hotword := range *extra.Context.Hotwords {
+				out.Context.Hotwords = append(out.Context.Hotwords, doubaospeech.RealtimeHotword{Word: hotword.Word})
+			}
+		}
+		if extra.Context.CorrectWords != nil {
+			out.Context.CorrectWords = make(map[string]string, len(*extra.Context.CorrectWords))
+			for key, value := range *extra.Context.CorrectWords {
+				out.Context.CorrectWords[key] = value
+			}
+		}
+	}
+	return out
+}
+
+func doubaoRealtimeTTSExtra(extension *apitypes.DoubaoRealtimeExtension) *doubaospeech.RealtimeTTSExtra {
+	if extension == nil || extension.Tts == nil || extension.Tts.Extra == nil {
+		return nil
+	}
+	extra := extension.Tts.Extra
+	out := &doubaospeech.RealtimeTTSExtra{
+		ExplicitDialect: firstString(extra.ExplicitDialect),
+		TTS20Model:      firstString(extra.Tts20Model),
+	}
+	if extra.AigcMetadata != nil {
+		out.AIGCMetadata = &doubaospeech.RealtimeAIGCMetadata{
+			ContentProducer:   firstString(extra.AigcMetadata.ContentProducer),
+			ProduceID:         firstString(extra.AigcMetadata.ProduceId),
+			ContentPropagator: firstString(extra.AigcMetadata.ContentPropagator),
+			PropagateID:       firstString(extra.AigcMetadata.PropagateId),
+		}
+		if extra.AigcMetadata.Enable != nil {
+			value := *extra.AigcMetadata.Enable
+			out.AIGCMetadata.Enable = &value
+		}
+	}
+	return out
+}
+
+func doubaoRealtimeDialogExtra(extension *apitypes.DoubaoRealtimeExtension) *doubaospeech.RealtimeDialogExtra {
+	if extension == nil || extension.Dialog == nil || extension.Dialog.Extra == nil {
+		return nil
+	}
+	extra := extension.Dialog.Extra
+	out := &doubaospeech.RealtimeDialogExtra{
+		AuditResponse:                firstString(extra.AuditResponse),
+		VolcWebsearchBotID:           firstString(extra.VolcWebsearchBotId),
+		VolcWebsearchNoResultMessage: firstString(extra.VolcWebsearchNoResultMessage),
+	}
+	if extra.VolcWebsearchType != nil {
+		out.VolcWebsearchType = string(*extra.VolcWebsearchType)
+	}
+	if extra.EnableVolcWebsearch != nil {
+		value := *extra.EnableVolcWebsearch
+		out.EnableVolcWebsearch = &value
+	}
+	if extra.EnableMusic != nil {
+		value := *extra.EnableMusic
+		out.EnableMusic = &value
+	}
+	if extra.EnableLoudnessNorm != nil {
+		value := *extra.EnableLoudnessNorm
+		out.EnableLoudnessNorm = &value
+	}
+	if extra.VolcWebsearchResultCount != nil {
+		out.VolcWebsearchResultCount = *extra.VolcWebsearchResultCount
+	}
+	if extra.StrictAudit != nil {
+		value := *extra.StrictAudit
+		out.StrictAudit = &value
+	}
+	if extra.EnableConversationTruncate != nil {
+		value := *extra.EnableConversationTruncate
+		out.EnableConversationTruncate = &value
+	}
+	if extra.EnableUserQueryExit != nil {
+		value := *extra.EnableUserQueryExit
+		out.EnableUserQueryExit = &value
+	}
+	return out
+}
+
+func doubaoRealtimeWebsearchEnabled(extra *doubaospeech.RealtimeDialogExtra) bool {
+	return extra != nil && extra.EnableVolcWebsearch != nil && *extra.EnableVolcWebsearch
 }
 
 func (b DefaultBuilder) buildVolcASTTranslate(cfg TransformerConfig) (genx.Transformer, error) {
@@ -591,73 +757,14 @@ func firstString(values ...any) string {
 
 func doubaoRealtimeMode(value string) (transformers.DoubaoRealtimeMode, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "push-to-talk", "push_to_talk", "ptt":
+	case "push-to-talk", "push_to_talk", "ptt", "default":
 		return transformers.DoubaoRealtimeModePushToTalk, nil
-	case "realtime", "real-time", "real_time", "default":
+	case "realtime", "real-time", "real_time":
 		return transformers.DoubaoRealtimeModeRealtime, nil
 	case "text":
 		return transformers.DoubaoRealtimeModeText, nil
 	default:
 		return "", fmt.Errorf("%w: doubao realtime mode %q", ErrUnsupported, value)
-	}
-}
-
-func doubaoRealtimeTools(value any) ([]doubaospeech.RealtimeDuplexFunctionTool, error) {
-	switch typed := value.(type) {
-	case nil:
-		return nil, nil
-	case []doubaospeech.RealtimeDuplexFunctionTool:
-		return append([]doubaospeech.RealtimeDuplexFunctionTool(nil), typed...), nil
-	case string:
-		if strings.TrimSpace(typed) == "" {
-			return nil, nil
-		}
-		var out []doubaospeech.RealtimeDuplexFunctionTool
-		if err := json.Unmarshal([]byte(typed), &out); err != nil {
-			return nil, fmt.Errorf("%w: decode doubao realtime tools: %w", ErrInvalid, err)
-		}
-		return out, nil
-	default:
-		data, err := json.Marshal(typed)
-		if err != nil {
-			return nil, fmt.Errorf("%w: encode doubao realtime tools: %w", ErrInvalid, err)
-		}
-		var out []doubaospeech.RealtimeDuplexFunctionTool
-		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("%w: decode doubao realtime tools: %w", ErrInvalid, err)
-		}
-		return out, nil
-	}
-}
-
-func doubaoRealtimeExtension(value any) (*doubaospeech.RealtimeDuplexExtension, error) {
-	switch typed := value.(type) {
-	case nil:
-		return nil, nil
-	case *doubaospeech.RealtimeDuplexExtension:
-		return typed, nil
-	case doubaospeech.RealtimeDuplexExtension:
-		out := typed
-		return &out, nil
-	case string:
-		if strings.TrimSpace(typed) == "" {
-			return nil, nil
-		}
-		var out doubaospeech.RealtimeDuplexExtension
-		if err := json.Unmarshal([]byte(typed), &out); err != nil {
-			return nil, fmt.Errorf("%w: decode doubao realtime extension: %w", ErrInvalid, err)
-		}
-		return &out, nil
-	default:
-		data, err := json.Marshal(typed)
-		if err != nil {
-			return nil, fmt.Errorf("%w: encode doubao realtime extension: %w", ErrInvalid, err)
-		}
-		var out doubaospeech.RealtimeDuplexExtension
-		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("%w: decode doubao realtime extension: %w", ErrInvalid, err)
-		}
-		return &out, nil
 	}
 }
 

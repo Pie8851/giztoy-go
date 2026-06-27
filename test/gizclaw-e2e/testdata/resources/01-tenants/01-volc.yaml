@@ -10,6 +10,7 @@ spec:
   resource_ids:
   - seed-tts-1.0
   - seed-tts-2.0
+  - seed-icl-1.0
   - seed-icl-2.0
   - volc.bigasr.sauc.duration
   - volc.speech.dialog

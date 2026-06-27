@@ -61,6 +61,22 @@ func TestRoundtripUtteranceWrapsIndex(t *testing.T) {
 	}
 }
 
+func TestUseRoundtripUtterancesPrefersConfiguredUtterances(t *testing.T) {
+	driver := &personaDriver{cfg: config{Utterances: []string{"今天天气怎么样", "你好测试"}}}
+	driver.useRoundtripUtterances()
+	first, err := driver.generateUtterance(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("generate first utterance: %v", err)
+	}
+	third, err := driver.generateUtterance(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("generate third utterance: %v", err)
+	}
+	if first != "今天天气怎么样" || third != "今天天气怎么样" {
+		t.Fatalf("configured utterances = %q/%q", first, third)
+	}
+}
+
 func TestOpusPacketsFromOggErrors(t *testing.T) {
 	if _, err := opusPacketsFromOgg([]byte("not ogg")); err == nil {
 		t.Fatal("invalid ogg succeeded")

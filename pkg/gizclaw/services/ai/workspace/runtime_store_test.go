@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,39 @@ func TestObjectRuntimeStorePrepareWorkspaceCreatesLocalDir(t *testing.T) {
 	}
 	if info, err := os.Stat(wantDir); err != nil || !info.IsDir() {
 		t.Fatalf("workspace dir not created: info=%v err=%v", info, err)
+	}
+}
+
+func TestObjectRuntimeStorePersistsDialogID(t *testing.T) {
+	root := t.TempDir()
+	store := NewObjectRuntimeStore(objectstore.Dir(root))
+
+	rt, err := store.PrepareWorkspace(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("PrepareWorkspace() error = %v", err)
+	}
+	if rt.DialogID == "" {
+		t.Fatal("DialogID is empty")
+	}
+
+	got, err := store.GetWorkspaceRuntime(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("GetWorkspaceRuntime() error = %v", err)
+	}
+	if got.DialogID != rt.DialogID {
+		t.Fatalf("DialogID = %q, want %q", got.DialogID, rt.DialogID)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "workspaces", "demo", "runtime.json"))
+	if err != nil {
+		t.Fatalf("read runtime metadata: %v", err)
+	}
+	var metadata runtimeMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatalf("decode runtime metadata: %v", err)
+	}
+	if metadata.DialogID != rt.DialogID {
+		t.Fatalf("metadata DialogID = %q, want %q", metadata.DialogID, rt.DialogID)
 	}
 }
 

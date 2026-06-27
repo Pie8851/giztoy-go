@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -279,6 +280,28 @@ func TestRegisterSpeechSchemaDispatch(t *testing.T) {
 			call: registerRealtimeBySchema,
 		},
 		{
+			name: "realtime duplex",
+			cfg: ConfigFile{
+				Schema: "doubao/realtime_duplex/v1",
+				AppID:  "app-id",
+				APIKey: "api-key",
+				Models: []Entry{{Name: "realtime-duplex/schema-test"}},
+			},
+			want: "realtime-duplex/schema-test",
+			call: registerRealtimeBySchema,
+		},
+		{
+			name: "realtime duplex slash subject",
+			cfg: ConfigFile{
+				Schema: "doubao/realtime/duplex/v1",
+				AppID:  "app-id",
+				APIKey: "api-key",
+				Models: []Entry{{Name: "realtime-duplex/slash-schema-test"}},
+			},
+			want: "realtime-duplex/slash-schema-test",
+			call: registerRealtimeBySchema,
+		},
+		{
 			name: "doubao tts",
 			cfg: ConfigFile{
 				Schema: "doubao/seed_tts/v2",
@@ -334,6 +357,9 @@ func TestRegisterSpeechSchemaValidation(t *testing.T) {
 		{name: "realtime unknown provider", cfg: ConfigFile{Schema: "unknown/realtime/v1"}, call: registerRealtimeBySchema},
 		{name: "realtime missing api key", cfg: ConfigFile{Schema: "doubao/realtime/v1", AppID: "app-id"}, call: registerRealtimeBySchema},
 		{name: "realtime missing model name", cfg: ConfigFile{Schema: "doubao/realtime/v1", AppID: "app-id", APIKey: "api-key", Models: []Entry{{}}}, call: registerRealtimeBySchema},
+		{name: "realtime unknown subject", cfg: ConfigFile{Schema: "doubao/realtime_x/v1", AppID: "app-id", APIKey: "api-key"}, call: registerRealtimeBySchema},
+		{name: "realtime duplex missing api key", cfg: ConfigFile{Schema: "doubao/realtime_duplex/v1", AppID: "app-id"}, call: registerRealtimeBySchema},
+		{name: "realtime duplex missing model name", cfg: ConfigFile{Schema: "doubao/realtime_duplex/v1", AppID: "app-id", APIKey: "api-key", Models: []Entry{{}}}, call: registerRealtimeBySchema},
 		{name: "tts invalid schema", cfg: ConfigFile{Schema: "bad"}, call: registerTTSBySchema},
 		{name: "tts unknown provider", cfg: ConfigFile{Schema: "unknown/tts/v1"}, call: registerTTSBySchema},
 		{name: "doubao tts missing api key", cfg: ConfigFile{Schema: "doubao/tts/v1", AppID: "app-id"}, call: registerTTSBySchema},
@@ -405,7 +431,7 @@ func TestRegisterDoubaoASRUsesFixedTransportAudioDefaults(t *testing.T) {
 	}
 }
 
-func TestRegisterDoubaoRealtimeIgnoresOutputAudioDefaults(t *testing.T) {
+func TestRegisterDoubaoRealtimeUsesLegacyTransformer(t *testing.T) {
 	oldDefaultMux := transformers.DefaultMux
 	transformers.DefaultMux = transformers.NewMux()
 	t.Cleanup(func() {
@@ -417,6 +443,7 @@ func TestRegisterDoubaoRealtimeIgnoresOutputAudioDefaults(t *testing.T) {
 		APIKey: "api-key",
 		DefaultParams: map[string]any{
 			"format":      "pcm",
+			"dialog_id":   "configured-dialog-id",
 			"sample_rate": float64(8000),
 			"model":       "SC",
 		},
@@ -430,17 +457,26 @@ func TestRegisterDoubaoRealtimeIgnoresOutputAudioDefaults(t *testing.T) {
 	}
 
 	registered := mustRegisteredDefaultTransformer(t, "realtime/test")
-	if got := stringField(t, registered, "outputFormat"); got != "ogg_opus" {
-		t.Fatalf("outputFormat = %q, want fixed default ogg_opus", got)
+	if _, ok := registered.(*transformers.DoubaoRealtime); !ok {
+		t.Fatalf("registered transformer = %T, want *transformers.DoubaoRealtime", registered)
 	}
-	if got := intField(t, registered, "outputSampleRate"); got != 24000 {
-		t.Fatalf("outputSampleRate = %d, want fixed default 24000", got)
+	if got := stringField(t, registered, "format"); got != "ogg_opus" {
+		t.Fatalf("format = %q, want fixed default ogg_opus", got)
+	}
+	if got := intField(t, registered, "sampleRate"); got != 24000 {
+		t.Fatalf("sampleRate = %d, want fixed default 24000", got)
 	}
 	if got := stringField(t, registered, "model"); got != "SC" {
 		t.Fatalf("model = %q, want configured model", got)
 	}
-	if got := stringField(t, registered, "outputVoice"); got != "voice/test" {
-		t.Fatalf("outputVoice = %q, want configured voice", got)
+	if got := stringField(t, registered, "dialogID"); got != "configured-dialog-id" {
+		t.Fatalf("dialogID = %q, want configured-dialog-id", got)
+	}
+	if got := stringField(t, registered, "speaker"); got != "voice/test" {
+		t.Fatalf("speaker = %q, want configured voice", got)
+	}
+	if got := stringField(t, registered, "mode"); got != "push_to_talk" {
+		t.Fatalf("mode = %q, want push_to_talk", got)
 	}
 
 	_, err = registerDoubaoRealtime(ConfigFile{
@@ -449,6 +485,95 @@ func TestRegisterDoubaoRealtimeIgnoresOutputAudioDefaults(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected duplicate realtime registration error")
+	}
+}
+
+func TestRegisterDoubaoRealtimeDuplexIgnoresOutputAudioDefaults(t *testing.T) {
+	oldDefaultMux := transformers.DefaultMux
+	transformers.DefaultMux = transformers.NewMux()
+	t.Cleanup(func() {
+		transformers.DefaultMux = oldDefaultMux
+	})
+
+	names, err := registerDoubaoRealtimeDuplex(ConfigFile{
+		AppID:  "app-id",
+		APIKey: "api-key",
+		DefaultParams: map[string]any{
+			"format":      "pcm",
+			"dialog_id":   "configured-dialog-id",
+			"sample_rate": float64(8000),
+			"model":       "1.2.6.0",
+		},
+		Models: []Entry{{Name: "realtime-duplex/test", Voice: "voice/test"}},
+	})
+	if err != nil {
+		t.Fatalf("registerDoubaoRealtimeDuplex() error = %v", err)
+	}
+	if len(names) != 1 || names[0] != "realtime-duplex/test" {
+		t.Fatalf("names = %v, want [realtime-duplex/test]", names)
+	}
+
+	registered := mustRegisteredDefaultTransformer(t, "realtime-duplex/test")
+	if _, ok := registered.(*transformers.DoubaoRealtimeDuplexRealtime); !ok {
+		t.Fatalf("registered transformer = %T, want *transformers.DoubaoRealtimeDuplexRealtime", registered)
+	}
+	if got := stringField(t, registered, "outputFormat"); got != "ogg_opus" {
+		t.Fatalf("outputFormat = %q, want fixed default ogg_opus", got)
+	}
+	if got := intField(t, registered, "outputSampleRate"); got != 24000 {
+		t.Fatalf("outputSampleRate = %d, want fixed default 24000", got)
+	}
+	if got := stringField(t, registered, "model"); got != "1.2.6.0" {
+		t.Fatalf("model = %q, want configured model", got)
+	}
+	if got := stringField(t, registered, "sessionID"); got != "configured-dialog-id" {
+		t.Fatalf("sessionID = %q, want configured-dialog-id", got)
+	}
+	if got := stringField(t, registered, "outputVoice"); got != "voice/test" {
+		t.Fatalf("outputVoice = %q, want configured voice", got)
+	}
+}
+
+func TestRegisterDoubaoRealtimeDuplexRealtimeMode(t *testing.T) {
+	oldDefaultMux := transformers.DefaultMux
+	transformers.DefaultMux = transformers.NewMux()
+	t.Cleanup(func() {
+		transformers.DefaultMux = oldDefaultMux
+	})
+
+	names, err := registerDoubaoRealtimeDuplex(ConfigFile{
+		AppID:  "app-id",
+		APIKey: "api-key",
+		DefaultParams: map[string]any{
+			"model": "1.2.6.0",
+			"mode":  "realtime",
+		},
+		Models: []Entry{{Name: "realtime-duplex/realtime-test", Voice: "voice/test"}},
+	})
+	if err != nil {
+		t.Fatalf("registerDoubaoRealtimeDuplex() error = %v", err)
+	}
+	if len(names) != 1 || names[0] != "realtime-duplex/realtime-test" {
+		t.Fatalf("names = %v, want [realtime-duplex/realtime-test]", names)
+	}
+
+	registered := mustRegisteredDefaultTransformer(t, "realtime-duplex/realtime-test")
+	if _, ok := registered.(*transformers.DoubaoRealtimeDuplexRealtime); !ok {
+		t.Fatalf("registered transformer = %T, want *transformers.DoubaoRealtimeDuplexRealtime", registered)
+	}
+}
+
+func TestRegisterDoubaoRealtimeDuplexRejectsPushToTalkMode(t *testing.T) {
+	_, err := registerDoubaoRealtimeDuplex(ConfigFile{
+		AppID:  "app-id",
+		APIKey: "api-key",
+		DefaultParams: map[string]any{
+			"mode": "push_to_talk",
+		},
+		Models: []Entry{{Name: "realtime-duplex/ptt-test"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "only supports realtime mode") {
+		t.Fatalf("registerDoubaoRealtimeDuplex() error = %v, want realtime-only mode error", err)
 	}
 }
 

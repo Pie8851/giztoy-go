@@ -809,6 +809,7 @@ export type OpenAiCredentialBody = {
 export type VolcCredentialBody = {
     app_id?: string;
     api_key?: string;
+    search_api_key?: string;
     openapi_access_key_id?: string;
     openapi_access_key?: string;
 };
@@ -1397,16 +1398,129 @@ export type ChatRoomWorkflowTranscriptSpec = {
     asr_model?: string;
 };
 
+export type DoubaoRealtimeAigcMetadata = {
+    enable?: boolean;
+    content_producer?: string;
+    produce_id?: string;
+    content_propagator?: string;
+    propagate_id?: string;
+};
+
+export type DoubaoRealtimeAsrContext = {
+    hotwords?: Array<DoubaoRealtimeAsrHotword>;
+    correct_words?: {
+        [key: string]: string;
+    };
+};
+
+export type DoubaoRealtimeAsrExtension = {
+    extra?: DoubaoRealtimeAsrExtra;
+};
+
+export type DoubaoRealtimeAsrExtra = {
+    end_smooth_window_ms?: number;
+    enable_custom_vad?: boolean;
+    enable_asr_twopass?: boolean;
+    boosting_table_id?: string;
+    boosting_table_name?: string;
+    regex_correct_table_id?: string;
+    regex_correct_table_name?: string;
+    context?: DoubaoRealtimeAsrContext;
+};
+
+export type DoubaoRealtimeAsrHotword = {
+    word: string;
+};
+
+export type DoubaoRealtimeAudio = {
+    input: DoubaoRealtimeAudioInput;
+    output: DoubaoRealtimeAudioOutput;
+};
+
+export type DoubaoRealtimeAudioFormat = {
+    type: 'pcm' | 'pcm_s16le' | 'speech_opus' | 'ogg_opus';
+    rate: number;
+};
+
+export type DoubaoRealtimeAudioInput = {
+    format: DoubaoRealtimeAudioFormat;
+};
+
+export type DoubaoRealtimeAudioOutput = {
+    format: DoubaoRealtimeAudioFormat;
+    voice?: string;
+    speed?: number;
+    loudness?: number;
+};
+
+export type DoubaoRealtimeDialogExtension = {
+    extra?: DoubaoRealtimeDialogExtra;
+};
+
+export type DoubaoRealtimeDialogExtra = {
+    strict_audit?: boolean;
+    audit_response?: string;
+    enable_loudness_norm?: boolean;
+    enable_music?: boolean;
+    enable_volc_websearch?: boolean;
+    volc_websearch_type?: 'web' | 'web_summary' | 'web_agent';
+    volc_websearch_bot_id?: string;
+    volc_websearch_result_count?: number;
+    volc_websearch_no_result_message?: string;
+    enable_conversation_truncate?: boolean;
+    enable_user_query_exit?: boolean;
+};
+
+export type DoubaoRealtimeExtension = {
+    asr?: DoubaoRealtimeAsrExtension;
+    tts?: DoubaoRealtimeTtsExtension;
+    dialog?: DoubaoRealtimeDialogExtension;
+};
+
+export type DoubaoRealtimeFunctionTool = {
+    type: 'function';
+    name: string;
+    description?: string;
+    parameters?: DoubaoRealtimeJsonSchema;
+    strict?: boolean;
+};
+
+export type DoubaoRealtimeJsonSchema = {
+    type?: string;
+    description?: string;
+    properties?: {
+        [key: string]: DoubaoRealtimeJsonSchema;
+    };
+    required?: Array<string>;
+    additionalProperties?: boolean;
+    items?: DoubaoRealtimeJsonSchema;
+    enum?: Array<string>;
+    minLength?: number;
+    maxLength?: number;
+    minimum?: number;
+    maximum?: number;
+    anyOf?: Array<DoubaoRealtimeJsonSchema>;
+};
+
+export type DoubaoRealtimeTtsExtension = {
+    extra?: DoubaoRealtimeTtsExtra;
+};
+
+export type DoubaoRealtimeTtsExtra = {
+    explicit_dialect?: string;
+    aigc_metadata?: DoubaoRealtimeAigcMetadata;
+    'tts_2.0_model'?: string;
+};
+
 export type DoubaoRealtimeWorkflowSpec = {
-    realtime_model?: string;
-    model?: string;
-    realtime?: {
-        [key: string]: unknown;
-    };
-    realtime_config?: {
-        [key: string]: unknown;
-    };
-    [key: string]: unknown;
+    /**
+     * GizClaw Model resource name. The upstream Doubao model version is configured on Model provider_data.upstream_model.
+     */
+    model: string;
+    instructions?: string;
+    audio?: DoubaoRealtimeAudio;
+    tools?: Array<DoubaoRealtimeFunctionTool>;
+    extension?: DoubaoRealtimeExtension;
 };
 
 export type FlowcraftWorkflowSpec = {
@@ -1497,57 +1611,21 @@ export type ChatRoomWorkspaceTranscriptParameters = {
     asr_model?: string;
 };
 
-export type DoubaoRealtimeExternalVoiceParameters = {
-    /**
-     * GizClaw voice resource name used by an external TTS path.
-     */
-    tts_voice: string;
-};
-
-export type DoubaoRealtimeInternalSpeakerParameters = {
-    /**
-     * Doubao realtime built-in speaker id.
-     */
-    realtime_speaker_id: string;
-};
-
-export type DoubaoRealtimeMusicParameters = {
-    enabled?: boolean;
-};
-
-export type DoubaoRealtimeSearchParameters = {
-    enabled?: boolean;
-    type?: string;
-    bot_id?: string;
-    result_count?: number;
-    no_result_message?: string;
-};
-
-export type DoubaoRealtimeSessionParameters = {
-    bot_name?: string;
-    system_role?: string;
-    upstream_model?: string;
-    vad_window_ms?: number;
-    speaking_style?: string;
-    character_manifest?: string;
-    resource_id?: string;
-};
-
-export type DoubaoRealtimeVoiceParameters = DoubaoRealtimeInternalSpeakerParameters | DoubaoRealtimeExternalVoiceParameters;
-
 export type DoubaoRealtimeWorkspaceParameters = {
     agent_type: 'doubao-realtime';
-    realtime_model?: string;
+    /**
+     * GizClaw Model resource name. Defaults to Workflow.spec.doubao_realtime.model.
+     */
+    model?: string;
+    instructions?: string;
     input?: WorkspaceInputMode;
-    voice?: DoubaoRealtimeVoiceParameters;
-    session?: DoubaoRealtimeSessionParameters;
-    search?: DoubaoRealtimeSearchParameters;
-    music?: DoubaoRealtimeMusicParameters;
+    audio?: DoubaoRealtimeAudio;
+    tools?: Array<DoubaoRealtimeFunctionTool>;
+    extension?: DoubaoRealtimeExtension;
     /**
      * Marks seed resources used by the local e2e harness.
      */
     e2e?: boolean;
-    temperature?: number;
 };
 
 export type FlowcraftConversationParameters = {

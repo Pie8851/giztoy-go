@@ -56,7 +56,7 @@ func runLiveWorkspaceCase(t *testing.T, selected workspaceCase, paths []string) 
 func probeLiveWorkspaceSetup() error {
 	contextPath := clientContextConfigPath()
 	if contextPath == "" {
-		contextPath = contextConfigDefaultPath
+		contextPath = defaultClientContextConfigPath()
 	}
 	contextCfg, err := readSetupContextConfig(contextPath)
 	if err != nil {

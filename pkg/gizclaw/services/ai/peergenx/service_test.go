@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	doubaospeech "github.com/GizClaw/doubao-speech-go"
 	"github.com/GizClaw/gizclaw-go/pkg/genx"
+	"github.com/GizClaw/gizclaw-go/pkg/genx/transformers"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/adminservice"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/services/system/acl"
@@ -456,11 +456,17 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTransformer() error = %v", err)
 	}
+	if _, ok := tf.(*transformers.DoubaoRealtime); !ok {
+		t.Fatalf("transformer = %T, want *transformers.DoubaoRealtime", tf)
+	}
 	if got := transformerStringField(t, tf, "model"); got != "O" {
 		t.Fatalf("realtime model = %q, want O", got)
 	}
-	if got := transformerStringField(t, tf, "outputVoice"); got != "speaker-id" {
-		t.Fatalf("realtime outputVoice = %q, want speaker-id", got)
+	if got := transformerStringField(t, tf, "speaker"); got != "speaker-id" {
+		t.Fatalf("realtime speaker = %q, want speaker-id", got)
+	}
+	if got := transformerStringField(t, tf, "mode"); got != "push_to_talk" {
+		t.Fatalf("realtime mode = %q, want push_to_talk", got)
 	}
 	if got := transformerNestedStringField(t, tf, "client", "config", "apiKey"); got != "runtime-key" {
 		t.Fatalf("realtime api key = %q, want runtime-key", got)
@@ -513,7 +519,11 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformerFromWorkflowParams(t *testin
 		},
 		Credential: apitypes.Credential{
 			Name: "volc-token",
-			Body: testVolcCredentialBodyFromStrings(map[string]string{"app_id": "app", "api_key": "realtime-key"}),
+			Body: testVolcCredentialBodyFromStrings(map[string]string{
+				"app_id":         "app",
+				"api_key":        "realtime-key",
+				"search_api_key": "search-key",
+			}),
 		},
 		Params: map[string]any{
 			"instructions":       "简短回答。",
@@ -524,11 +534,18 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformerFromWorkflowParams(t *testin
 			"input_sample_rate":  16000,
 			"input_channels":     1,
 			"input_transcode":    true,
+			"output_speed":       12,
+			"output_loudness":    6,
+			"dialog_id":          "workspace-dialog-id",
 			"mode":               "realtime",
+			"extension":          `{"asr":{"extra":{"end_smooth_window_ms":800,"enable_custom_vad":true,"enable_asr_twopass":true,"context":{"hotwords":[{"word":"GizClaw"}],"correct_words":{"吉斯克劳":"GizClaw"}}}},"tts":{"extra":{"explicit_dialect":"sichuan","tts_2.0_model":"expressive","aigc_metadata":{"enable":true,"content_producer":"gizclaw","produce_id":"produce-1"}}},"dialog":{"extra":{"strict_audit":false,"enable_volc_websearch":true,"volc_websearch_type":"web","volc_websearch_result_count":3,"volc_websearch_no_result_message":"没有找到相关搜索结果。","enable_conversation_truncate":true,"enable_user_query_exit":true}}}`,
 		},
 	})
 	if err != nil {
 		t.Fatalf("BuildTransformer() error = %v", err)
+	}
+	if _, ok := tf.(*transformers.DoubaoRealtime); !ok {
+		t.Fatalf("transformer = %T, want *transformers.DoubaoRealtime", tf)
 	}
 	if got := transformerNestedStringField(t, tf, "client", "config", "resourceID"); got != "volc.speech.dialog" {
 		t.Fatalf("realtime resourceID = %q, want volc.speech.dialog", got)
@@ -539,17 +556,20 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformerFromWorkflowParams(t *testin
 	if got := transformerStringField(t, tf, "model"); got != "O" {
 		t.Fatalf("realtime model = %q, want O", got)
 	}
-	if got := transformerStringField(t, tf, "instructions"); got != "简短回答。" {
-		t.Fatalf("realtime instructions = %q, want 简短回答。", got)
+	if got := transformerStringField(t, tf, "systemRole"); got != "简短回答。" {
+		t.Fatalf("realtime systemRole = %q, want 简短回答。", got)
 	}
-	if got := transformerStringField(t, tf, "outputVoice"); got != "workflow-speaker" {
-		t.Fatalf("realtime outputVoice = %q, want workflow-speaker", got)
+	if got := transformerStringField(t, tf, "dialogID"); got != "workspace-dialog-id" {
+		t.Fatalf("realtime dialogID = %q, want workspace-dialog-id", got)
 	}
-	if got := transformerStringField(t, tf, "outputFormat"); got != "ogg_opus" {
-		t.Fatalf("realtime outputFormat = %q, want ogg_opus", got)
+	if got := transformerStringField(t, tf, "speaker"); got != "workflow-speaker" {
+		t.Fatalf("realtime speaker = %q, want workflow-speaker", got)
 	}
-	if got := transformerIntField(t, tf, "outputSampleRate"); got != 24000 {
-		t.Fatalf("realtime outputSampleRate = %d, want 24000", got)
+	if got := transformerStringField(t, tf, "format"); got != "ogg_opus" {
+		t.Fatalf("realtime format = %q, want ogg_opus", got)
+	}
+	if got := transformerIntField(t, tf, "sampleRate"); got != 24000 {
+		t.Fatalf("realtime sampleRate = %d, want 24000", got)
 	}
 	if got := transformerStringField(t, tf, "inputFormat"); got != "speech_opus" {
 		t.Fatalf("realtime inputFormat = %q, want speech_opus", got)
@@ -565,6 +585,51 @@ func TestDefaultBuilderBuildsVolcRealtimeTransformerFromWorkflowParams(t *testin
 	}
 	if got := transformerStringField(t, tf, "mode"); got != "realtime" {
 		t.Fatalf("realtime mode = %q, want realtime", got)
+	}
+	if got := transformerNestedIntPointerField(t, tf, "speechRate"); got != 12 {
+		t.Fatalf("realtime speechRate = %d, want 12", got)
+	}
+	if got := transformerNestedIntPointerField(t, tf, "loudnessRate"); got != 6 {
+		t.Fatalf("realtime loudnessRate = %d, want 6", got)
+	}
+	if got := transformerNestedIntField(t, tf, "asrExtra", "EndSmoothWindowMS"); got != 800 {
+		t.Fatalf("realtime asrExtra.EndSmoothWindowMS = %d, want 800", got)
+	}
+	if !transformerNestedBoolPointerField(t, tf, "asrExtra", "EnableCustomVAD") {
+		t.Fatal("realtime asrExtra.EnableCustomVAD = false, want true")
+	}
+	if !transformerNestedBoolPointerField(t, tf, "asrExtra", "EnableASRTwopass") {
+		t.Fatal("realtime asrExtra.EnableASRTwopass = false, want true")
+	}
+	if got := transformerNestedStringField(t, tf, "ttsExtra", "ExplicitDialect"); got != "sichuan" {
+		t.Fatalf("realtime ttsExtra.ExplicitDialect = %q, want sichuan", got)
+	}
+	if got := transformerNestedStringField(t, tf, "ttsExtra", "TTS20Model"); got != "expressive" {
+		t.Fatalf("realtime ttsExtra.TTS20Model = %q, want expressive", got)
+	}
+	if !transformerNestedBoolPointerField(t, tf, "ttsExtra", "AIGCMetadata", "Enable") {
+		t.Fatal("realtime ttsExtra.AIGCMetadata.Enable = false, want true")
+	}
+	if !transformerNestedBoolPointerField(t, tf, "dialogExtra", "EnableVolcWebsearch") {
+		t.Fatal("realtime dialogExtra.EnableVolcWebsearch = false, want true")
+	}
+	if transformerNestedBoolPointerField(t, tf, "dialogExtra", "StrictAudit") {
+		t.Fatal("realtime dialogExtra.StrictAudit = true, want false")
+	}
+	if !transformerNestedBoolPointerField(t, tf, "dialogExtra", "EnableConversationTruncate") {
+		t.Fatal("realtime dialogExtra.EnableConversationTruncate = false, want true")
+	}
+	if !transformerNestedBoolPointerField(t, tf, "dialogExtra", "EnableUserQueryExit") {
+		t.Fatal("realtime dialogExtra.EnableUserQueryExit = false, want true")
+	}
+	if got := transformerNestedStringField(t, tf, "dialogExtra", "VolcWebsearchType"); got != "web" {
+		t.Fatalf("realtime dialogExtra.VolcWebsearchType = %q, want web", got)
+	}
+	if got := transformerNestedStringField(t, tf, "dialogExtra", "VolcWebsearchAPIKey"); got != "search-key" {
+		t.Fatalf("realtime dialogExtra.VolcWebsearchAPIKey = %q, want search-key", got)
+	}
+	if got := transformerNestedIntField(t, tf, "dialogExtra", "VolcWebsearchResultCount"); got != 3 {
+		t.Fatalf("realtime dialogExtra.VolcWebsearchResultCount = %d, want 3", got)
 	}
 }
 
@@ -618,63 +683,6 @@ func TestDefaultBuilderRejectsVolcRealtimeMissingUpstreamModel(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), `missing upstream_model for doubao realtime`) {
 		t.Fatalf("BuildTransformer() error = %v, want missing upstream_model", err)
-	}
-}
-
-func TestDoubaoRealtimeDuplexParamDecoders(t *testing.T) {
-	tools, err := doubaoRealtimeTools(`[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]`)
-	if err != nil {
-		t.Fatalf("doubaoRealtimeTools(string) error = %v", err)
-	}
-	if len(tools) != 1 || tools[0].Name != "get_weather" || tools[0].Parameters == nil || tools[0].Parameters.Type != "object" {
-		t.Fatalf("tools = %#v", tools)
-	}
-	typedTools, err := doubaoRealtimeTools([]doubaospeech.RealtimeDuplexFunctionTool{{Type: "function", Name: "typed"}})
-	if err != nil {
-		t.Fatalf("doubaoRealtimeTools(typed) error = %v", err)
-	}
-	if len(typedTools) != 1 || typedTools[0].Name != "typed" {
-		t.Fatalf("typed tools = %#v", typedTools)
-	}
-	mapTools, err := doubaoRealtimeTools([]map[string]any{{"type": "function", "name": "mapped"}})
-	if err != nil {
-		t.Fatalf("doubaoRealtimeTools(map) error = %v", err)
-	}
-	if len(mapTools) != 1 || mapTools[0].Name != "mapped" {
-		t.Fatalf("map tools = %#v", mapTools)
-	}
-	if _, err := doubaoRealtimeTools(`{"bad":`); err == nil {
-		t.Fatal("doubaoRealtimeTools(invalid JSON) error = nil")
-	}
-	if tools, err := doubaoRealtimeTools(""); err != nil || tools != nil {
-		t.Fatalf("doubaoRealtimeTools(empty) = %#v, %v; want nil, nil", tools, err)
-	}
-
-	extension, err := doubaoRealtimeExtension(`{"dialog":{"extra":{"enable_music":true}}}`)
-	if err != nil {
-		t.Fatalf("doubaoRealtimeExtension(string) error = %v", err)
-	}
-	if extension == nil || extension.Dialog == nil || extension.Dialog.Extra == nil ||
-		extension.Dialog.Extra.EnableMusic == nil || !*extension.Dialog.Extra.EnableMusic {
-		t.Fatalf("extension = %#v", extension)
-	}
-	typedExtension := doubaospeech.RealtimeDuplexExtension{
-		Dialog: &doubaospeech.RealtimeDuplexDialogExtension{
-			Extra: &doubaospeech.RealtimeDuplexDialogExtra{AuditResponse: "audit"},
-		},
-	}
-	gotExtension, err := doubaoRealtimeExtension(typedExtension)
-	if err != nil {
-		t.Fatalf("doubaoRealtimeExtension(typed) error = %v", err)
-	}
-	if gotExtension == nil || gotExtension.Dialog == nil || gotExtension.Dialog.Extra.AuditResponse != "audit" {
-		t.Fatalf("typed extension = %#v", gotExtension)
-	}
-	if _, err := doubaoRealtimeExtension(`{"dialog":`); err == nil {
-		t.Fatal("doubaoRealtimeExtension(invalid JSON) error = nil")
-	}
-	if extension, err := doubaoRealtimeExtension(""); err != nil || extension != nil {
-		t.Fatalf("doubaoRealtimeExtension(empty) = %#v, %v; want nil, nil", extension, err)
 	}
 }
 
@@ -1005,6 +1013,60 @@ func transformerNestedStringField(t *testing.T, tf genx.Transformer, fieldNames 
 		t.Fatalf("transformer %T field path %v is %s, want string", tf, fieldNames, value.Kind())
 	}
 	return value.String()
+}
+
+func transformerNestedIntField(t *testing.T, tf genx.Transformer, fieldNames ...string) int {
+	t.Helper()
+	value := reflect.ValueOf(tf)
+	for _, fieldName := range fieldNames {
+		value = reflect.Indirect(value)
+		field := value.FieldByName(fieldName)
+		if !field.IsValid() {
+			t.Fatalf("transformer %T missing field %q", tf, fieldName)
+		}
+		value = field
+	}
+	value = reflect.Indirect(value)
+	if value.Kind() != reflect.Int {
+		t.Fatalf("transformer %T field path %v is %s, want int", tf, fieldNames, value.Kind())
+	}
+	return int(value.Int())
+}
+
+func transformerNestedIntPointerField(t *testing.T, tf genx.Transformer, fieldNames ...string) int {
+	t.Helper()
+	value := reflect.ValueOf(tf)
+	for _, fieldName := range fieldNames {
+		value = reflect.Indirect(value)
+		field := value.FieldByName(fieldName)
+		if !field.IsValid() {
+			t.Fatalf("transformer %T missing field %q", tf, fieldName)
+		}
+		value = field
+	}
+	value = reflect.Indirect(value)
+	if value.Kind() != reflect.Int {
+		t.Fatalf("transformer %T field path %v is %s, want int", tf, fieldNames, value.Kind())
+	}
+	return int(value.Int())
+}
+
+func transformerNestedBoolPointerField(t *testing.T, tf genx.Transformer, fieldNames ...string) bool {
+	t.Helper()
+	value := reflect.ValueOf(tf)
+	for _, fieldName := range fieldNames {
+		value = reflect.Indirect(value)
+		field := value.FieldByName(fieldName)
+		if !field.IsValid() {
+			t.Fatalf("transformer %T missing field %q", tf, fieldName)
+		}
+		value = field
+	}
+	value = reflect.Indirect(value)
+	if value.Kind() != reflect.Bool {
+		t.Fatalf("transformer %T field path %v is %s, want bool", tf, fieldNames, value.Kind())
+	}
+	return value.Bool()
 }
 
 func TestGeneratorInvokeUsesResolvedModel(t *testing.T) {

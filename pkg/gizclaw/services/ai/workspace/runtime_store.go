@@ -1,8 +1,15 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,6 +22,7 @@ type Runtime struct {
 	ObjectPrefix string
 	LocalDir     string
 	History      *HistoryStore
+	DialogID     string
 }
 
 type RuntimeStore interface {
@@ -27,6 +35,10 @@ type ObjectRuntimeStore struct {
 	Objects objectstore.ObjectStore
 }
 
+type runtimeMetadata struct {
+	DialogID string `json:"dialog_id,omitempty"`
+}
+
 func NewObjectRuntimeStore(objects objectstore.ObjectStore) ObjectRuntimeStore {
 	return ObjectRuntimeStore{Objects: objects}
 }
@@ -34,6 +46,9 @@ func NewObjectRuntimeStore(objects objectstore.ObjectStore) ObjectRuntimeStore {
 func (s ObjectRuntimeStore) PrepareWorkspace(ctx context.Context, workspace string) (Runtime, error) {
 	rt, err := s.GetWorkspaceRuntime(ctx, workspace)
 	if err != nil {
+		return Runtime{}, err
+	}
+	if err := s.ensureRuntimeMetadata(ctx, &rt); err != nil {
 		return Runtime{}, err
 	}
 	if rt.LocalDir != "" {
@@ -68,7 +83,77 @@ func (s ObjectRuntimeStore) GetWorkspaceRuntime(_ context.Context, workspace str
 			rt.LocalDir = filepath.Join(root, filepath.FromSlash(objectPrefix))
 		}
 	}
+	metadata, err := s.readRuntimeMetadata(rt.ObjectPrefix)
+	if err != nil {
+		return Runtime{}, err
+	}
+	rt.DialogID = metadata.DialogID
 	return rt, nil
+}
+
+func (s ObjectRuntimeStore) ensureRuntimeMetadata(ctx context.Context, rt *Runtime) error {
+	if rt == nil {
+		return fmt.Errorf("workspace: runtime is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(rt.DialogID) != "" {
+		return nil
+	}
+	dialogID, err := newRuntimeDialogID()
+	if err != nil {
+		return err
+	}
+	metadata := runtimeMetadata{DialogID: dialogID}
+	if err := s.writeRuntimeMetadata(rt.ObjectPrefix, metadata); err != nil {
+		return err
+	}
+	rt.DialogID = dialogID
+	return nil
+}
+
+func (s ObjectRuntimeStore) readRuntimeMetadata(objectPrefix string) (runtimeMetadata, error) {
+	reader, err := s.Objects.Get(runtimeMetadataObject(objectPrefix))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return runtimeMetadata{}, nil
+		}
+		return runtimeMetadata{}, fmt.Errorf("workspace: read runtime metadata: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return runtimeMetadata{}, fmt.Errorf("workspace: read runtime metadata: %w", err)
+	}
+	var metadata runtimeMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return runtimeMetadata{}, fmt.Errorf("workspace: decode runtime metadata: %w", err)
+	}
+	return metadata, nil
+}
+
+func (s ObjectRuntimeStore) writeRuntimeMetadata(objectPrefix string, metadata runtimeMetadata) error {
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("workspace: encode runtime metadata: %w", err)
+	}
+	if err := s.Objects.Put(runtimeMetadataObject(objectPrefix), bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("workspace: write runtime metadata: %w", err)
+	}
+	return nil
+}
+
+func runtimeMetadataObject(objectPrefix string) string {
+	return strings.TrimRight(objectPrefix, "/") + "/runtime.json"
+}
+
+func newRuntimeDialogID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("workspace: generate runtime dialog id: %w", err)
+	}
+	return "dialog-" + hex.EncodeToString(random[:]), nil
 }
 
 func (s ObjectRuntimeStore) DeleteWorkspaceRuntime(_ context.Context, workspace string) error {

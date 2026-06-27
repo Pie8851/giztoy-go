@@ -407,6 +407,27 @@ func (e DoubaoRealtimeAudioFormatType) Valid() bool {
 	}
 }
 
+// Defines values for DoubaoRealtimeDialogExtraVolcWebsearchType.
+const (
+	DoubaoRealtimeDialogExtraVolcWebsearchTypeWeb        DoubaoRealtimeDialogExtraVolcWebsearchType = "web"
+	DoubaoRealtimeDialogExtraVolcWebsearchTypeWebAgent   DoubaoRealtimeDialogExtraVolcWebsearchType = "web_agent"
+	DoubaoRealtimeDialogExtraVolcWebsearchTypeWebSummary DoubaoRealtimeDialogExtraVolcWebsearchType = "web_summary"
+)
+
+// Valid indicates whether the value is a known member of the DoubaoRealtimeDialogExtraVolcWebsearchType enum.
+func (e DoubaoRealtimeDialogExtraVolcWebsearchType) Valid() bool {
+	switch e {
+	case DoubaoRealtimeDialogExtraVolcWebsearchTypeWeb:
+		return true
+	case DoubaoRealtimeDialogExtraVolcWebsearchTypeWebAgent:
+		return true
+	case DoubaoRealtimeDialogExtraVolcWebsearchTypeWebSummary:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DoubaoRealtimeFunctionToolType.
 const (
 	DoubaoRealtimeFunctionToolTypeFunction DoubaoRealtimeFunctionToolType = "function"
@@ -1682,6 +1703,43 @@ type DeviceInfo struct {
 	Sn       *string       `json:"sn,omitempty"`
 }
 
+// DoubaoRealtimeAIGCMetadata defines model for DoubaoRealtimeAIGCMetadata.
+type DoubaoRealtimeAIGCMetadata struct {
+	ContentProducer   *string `json:"content_producer,omitempty"`
+	ContentPropagator *string `json:"content_propagator,omitempty"`
+	Enable            *bool   `json:"enable,omitempty"`
+	ProduceId         *string `json:"produce_id,omitempty"`
+	PropagateId       *string `json:"propagate_id,omitempty"`
+}
+
+// DoubaoRealtimeASRContext defines model for DoubaoRealtimeASRContext.
+type DoubaoRealtimeASRContext struct {
+	CorrectWords *map[string]string          `json:"correct_words,omitempty"`
+	Hotwords     *[]DoubaoRealtimeASRHotword `json:"hotwords,omitempty"`
+}
+
+// DoubaoRealtimeASRExtension defines model for DoubaoRealtimeASRExtension.
+type DoubaoRealtimeASRExtension struct {
+	Extra *DoubaoRealtimeASRExtra `json:"extra,omitempty"`
+}
+
+// DoubaoRealtimeASRExtra defines model for DoubaoRealtimeASRExtra.
+type DoubaoRealtimeASRExtra struct {
+	BoostingTableId       *string                   `json:"boosting_table_id,omitempty"`
+	BoostingTableName     *string                   `json:"boosting_table_name,omitempty"`
+	Context               *DoubaoRealtimeASRContext `json:"context,omitempty"`
+	EnableAsrTwopass      *bool                     `json:"enable_asr_twopass,omitempty"`
+	EnableCustomVad       *bool                     `json:"enable_custom_vad,omitempty"`
+	EndSmoothWindowMs     *int                      `json:"end_smooth_window_ms,omitempty"`
+	RegexCorrectTableId   *string                   `json:"regex_correct_table_id,omitempty"`
+	RegexCorrectTableName *string                   `json:"regex_correct_table_name,omitempty"`
+}
+
+// DoubaoRealtimeASRHotword defines model for DoubaoRealtimeASRHotword.
+type DoubaoRealtimeASRHotword struct {
+	Word string `json:"word"`
+}
+
 // DoubaoRealtimeAudio defines model for DoubaoRealtimeAudio.
 type DoubaoRealtimeAudio struct {
 	Input  DoubaoRealtimeAudioInput  `json:"input"`
@@ -1717,14 +1775,27 @@ type DoubaoRealtimeDialogExtension struct {
 
 // DoubaoRealtimeDialogExtra defines model for DoubaoRealtimeDialogExtra.
 type DoubaoRealtimeDialogExtra struct {
-	AuditResponse      *string `json:"audit_response,omitempty"`
-	EnableLoudnessNorm *bool   `json:"enable_loudness_norm,omitempty"`
-	EnableMusic        *bool   `json:"enable_music,omitempty"`
+	AuditResponse                *string                                     `json:"audit_response,omitempty"`
+	EnableConversationTruncate   *bool                                       `json:"enable_conversation_truncate,omitempty"`
+	EnableLoudnessNorm           *bool                                       `json:"enable_loudness_norm,omitempty"`
+	EnableMusic                  *bool                                       `json:"enable_music,omitempty"`
+	EnableUserQueryExit          *bool                                       `json:"enable_user_query_exit,omitempty"`
+	EnableVolcWebsearch          *bool                                       `json:"enable_volc_websearch,omitempty"`
+	StrictAudit                  *bool                                       `json:"strict_audit,omitempty"`
+	VolcWebsearchBotId           *string                                     `json:"volc_websearch_bot_id,omitempty"`
+	VolcWebsearchNoResultMessage *string                                     `json:"volc_websearch_no_result_message,omitempty"`
+	VolcWebsearchResultCount     *int                                        `json:"volc_websearch_result_count,omitempty"`
+	VolcWebsearchType            *DoubaoRealtimeDialogExtraVolcWebsearchType `json:"volc_websearch_type,omitempty"`
 }
+
+// DoubaoRealtimeDialogExtraVolcWebsearchType defines model for DoubaoRealtimeDialogExtra.VolcWebsearchType.
+type DoubaoRealtimeDialogExtraVolcWebsearchType string
 
 // DoubaoRealtimeExtension defines model for DoubaoRealtimeExtension.
 type DoubaoRealtimeExtension struct {
+	Asr    *DoubaoRealtimeASRExtension    `json:"asr,omitempty"`
 	Dialog *DoubaoRealtimeDialogExtension `json:"dialog,omitempty"`
+	Tts    *DoubaoRealtimeTTSExtension    `json:"tts,omitempty"`
 }
 
 // DoubaoRealtimeFunctionTool defines model for DoubaoRealtimeFunctionTool.
@@ -1753,6 +1824,18 @@ type DoubaoRealtimeJSONSchema struct {
 	Properties           *map[string]DoubaoRealtimeJSONSchema `json:"properties,omitempty"`
 	Required             *[]string                            `json:"required,omitempty"`
 	Type                 *string                              `json:"type,omitempty"`
+}
+
+// DoubaoRealtimeTTSExtension defines model for DoubaoRealtimeTTSExtension.
+type DoubaoRealtimeTTSExtension struct {
+	Extra *DoubaoRealtimeTTSExtra `json:"extra,omitempty"`
+}
+
+// DoubaoRealtimeTTSExtra defines model for DoubaoRealtimeTTSExtra.
+type DoubaoRealtimeTTSExtra struct {
+	AigcMetadata    *DoubaoRealtimeAIGCMetadata `json:"aigc_metadata,omitempty"`
+	ExplicitDialect *string                     `json:"explicit_dialect,omitempty"`
+	Tts20Model      *string                     `json:"tts_2.0_model,omitempty"`
 }
 
 // DoubaoRealtimeWorkflowSpec defines model for DoubaoRealtimeWorkflowSpec.
@@ -2676,6 +2759,7 @@ type VolcCredentialBody struct {
 	AppId              *string `json:"app_id,omitempty"`
 	OpenapiAccessKey   *string `json:"openapi_access_key,omitempty"`
 	OpenapiAccessKeyId *string `json:"openapi_access_key_id,omitempty"`
+	SearchApiKey       *string `json:"search_api_key,omitempty"`
 }
 
 // VolcTenant defines model for VolcTenant.

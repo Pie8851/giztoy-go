@@ -65,6 +65,8 @@ func testVolcCredentialBodyFromStrings(values map[string]string) apitypes.Creden
 			typed.OpenapiAccessKeyId = &value
 		case "openapi_access_key":
 			typed.OpenapiAccessKey = &value
+		case "search_api_key":
+			typed.SearchApiKey = &value
 		default:
 			panic("unsupported volc credential field: " + key)
 		}
