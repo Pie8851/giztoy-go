@@ -9,5 +9,6 @@ import-mapping:
   ./type/voice.json: github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes
   ./type/voice_provider_kind.json: github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes
   ./type/voice_source.json: github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes
+  ./type/workspace_parameters.json: github.com/GizClaw/gizclaw-go/pkg/gizclaw/api/apitypes
 output-options:
   skip-prune: true

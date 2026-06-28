@@ -1250,6 +1250,237 @@
         }
       }
     },
+    "/peer-run/workspace": {
+      "get": {
+        "operationId": "getPeerRunWorkspace",
+        "summary": "Get the active Play UI workspace runtime state",
+        "responses": {
+          "200": {
+            "description": "The active workspace runtime state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayWorkspaceState"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setPeerRunWorkspace",
+        "summary": "Set the active Play UI workspace",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayWorkspaceSetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The active workspace runtime state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayWorkspaceState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/details": {
+      "get": {
+        "operationId": "getPeerRunWorkspaceDetails",
+        "summary": "Get the selected Play UI workspace definition",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OptionalWorkspaceName"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace definition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/WorkspaceGetResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putPeerRunWorkspaceDetails",
+        "summary": "Update the selected Play UI workspace definition",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayWorkspaceDetailsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated workspace definition.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/WorkspacePutResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/reload": {
+      "post": {
+        "operationId": "reloadPeerRunWorkspace",
+        "summary": "Reload the active Play UI workspace runtime",
+        "responses": {
+          "200": {
+            "description": "The active workspace runtime state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayWorkspaceState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/mode": {
+      "put": {
+        "operationId": "setPeerRunWorkspaceMode",
+        "summary": "Set the selected Play UI workspace input mode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayWorkspaceModeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The active workspace runtime state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayWorkspaceState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/history": {
+      "get": {
+        "operationId": "listPeerRunWorkspaceHistory",
+        "summary": "List history for the active Play UI workspace",
+        "responses": {
+          "200": {
+            "description": "A page of workspace history entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/ServerListRunWorkspaceHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/history/play": {
+      "post": {
+        "operationId": "playPeerRunWorkspaceHistory",
+        "summary": "Replay one active workspace history entry through the runtime stream",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./rpc/server.json#/components/schemas/ServerPlayRunWorkspaceHistoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "History playback status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/ServerPlayRunWorkspaceHistoryResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/memory/stats": {
+      "get": {
+        "operationId": "getPeerRunWorkspaceMemoryStats",
+        "summary": "Get active workspace memory statistics",
+        "responses": {
+          "200": {
+            "description": "Active workspace memory statistics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/ServerGetRunWorkspaceMemoryStatsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/peer-run/workspace/recall": {
+      "post": {
+        "operationId": "recallPeerRunWorkspaceMemory",
+        "summary": "Recall active workspace memory hits",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./rpc/server.json#/components/schemas/ServerRunWorkspaceRecallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Active workspace recall hits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./rpc/server.json#/components/schemas/ServerRunWorkspaceRecallResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/peer-resources/workspaces/{workspace_name}/history": {
       "get": {
         "operationId": "listPeerWorkspaceHistory",
@@ -1453,6 +1684,15 @@
           "minLength": 1
         }
       },
+      "OptionalWorkspaceName": {
+        "name": "workspace_name",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
       "HistoryId": {
         "name": "history_id",
         "in": "path",
@@ -1538,6 +1778,89 @@
             "type": "boolean"
           },
           "next_cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "PlayWorkspaceSetRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workspace_name"
+        ],
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "PlayWorkspaceMode": {
+        "type": "string",
+        "enum": [
+          "push",
+          "push-to-talk",
+          "realtime"
+        ]
+      },
+      "PlayWorkspaceModeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/PlayWorkspaceMode"
+          },
+          "workspace_name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "PlayWorkspaceDetailsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "parameters": {
+            "$ref": "./type/workspace_parameters.json#/components/schemas/WorkspaceParameters"
+          },
+          "workspace_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workflow_name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "PlayWorkspaceState": {
+        "type": "object",
+        "properties": {
+          "active_workspace_name": {
+            "type": "string"
+          },
+          "agent_type": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "pending_workspace_name": {
+            "type": "string"
+          },
+          "runtime_state": {
+            "type": "string"
+          },
+          "workspace_mode": {
+            "$ref": "#/components/schemas/PlayWorkspaceMode"
+          },
+          "workspace_name": {
+            "type": "string"
+          },
+          "workflow_name": {
             "type": "string"
           }
         }

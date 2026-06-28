@@ -66,6 +66,12 @@ func TestPlayHTTPServiceClientUnavailableResponses(t *testing.T) {
 	contactCreate := rpcapi.ContactCreateRequest{DisplayName: ptr("Alice")}
 	contactPut := rpcapi.ContactPutRequest{DisplayName: ptr("Alice Zhang")}
 	offer := clientservice.WebRTCSessionDescription{Type: clientservice.Offer, Sdp: "v=0"}
+	workspaceName := "workspace-a"
+	workspaceSet := clientservice.PlayWorkspaceSetRequest{WorkspaceName: workspaceName}
+	workspaceDetails := clientservice.PlayWorkspaceDetailsRequest{WorkspaceName: &workspaceName}
+	workspaceMode := clientservice.PlayWorkspaceModeRequest{Mode: clientservice.Realtime, WorkspaceName: &workspaceName}
+	historyPlay := rpcapi.ServerPlayRunWorkspaceHistoryRequest{HistoryId: "history-a"}
+	recall := rpcapi.ServerRunWorkspaceRecallRequest{Query: "hello"}
 
 	for name, call := range map[string]func() any{
 		"workspaces": func() any {
@@ -260,6 +266,46 @@ func TestPlayHTTPServiceClientUnavailableResponses(t *testing.T) {
 			resp, _ := service.GetPeerWorkspaceHistoryAudio(ctx, clientservice.GetPeerWorkspaceHistoryAudioRequestObject{WorkspaceName: "workspace-a", HistoryId: "history-a"})
 			return resp
 		},
+		"play run workspace": func() any {
+			resp, _ := service.GetPeerRunWorkspace(ctx, clientservice.GetPeerRunWorkspaceRequestObject{})
+			return resp
+		},
+		"set play run workspace": func() any {
+			resp, _ := service.SetPeerRunWorkspace(ctx, clientservice.SetPeerRunWorkspaceRequestObject{Body: &workspaceSet})
+			return resp
+		},
+		"get play run workspace details": func() any {
+			resp, _ := service.GetPeerRunWorkspaceDetails(ctx, clientservice.GetPeerRunWorkspaceDetailsRequestObject{})
+			return resp
+		},
+		"put play run workspace details": func() any {
+			resp, _ := service.PutPeerRunWorkspaceDetails(ctx, clientservice.PutPeerRunWorkspaceDetailsRequestObject{Body: &workspaceDetails})
+			return resp
+		},
+		"play run workspace history": func() any {
+			resp, _ := service.ListPeerRunWorkspaceHistory(ctx, clientservice.ListPeerRunWorkspaceHistoryRequestObject{})
+			return resp
+		},
+		"play run workspace history play": func() any {
+			resp, _ := service.PlayPeerRunWorkspaceHistory(ctx, clientservice.PlayPeerRunWorkspaceHistoryRequestObject{Body: &historyPlay})
+			return resp
+		},
+		"play run workspace memory stats": func() any {
+			resp, _ := service.GetPeerRunWorkspaceMemoryStats(ctx, clientservice.GetPeerRunWorkspaceMemoryStatsRequestObject{})
+			return resp
+		},
+		"set play run workspace mode": func() any {
+			resp, _ := service.SetPeerRunWorkspaceMode(ctx, clientservice.SetPeerRunWorkspaceModeRequestObject{Body: &workspaceMode})
+			return resp
+		},
+		"recall play run workspace memory": func() any {
+			resp, _ := service.RecallPeerRunWorkspaceMemory(ctx, clientservice.RecallPeerRunWorkspaceMemoryRequestObject{Body: &recall})
+			return resp
+		},
+		"reload play run workspace": func() any {
+			resp, _ := service.ReloadPeerRunWorkspace(ctx, clientservice.ReloadPeerRunWorkspaceRequestObject{})
+			return resp
+		},
 		"stream voices": func() any {
 			resp, _ := service.StreamPlayableVoices(ctx, clientservice.StreamPlayableVoicesRequestObject{})
 			return resp
@@ -293,6 +339,12 @@ func TestPlayHTTPServiceConnectedClientRPCErrorResponses(t *testing.T) {
 	groupMemberPut := rpcapi.FriendGroupMemberPutRequest{Role: rpcapi.FriendGroupMemberMutableRole("admin")}
 	contactCreate := rpcapi.ContactCreateRequest{DisplayName: ptr("Alice")}
 	contactPut := rpcapi.ContactPutRequest{DisplayName: ptr("Alice Zhang")}
+	workspaceName := "workspace-a"
+	workspaceSet := clientservice.PlayWorkspaceSetRequest{WorkspaceName: workspaceName}
+	workspaceDetails := clientservice.PlayWorkspaceDetailsRequest{WorkspaceName: &workspaceName}
+	workspaceMode := clientservice.PlayWorkspaceModeRequest{Mode: clientservice.Realtime, WorkspaceName: &workspaceName}
+	historyPlay := rpcapi.ServerPlayRunWorkspaceHistoryRequest{HistoryId: "history-a"}
+	recall := rpcapi.ServerRunWorkspaceRecallRequest{Query: "hello"}
 
 	for name, call := range map[string]func() any{
 		"contacts": func() any {
@@ -401,6 +453,46 @@ func TestPlayHTTPServiceConnectedClientRPCErrorResponses(t *testing.T) {
 		},
 		"workspace history audio": func() any {
 			resp, _ := service.GetPeerWorkspaceHistoryAudio(ctx, clientservice.GetPeerWorkspaceHistoryAudioRequestObject{WorkspaceName: "workspace-a", HistoryId: "history-a"})
+			return resp
+		},
+		"play run workspace": func() any {
+			resp, _ := service.GetPeerRunWorkspace(ctx, clientservice.GetPeerRunWorkspaceRequestObject{})
+			return resp
+		},
+		"set play run workspace": func() any {
+			resp, _ := service.SetPeerRunWorkspace(ctx, clientservice.SetPeerRunWorkspaceRequestObject{Body: &workspaceSet})
+			return resp
+		},
+		"get play run workspace details": func() any {
+			resp, _ := service.GetPeerRunWorkspaceDetails(ctx, clientservice.GetPeerRunWorkspaceDetailsRequestObject{})
+			return resp
+		},
+		"put play run workspace details": func() any {
+			resp, _ := service.PutPeerRunWorkspaceDetails(ctx, clientservice.PutPeerRunWorkspaceDetailsRequestObject{Body: &workspaceDetails})
+			return resp
+		},
+		"play run workspace history": func() any {
+			resp, _ := service.ListPeerRunWorkspaceHistory(ctx, clientservice.ListPeerRunWorkspaceHistoryRequestObject{})
+			return resp
+		},
+		"play run workspace history play": func() any {
+			resp, _ := service.PlayPeerRunWorkspaceHistory(ctx, clientservice.PlayPeerRunWorkspaceHistoryRequestObject{Body: &historyPlay})
+			return resp
+		},
+		"play run workspace memory stats": func() any {
+			resp, _ := service.GetPeerRunWorkspaceMemoryStats(ctx, clientservice.GetPeerRunWorkspaceMemoryStatsRequestObject{})
+			return resp
+		},
+		"set play run workspace mode": func() any {
+			resp, _ := service.SetPeerRunWorkspaceMode(ctx, clientservice.SetPeerRunWorkspaceModeRequestObject{Body: &workspaceMode})
+			return resp
+		},
+		"recall play run workspace memory": func() any {
+			resp, _ := service.RecallPeerRunWorkspaceMemory(ctx, clientservice.RecallPeerRunWorkspaceMemoryRequestObject{Body: &recall})
+			return resp
+		},
+		"reload play run workspace": func() any {
+			resp, _ := service.ReloadPeerRunWorkspace(ctx, clientservice.ReloadPeerRunWorkspaceRequestObject{})
 			return resp
 		},
 	} {
@@ -515,8 +607,60 @@ func TestPlayHTTPServiceBodyRequiredResponses(t *testing.T) {
 			resp, _ := service.ClaimPeerReward(ctx, clientservice.ClaimPeerRewardRequestObject{})
 			return resp
 		},
+		"set play run workspace": func() any {
+			resp, _ := service.SetPeerRunWorkspace(ctx, clientservice.SetPeerRunWorkspaceRequestObject{})
+			return resp
+		},
+		"put play run workspace details": func() any {
+			resp, _ := service.PutPeerRunWorkspaceDetails(ctx, clientservice.PutPeerRunWorkspaceDetailsRequestObject{})
+			return resp
+		},
+		"play run workspace history play": func() any {
+			resp, _ := service.PlayPeerRunWorkspaceHistory(ctx, clientservice.PlayPeerRunWorkspaceHistoryRequestObject{})
+			return resp
+		},
+		"set play run workspace mode": func() any {
+			resp, _ := service.SetPeerRunWorkspaceMode(ctx, clientservice.SetPeerRunWorkspaceModeRequestObject{})
+			return resp
+		},
+		"recall play run workspace memory": func() any {
+			resp, _ := service.RecallPeerRunWorkspaceMemory(ctx, clientservice.RecallPeerRunWorkspaceMemoryRequestObject{})
+			return resp
+		},
 		"webrtc": func() any {
 			resp, _ := service.CreateWebRTCOffer(ctx, clientservice.CreateWebRTCOfferRequestObject{})
+			return resp
+		},
+	} {
+		resp := call()
+		errResp, ok := resp.(playHTTPErrorResponse)
+		if !ok {
+			t.Fatalf("%s response = %T, want playHTTPErrorResponse", name, resp)
+		}
+		if errResp.status != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want %d", name, errResp.status, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestPlayHTTPServiceWorkspaceRequestValidation(t *testing.T) {
+	service := &playHTTPService{client: func() (*gizcli.Client, error) {
+		t.Fatal("workspace validation should not dial client")
+		return nil, errors.New("unexpected dial")
+	}}
+	ctx := context.Background()
+
+	for name, call := range map[string]func() any{
+		"blank workspace name": func() any {
+			resp, _ := service.SetPeerRunWorkspace(ctx, clientservice.SetPeerRunWorkspaceRequestObject{
+				Body: &clientservice.PlayWorkspaceSetRequest{WorkspaceName: " \t "},
+			})
+			return resp
+		},
+		"invalid workspace mode": func() any {
+			resp, _ := service.SetPeerRunWorkspaceMode(ctx, clientservice.SetPeerRunWorkspaceModeRequestObject{
+				Body: &clientservice.PlayWorkspaceModeRequest{Mode: clientservice.PlayWorkspaceMode("manual")},
+			})
 			return resp
 		},
 	} {
@@ -679,6 +823,16 @@ func TestPlayHTTPErrorResponseVisitors(t *testing.T) {
 		playHTTPErrorResponse.VisitStreamPlayableVoicesResponse,
 		playHTTPErrorResponse.VisitListClientVoicesResponse,
 		playHTTPErrorResponse.VisitCreateWebRTCOfferResponse,
+		playHTTPErrorResponse.VisitGetPeerRunWorkspaceResponse,
+		playHTTPErrorResponse.VisitSetPeerRunWorkspaceResponse,
+		playHTTPErrorResponse.VisitGetPeerRunWorkspaceDetailsResponse,
+		playHTTPErrorResponse.VisitPutPeerRunWorkspaceDetailsResponse,
+		playHTTPErrorResponse.VisitListPeerRunWorkspaceHistoryResponse,
+		playHTTPErrorResponse.VisitPlayPeerRunWorkspaceHistoryResponse,
+		playHTTPErrorResponse.VisitGetPeerRunWorkspaceMemoryStatsResponse,
+		playHTTPErrorResponse.VisitSetPeerRunWorkspaceModeResponse,
+		playHTTPErrorResponse.VisitRecallPeerRunWorkspaceMemoryResponse,
+		playHTTPErrorResponse.VisitReloadPeerRunWorkspaceResponse,
 	}
 	for i, visit := range visitors {
 		app := fiber.New(fiber.Config{DisableStartupMessage: true})
@@ -803,6 +957,92 @@ func TestPlayRPCErrorStatus(t *testing.T) {
 	}
 	if got := playHTTPError(rpcapi.Error{Code: rpcapi.RPCErrorCodeNotFound, Message: "missing"}); got.status != http.StatusNotFound {
 		t.Fatalf("playHTTPError status = %d", got.status)
+	}
+}
+
+func TestClientPlayWorkspaceParametersWithModePreservesTypedFields(t *testing.T) {
+	var flowcraft rpcapi.WorkspaceParameters
+	if err := flowcraft.FromFlowcraftWorkspaceParameters(rpcapi.FlowcraftWorkspaceParameters{
+		GenerateModel: ptr("chat"),
+	}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
+	updated, err := clientPlayWorkspaceParametersWithMode(&flowcraft, "realtime")
+	if err != nil {
+		t.Fatalf("flowcraft mode update error = %v", err)
+	}
+	flowcraftTyped, err := updated.AsFlowcraftWorkspaceParameters()
+	if err != nil {
+		t.Fatalf("decode updated flowcraft params: %v", err)
+	}
+	if flowcraftTyped.Input == nil || *flowcraftTyped.Input != rpcapi.WorkspaceInputModeRealtime {
+		t.Fatalf("flowcraft input = %v, want realtime", flowcraftTyped.Input)
+	}
+	if flowcraftTyped.GenerateModel == nil || *flowcraftTyped.GenerateModel != "chat" {
+		t.Fatalf("flowcraft generate_model = %v, want chat", flowcraftTyped.GenerateModel)
+	}
+
+	var doubao rpcapi.WorkspaceParameters
+	if err := doubao.FromDoubaoRealtimeWorkspaceParameters(rpcapi.DoubaoRealtimeWorkspaceParameters{
+		Model: ptr("voice"),
+	}); err != nil {
+		t.Fatalf("FromDoubaoRealtimeWorkspaceParameters() error = %v", err)
+	}
+	updated, err = clientPlayWorkspaceParametersWithMode(&doubao, "push")
+	if err != nil {
+		t.Fatalf("doubao mode update error = %v", err)
+	}
+	doubaoTyped, err := updated.AsDoubaoRealtimeWorkspaceParameters()
+	if err != nil {
+		t.Fatalf("decode updated doubao params: %v", err)
+	}
+	if doubaoTyped.Input == nil || *doubaoTyped.Input != rpcapi.WorkspaceInputModePushToTalk {
+		t.Fatalf("doubao input = %v, want push-to-talk", doubaoTyped.Input)
+	}
+	if doubaoTyped.Model == nil || *doubaoTyped.Model != "voice" {
+		t.Fatalf("doubao model = %v, want voice", doubaoTyped.Model)
+	}
+}
+
+func TestClientPlayWorkspaceParametersInputModeMapsToUIMode(t *testing.T) {
+	var params rpcapi.WorkspaceParameters
+	if err := params.FromFlowcraftWorkspaceParameters(rpcapi.FlowcraftWorkspaceParameters{
+		Input: ptr(rpcapi.WorkspaceInputModePushToTalk),
+	}); err != nil {
+		t.Fatalf("FromFlowcraftWorkspaceParameters() error = %v", err)
+	}
+	if got := clientPlayWorkspaceParametersInputMode(&params); got == nil || *got != clientservice.Push {
+		t.Fatalf("input mode = %v, want push", got)
+	}
+
+	updated, err := clientPlayWorkspaceParametersWithMode(&params, "real-time")
+	if err != nil {
+		t.Fatalf("mode update error = %v", err)
+	}
+	if got := clientPlayWorkspaceParametersInputMode(updated); got == nil || *got != clientservice.Realtime {
+		t.Fatalf("input mode = %v, want realtime", got)
+	}
+}
+
+func TestSelectedPlayWorkspaceNameFromStatePriority(t *testing.T) {
+	selected := " selected "
+	active := "active"
+	pending := "pending"
+	if got := selectedPlayWorkspaceNameFromState(&rpcapi.ServerGetRunWorkspaceResponse{
+		SelectedWorkspaceName: &selected,
+		ActiveWorkspaceName:   &active,
+		PendingWorkspaceName:  &pending,
+	}); got != "selected" {
+		t.Fatalf("selected workspace = %q, want selected", got)
+	}
+	if got := selectedPlayWorkspaceNameFromState(&rpcapi.ServerGetRunWorkspaceResponse{
+		ActiveWorkspaceName:  &active,
+		PendingWorkspaceName: &pending,
+	}); got != active {
+		t.Fatalf("active workspace = %q, want %q", got, active)
+	}
+	if got := selectedPlayWorkspaceNameFromState(nil); got != "" {
+		t.Fatalf("nil state workspace = %q, want empty", got)
 	}
 }
 

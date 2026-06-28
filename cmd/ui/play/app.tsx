@@ -41,10 +41,14 @@ import {
   deletePeerFriendGroupMember,
   deletePeerPet,
   feedPeerPet,
+  createWebRtcOffer,
   getPeerFriendGroup,
   getPeerFriendGroupInviteToken,
   getPeerFriendInviteToken,
   getPeerWorkspaceHistoryAudio,
+  getPeerRunWorkspace,
+  getPeerRunWorkspaceDetails,
+  getPeerRunWorkspaceMemoryStats,
   joinPeerFriendGroup,
   getPeerReward,
   getPeerWallet,
@@ -64,10 +68,17 @@ import {
   listPeerWorkspaceHistory,
   listPeerWorkflows,
   listPeerWorkspaces,
+  listPeerRunWorkspaceHistory,
+  playPeerRunWorkspaceHistory,
   playWithPeerPet,
   putPeerContact,
   putPeerFriendGroupMember,
   putPeerPet,
+  putPeerRunWorkspaceDetails,
+  recallPeerRunWorkspaceMemory,
+  reloadPeerRunWorkspace,
+  setPeerRunWorkspace,
+  setPeerRunWorkspaceMode,
   streamPlayableVoices as streamPlayableVoicesSDK,
   washPeerPet,
   type ContactObject,
@@ -78,7 +89,16 @@ import {
   type FriendInviteTokenGetResponse,
   type FriendObject,
   type Firmware,
+  type PeerRunHistoryEntry,
+  type PeerRunMemoryStatsResponse,
+  type PeerRunRecallHit,
+  type PeerRunRecallResponse,
+  type PlayWorkspaceMode,
+  type PlayWorkspaceState,
   type PlayVoiceStreamEvent,
+  type WebRtcSessionDescription,
+  type Workspace,
+  type WorkspaceParameters,
 } from "@gizclaw/clientservice";
 
 import { expectData, toMessage } from "./components/api";
@@ -241,72 +261,11 @@ type StoredHistory = {
   }>;
 };
 
-type ActiveWorkspaceState = {
-  active_workspace_name?: string;
-  agent_type?: string;
-  message?: string;
-  pending_workspace_name?: string;
-  runtime_state?: string;
-  workspace_mode?: WorkspaceChatMode;
-  workspace_name?: string | null;
-  workflow_name?: string;
-};
-
-type WorkspaceChatMode = "push" | "realtime";
-
-type WorkspaceDetails = {
-  display_name?: string;
-  name: string;
-  parameters?: Record<string, unknown>;
-  workflow_name: string;
-};
-
-type WorkspaceHistoryEntry = {
-  created_at?: string;
-  gear_id?: string;
-  id: string;
-  name: string;
-  replay_available?: boolean;
-  text?: string;
-  type: "agent" | "gear";
-};
-
 type SocialChatTarget = {
   id: string;
   kind: "friend" | "group";
   title: string;
   workspaceName: string;
-};
-
-type WorkspaceMemoryStats = {
-  available?: boolean;
-  backend?: string;
-  embedding_status?: string;
-  enabled?: boolean;
-  index_status?: string;
-  item_count?: number;
-  last_updated_at?: string;
-  storage_bytes?: number;
-  updated_at?: string;
-};
-
-type WorkspaceRecallHit = {
-  id: string;
-  metadata?: Record<string, unknown>;
-  score?: number;
-  snippet?: string;
-  created_at?: string;
-  source_id?: string;
-  timestamp?: string;
-};
-
-type WorkspaceRecallResponse = {
-  hits?: WorkspaceRecallHit[];
-};
-
-type WebRTCSessionDescription = {
-  sdp: string;
-  type: RTCSdpType;
 };
 
 type PeerStreamEvent = {
@@ -1564,8 +1523,8 @@ function SocialChatDrawer({
   const [friends, setFriends] = useState<FriendObject[]>([]);
   const [groups, setGroups] = useState<FriendGroupObject[]>([]);
   const [targetKey, setTargetKey] = useState("");
-  const [state, setState] = useState<ActiveWorkspaceState | null>(null);
-  const [mode, setMode] = useState<WorkspaceChatMode>("push");
+  const [state, setState] = useState<PlayWorkspaceState | null>(null);
+  const [mode, setMode] = useState<PlayWorkspaceMode>("push");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const targets = useMemo(() => [...friends.map(friendChatTarget), ...groups.map(groupChatTarget)].filter((target) => target.workspaceName !== ""), [friends, groups]);
@@ -1604,7 +1563,7 @@ function SocialChatDrawer({
     onInitialTargetChange(selectedTarget);
     setError("");
     setLoading(true);
-    void setActiveWorkspace(selectedTarget.workspaceName)
+    void expectData(setPeerRunWorkspace({ body: { workspace_name: selectedTarget.workspaceName } }))
       .then((nextState) => {
         const normalized = normalizeWorkspaceState(nextState);
         setState(normalized);
@@ -1614,7 +1573,7 @@ function SocialChatDrawer({
       .finally(() => setLoading(false));
   }, [onInitialTargetChange, open, selectedTarget?.workspaceName, selectedTarget]);
 
-  const updateWorkspaceMode = async (nextMode: WorkspaceChatMode): Promise<void> => {
+  const updateWorkspaceMode = async (nextMode: PlayWorkspaceMode): Promise<void> => {
     const workspaceName = selectedTarget?.workspaceName ?? "";
     if (workspaceName === "") {
       return;
@@ -1622,7 +1581,7 @@ function SocialChatDrawer({
     setError("");
     setLoading(true);
     try {
-      const nextState = normalizeWorkspaceState(await setActiveWorkspaceMode(nextMode, workspaceName));
+      const nextState = normalizeWorkspaceState(await expectData(setPeerRunWorkspaceMode({ body: { mode: nextMode, workspace_name: workspaceName } })));
       setState(nextState);
       setMode(nextState.workspace_mode ?? nextMode);
       toast.success("Chat mode updated", { description: nextMode === "push" ? "Push To Talk" : "Realtime Chat" });
@@ -1633,10 +1592,10 @@ function SocialChatDrawer({
     }
   };
 
-  const playHistory = async (entry: WorkspaceHistoryEntry): Promise<void> => {
+  const playHistory = async (entry: PeerRunHistoryEntry): Promise<void> => {
     try {
       requestWorkspaceAudioPlayback();
-      await playActiveWorkspaceHistory(entry.id);
+      await expectData(playPeerRunWorkspaceHistory({ body: { history_id: entry.id } }));
       toast.success("History replay started", { description: entry.id });
     } catch (err) {
       toast.error("History replay failed", { description: workspaceFeatureMessage(err) });
@@ -1717,20 +1676,20 @@ function SocialChatDrawer({
 
 function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean) => void; open: boolean }): JSX.Element {
   const [workspaces, setWorkspaces] = useState<ResourceItem[]>([]);
-  const [state, setState] = useState<ActiveWorkspaceState | null>(null);
+  const [state, setState] = useState<PlayWorkspaceState | null>(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState("");
-  const [history, setHistory] = useState<WorkspaceHistoryEntry[]>([]);
+  const [history, setHistory] = useState<PeerRunHistoryEntry[]>([]);
   const [historyError, setHistoryError] = useState("");
-  const [memory, setMemory] = useState<WorkspaceMemoryStats | null>(null);
+  const [memory, setMemory] = useState<PeerRunMemoryStatsResponse | null>(null);
   const [memoryError, setMemoryError] = useState("");
-  const [workspaceDetails, setWorkspaceDetails] = useState<WorkspaceDetails | null>(null);
-  const [workspaceDetailsError, setWorkspaceDetailsError] = useState("");
+  const [workspaceDetails, setWorkspace] = useState<Workspace | null>(null);
+  const [workspaceDetailsError, setWorkspaceError] = useState("");
   const [workspaceParametersText, setWorkspaceParametersText] = useState("{}");
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [recallQuery, setRecallQuery] = useState("");
-  const [recallHits, setRecallHits] = useState<WorkspaceRecallHit[]>([]);
+  const [recallHits, setRecallHits] = useState<PeerRunRecallHit[]>([]);
   const [recallError, setRecallError] = useState("");
-  const [mode, setMode] = useState<WorkspaceChatMode>("push");
+  const [mode, setMode] = useState<PlayWorkspaceMode>("push");
   const [workspaceTab, setWorkspaceTab] = useState("chat");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1743,22 +1702,22 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
   const canSetWorkspace = pendingDirty && !loading;
   const canReloadWorkspace = currentWorkspace !== "" && !pendingDirty && !loading;
 
-  const loadWorkspaceDetails = useCallback(async (workspaceName: string) => {
+  const loadWorkspace = useCallback(async (workspaceName: string) => {
     const name = workspaceName.trim();
     if (name === "") {
-      setWorkspaceDetails(null);
+      setWorkspace(null);
       setWorkspaceParametersText("{}");
-      setWorkspaceDetailsError("");
+      setWorkspaceError("");
       return;
     }
     try {
-      const details = await getWorkspaceDetails(name);
-      setWorkspaceDetails(details);
+      const details = await expectData(getPeerRunWorkspaceDetails({ query: { workspace_name: name } }));
+      setWorkspace(details);
       setWorkspaceParametersText(formatWorkspaceParameters(details.parameters));
-      setWorkspaceDetailsError("");
+      setWorkspaceError("");
     } catch (err) {
-      setWorkspaceDetails(null);
-      setWorkspaceDetailsError(workspaceFeatureMessage(err));
+      setWorkspace(null);
+      setWorkspaceError(workspaceFeatureMessage(err));
     }
   }, []);
 
@@ -1773,9 +1732,9 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
       return;
     }
 
-    const [nextHistory, nextMemory] = await Promise.allSettled([getActiveWorkspaceHistory(), getActiveWorkspaceMemoryStats()]);
+    const [nextHistory, nextMemory] = await Promise.allSettled([expectData(listPeerRunWorkspaceHistory()), expectData(getPeerRunWorkspaceMemoryStats())]);
     if (nextHistory.status === "fulfilled") {
-      setHistory(nextHistory.value.items ?? nextHistory.value.data ?? []);
+      setHistory(nextHistory.value.items ?? []);
     } else {
       setHistory([]);
       setHistoryError(workspaceFeatureMessage(nextHistory.reason));
@@ -1792,20 +1751,20 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     setLoading(true);
     setError("");
     try {
-      const [workspacePage, workspaceState] = await Promise.all([listPeerResourcePage("workspaces", ""), getActiveWorkspace()]);
+      const [workspacePage, workspaceState] = await Promise.all([listPeerResourcePage("workspaces", ""), expectData(getPeerRunWorkspace())]);
       const nextState = normalizeWorkspaceState(workspaceState);
       setWorkspaces(sortWorkspacesByActivity(workspacePage.items ?? workspacePage.data ?? []));
       setState(nextState);
       setSelectedWorkspace(nextState.workspace_name ?? "");
       setMode(nextState.workspace_mode ?? "push");
-      await loadWorkspaceDetails(nextState.workspace_name ?? "");
+      await loadWorkspace(nextState.workspace_name ?? "");
       await loadWorkspaceIntrospection(nextState.active_workspace_name ?? nextState.workspace_name ?? "");
     } catch (err) {
       setError(toMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [loadWorkspaceDetails, loadWorkspaceIntrospection]);
+  }, [loadWorkspace, loadWorkspaceIntrospection]);
 
   useEffect(() => {
     if (open) {
@@ -1821,11 +1780,11 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     setError("");
     setLoading(true);
     try {
-      const nextState = normalizeWorkspaceState(await setActiveWorkspace(workspaceName));
+      const nextState = normalizeWorkspaceState(await expectData(setPeerRunWorkspace({ body: { workspace_name: workspaceName } })));
       setState(nextState);
       setSelectedWorkspace(nextState.workspace_name ?? workspaceName);
       setMode(nextState.workspace_mode ?? "push");
-      await loadWorkspaceDetails(nextState.workspace_name ?? workspaceName);
+      await loadWorkspace(nextState.workspace_name ?? workspaceName);
       await loadWorkspaceIntrospection(nextState.active_workspace_name ?? "");
       toast.success("Workspace selection updated", { description: workspaceName });
     } catch (err) {
@@ -1839,11 +1798,11 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     setError("");
     setLoading(true);
     try {
-      const nextState = normalizeWorkspaceState(await reloadActiveWorkspace());
+      const nextState = normalizeWorkspaceState(await expectData(reloadPeerRunWorkspace()));
       setState(nextState);
       setSelectedWorkspace(nextState.workspace_name ?? "");
       setMode(nextState.workspace_mode ?? "push");
-      await loadWorkspaceDetails(nextState.workspace_name ?? "");
+      await loadWorkspace(nextState.workspace_name ?? "");
       await loadWorkspaceIntrospection(nextState.active_workspace_name ?? nextState.workspace_name ?? "");
       toast.success("Workspace runtime reloaded", { description: nextState.active_workspace_name ?? nextState.workspace_name ?? "" });
     } catch (err) {
@@ -1853,11 +1812,11 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     }
   };
 
-  const playHistory = async (entry: WorkspaceHistoryEntry): Promise<void> => {
+  const playHistory = async (entry: PeerRunHistoryEntry): Promise<void> => {
     setHistoryError("");
     try {
       requestWorkspaceAudioPlayback();
-      await playActiveWorkspaceHistory(entry.id);
+      await expectData(playPeerRunWorkspaceHistory({ body: { history_id: entry.id } }));
       setWorkspaceTab("chat");
       toast.success("History replay started", { description: entry.id });
     } catch (err) {
@@ -1881,7 +1840,7 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     setRecallError("");
     setLoading(true);
     try {
-      const response = await recallActiveWorkspace(query);
+      const response = await expectData(recallPeerRunWorkspaceMemory({ body: { limit: 10, query } }));
       setRecallHits(response.hits ?? []);
     } catch (err) {
       setRecallHits([]);
@@ -1891,15 +1850,15 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     }
   };
 
-  const updateWorkspaceMode = async (nextMode: WorkspaceChatMode): Promise<void> => {
+  const updateWorkspaceMode = async (nextMode: PlayWorkspaceMode): Promise<void> => {
     setError("");
     setLoading(true);
     try {
-      const nextState = normalizeWorkspaceState(await setActiveWorkspaceMode(nextMode, currentWorkspace || selectedWorkspace));
+      const nextState = normalizeWorkspaceState(await expectData(setPeerRunWorkspaceMode({ body: { mode: nextMode, workspace_name: currentWorkspace || selectedWorkspace } })));
       setState(nextState);
       setSelectedWorkspace(nextState.workspace_name ?? "");
       setMode(nextState.workspace_mode ?? nextMode);
-      await loadWorkspaceDetails(nextState.workspace_name ?? "");
+      await loadWorkspace(nextState.workspace_name ?? "");
       await loadWorkspaceIntrospection(nextState.active_workspace_name ?? nextState.workspace_name ?? "");
       toast.success("Workspace mode reloaded", { description: nextMode === "push" ? "Push To Talk" : "Realtime Chat" });
     } catch (err) {
@@ -1909,33 +1868,33 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
     }
   };
 
-  const saveWorkspaceDetails = async (): Promise<void> => {
+  const saveWorkspace = async (): Promise<void> => {
     const workspaceName = (workspaceDetails?.name ?? currentWorkspace ?? selectedWorkspace).trim();
     if (workspaceName === "") {
-      setWorkspaceDetailsError("Select a workspace before saving.");
+      setWorkspaceError("Select a workspace before saving.");
       return;
     }
-    let parameters: Record<string, unknown>;
+    let parameters: WorkspaceParameters;
     try {
       parameters = parseWorkspaceParameters(workspaceParametersText);
     } catch (err) {
-      setWorkspaceDetailsError(toMessage(err));
+      setWorkspaceError(toMessage(err));
       return;
     }
     setWorkspaceSaving(true);
     try {
-      const updated = await updateWorkspaceDetails({
+      const updated = await expectData(putPeerRunWorkspaceDetails({ body: {
         parameters,
         workspace_name: workspaceName,
         workflow_name: workspaceDetails?.workflow_name ?? "",
-      });
-      setWorkspaceDetails(updated);
+      } }));
+      setWorkspace(updated);
       setWorkspaceParametersText(formatWorkspaceParameters(updated.parameters));
-      setWorkspaceDetailsError("");
+      setWorkspaceError("");
       toast.success("Workspace saved", { description: "Reload the workspace runtime to apply changes." });
       await loadDrawer();
     } catch (err) {
-      setWorkspaceDetailsError(workspaceFeatureMessage(err));
+      setWorkspaceError(workspaceFeatureMessage(err));
     } finally {
       setWorkspaceSaving(false);
     }
@@ -1986,7 +1945,7 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <WorkspaceInfoItem label="Display name" value={workspaceDetails?.display_name || "-"} />
+              <WorkspaceInfoItem label="Workspace" value={workspaceDetails?.name || "-"} />
               <WorkspaceInfoItem label="Workspace ID" value={currentWorkspace || selectedWorkspace || "-"} />
               <WorkspaceInfoItem label="Selected" value={selectedWorkspace || "-"} />
               <WorkspaceInfoItem label="Pending" value={pendingWorkspace || "-"} />
@@ -2027,15 +1986,15 @@ function WorkspaceDrawer({ onOpenChange, open }: { onOpenChange: (open: boolean)
               <WorkspaceRecallPanel error={recallError} hits={recallHits} loading={loading} query={recallQuery} onQueryChange={setRecallQuery} onRun={runRecall} />
             </TabsContent>
             <TabsContent forceMount className={cn("m-0 min-h-0 flex-1", workspaceTab !== "settings" && "hidden")} value="settings">
-              <WorkspaceDetailsPanel
+              <WorkspacePanel
                 details={workspaceDetails}
                 error={workspaceDetailsError}
                 loading={loading}
                 parametersText={workspaceParametersText}
                 saving={workspaceSaving}
                 onParametersChange={setWorkspaceParametersText}
-                onRefresh={() => void loadWorkspaceDetails(currentWorkspace || selectedWorkspace)}
-                onSave={() => void saveWorkspaceDetails()}
+                onRefresh={() => void loadWorkspace(currentWorkspace || selectedWorkspace)}
+                onSave={() => void saveWorkspace()}
               />
             </TabsContent>
           </Tabs>
@@ -2054,7 +2013,7 @@ function WorkspaceInfoItem({ label, value }: { label: string; value: string }): 
   );
 }
 
-function WorkspaceDetailsPanel({
+function WorkspacePanel({
   details,
   error,
   loading,
@@ -2064,7 +2023,7 @@ function WorkspaceDetailsPanel({
   parametersText,
   saving,
 }: {
-  details: WorkspaceDetails | null;
+  details: Workspace | null;
   error: string;
   loading: boolean;
   onParametersChange: (value: string) => void;
@@ -2086,7 +2045,7 @@ function WorkspaceDetailsPanel({
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between gap-3 text-sm">
               <span>Workspace Info</span>
-              {details != null ? <Badge variant="outline">{details.display_name || details.name}</Badge> : null}
+              {details != null ? <Badge variant="outline">{details.name}</Badge> : null}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -2095,7 +2054,6 @@ function WorkspaceDetailsPanel({
             ) : (
               <div className="flex flex-col gap-5">
                 <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                  <WorkspaceInfoItem label="Display name" value={details.display_name || "-"} />
                   <WorkspaceInfoItem label="Workspace ID" value={details.name || "-"} />
                   <WorkspaceInfoItem label="Workflow" value={details.workflow_name || "-"} />
                 </div>
@@ -2186,11 +2144,11 @@ function WorkspaceChatPanel({
   state,
   title = "Conversation",
 }: {
-  mode: WorkspaceChatMode;
+  mode: PlayWorkspaceMode;
   onHistoryChange?: (lastUpdatedAt?: string) => void;
-  onModeChange: (value: WorkspaceChatMode) => void;
+  onModeChange: (value: PlayWorkspaceMode) => void;
   showTurns?: boolean;
-  state: ActiveWorkspaceState | null;
+  state: PlayWorkspaceState | null;
   title?: string;
 }): JSX.Element {
   const activeWorkspaceName = state?.active_workspace_name ?? "";
@@ -2686,7 +2644,7 @@ function WorkspaceChatPanel({
   );
 }
 
-function WorkspaceHistoryPanel({ error, history, loading, onPlay }: { error: string; history: WorkspaceHistoryEntry[]; loading: boolean; onPlay: (entry: WorkspaceHistoryEntry) => Promise<void> }): JSX.Element {
+function WorkspaceHistoryPanel({ error, history, loading, onPlay }: { error: string; history: PeerRunHistoryEntry[]; loading: boolean; onPlay: (entry: PeerRunHistoryEntry) => Promise<void> }): JSX.Element {
   if (loading && history.length === 0) {
     return <LoadingGrid />;
   }
@@ -2758,7 +2716,7 @@ function WorkspaceModeOption({ current, label, onSelect }: { current: boolean; l
   );
 }
 
-function WorkspaceMemoryPanel({ error, memory }: { error: string; memory: WorkspaceMemoryStats | null }): JSX.Element {
+function WorkspaceMemoryPanel({ error, memory }: { error: string; memory: PeerRunMemoryStatsResponse | null }): JSX.Element {
   if (error !== "") {
     return <EmptyMessage description={error} title="Memory unavailable" />;
   }
@@ -2790,7 +2748,7 @@ function WorkspaceMemoryPanel({ error, memory }: { error: string; memory: Worksp
   );
 }
 
-function WorkspaceRecallPanel({ error, hits, loading, onQueryChange, onRun, query }: { error: string; hits: WorkspaceRecallHit[]; loading: boolean; onQueryChange: (value: string) => void; onRun: () => Promise<void>; query: string }): JSX.Element {
+function WorkspaceRecallPanel({ error, hits, loading, onQueryChange, onRun, query }: { error: string; hits: PeerRunRecallHit[]; loading: boolean; onQueryChange: (value: string) => void; onRun: () => Promise<void>; query: string }): JSX.Element {
   return (
     <div className="flex h-full flex-col gap-4 p-5">
       <div className="flex gap-2">
@@ -3594,9 +3552,9 @@ function ChatHistoryTimeline({
   onPlay,
 }: {
   error: string;
-  history: WorkspaceHistoryEntry[];
+  history: PeerRunHistoryEntry[];
   loading: boolean;
-  onPlay: (entry: WorkspaceHistoryEntry) => Promise<void>;
+  onPlay: (entry: PeerRunHistoryEntry) => Promise<void>;
 }): JSX.Element {
   if (loading && history.length === 0) {
     return <LoadingGrid />;
@@ -3642,13 +3600,13 @@ function ChatHistoryTimeline({
 
 function useWorkspaceHistory(workspaceName: string, order: "asc" | "desc"): {
   error: string;
-  items: WorkspaceHistoryEntry[];
+  items: PeerRunHistoryEntry[];
   lastUpdatedAt: string;
   loadNewer: (lastUpdatedAt?: string) => void;
   loading: boolean;
   refresh: () => void;
 } {
-  const [items, setItems] = useState<WorkspaceHistoryEntry[]>([]);
+  const [items, setItems] = useState<PeerRunHistoryEntry[]>([]);
   const [nextCursor, setNextCursor] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -3702,8 +3660,8 @@ function useWorkspaceHistory(workspaceName: string, order: "asc" | "desc"): {
   };
 }
 
-function mergeHistoryEntries(current: WorkspaceHistoryEntry[], incoming: WorkspaceHistoryEntry[], order: "asc" | "desc"): WorkspaceHistoryEntry[] {
-  const byID = new Map<string, WorkspaceHistoryEntry>();
+function mergeHistoryEntries(current: PeerRunHistoryEntry[], incoming: PeerRunHistoryEntry[], order: "asc" | "desc"): PeerRunHistoryEntry[] {
+  const byID = new Map<string, PeerRunHistoryEntry>();
   for (const item of current) {
     byID.set(item.id, item);
   }
@@ -3716,7 +3674,7 @@ function mergeHistoryEntries(current: WorkspaceHistoryEntry[], incoming: Workspa
   });
 }
 
-function historyEntrySource(entry: WorkspaceHistoryEntry): string {
+function historyEntrySource(entry: PeerRunHistoryEntry): string {
   if (entry.type === "gear" && entry.gear_id != null && entry.gear_id !== "") {
     return `${entry.name} / ${entry.gear_id}`;
   }
@@ -3861,8 +3819,8 @@ function deleteFriendGroupMember(id: string, memberID: string): Promise<FriendGr
   return expectData(deletePeerFriendGroupMember({ path: { id, member_id: memberID } })) as Promise<FriendGroupMemberObject>;
 }
 
-function listWorkspaceHistoryPage(workspaceName: string, cursor: string, order: "asc" | "desc"): Promise<PageResponse<WorkspaceHistoryEntry>> {
-  return expectData(listPeerWorkspaceHistory({ path: { workspace_name: workspaceName }, query: { ...pageQuery(cursor), order } })) as Promise<PageResponse<WorkspaceHistoryEntry>>;
+function listWorkspaceHistoryPage(workspaceName: string, cursor: string, order: "asc" | "desc"): Promise<PageResponse<PeerRunHistoryEntry>> {
+  return expectData(listPeerWorkspaceHistory({ path: { workspace_name: workspaceName }, query: { ...pageQuery(cursor), order } })) as Promise<PageResponse<PeerRunHistoryEntry>>;
 }
 
 async function playWorkspaceHistoryAsset(workspaceName: string, historyID: string): Promise<void> {
@@ -5112,69 +5070,6 @@ async function listPeerResourcePage(name: string, cursor: string): Promise<PageR
   }
 }
 
-function getActiveWorkspace(): Promise<ActiveWorkspaceState> {
-  return fetchJSON<ActiveWorkspaceState>("/peer-run/workspace");
-}
-
-function setActiveWorkspace(workspaceName: string): Promise<ActiveWorkspaceState> {
-  return fetchJSON<ActiveWorkspaceState>("/peer-run/workspace", {
-    body: JSON.stringify({ workspace_name: workspaceName }),
-    headers: { "Content-Type": "application/json" },
-    method: "PUT",
-  });
-}
-
-function reloadActiveWorkspace(): Promise<ActiveWorkspaceState> {
-  return fetchJSON<ActiveWorkspaceState>("/peer-run/workspace/reload", {
-    method: "POST",
-  });
-}
-
-function setActiveWorkspaceMode(mode: WorkspaceChatMode, workspaceName?: string): Promise<ActiveWorkspaceState> {
-  return fetchJSON<ActiveWorkspaceState>("/peer-run/workspace/mode", {
-    body: JSON.stringify({ mode, workspace_name: workspaceName }),
-    headers: { "Content-Type": "application/json" },
-    method: "PUT",
-  });
-}
-
-function getWorkspaceDetails(workspaceName?: string): Promise<WorkspaceDetails> {
-  const query = workspaceName == null || workspaceName.trim() === "" ? "" : `?workspace_name=${encodeURIComponent(workspaceName.trim())}`;
-  return fetchJSON<WorkspaceDetails>(`/peer-run/workspace/details${query}`);
-}
-
-function updateWorkspaceDetails(request: { parameters: Record<string, unknown>; workspace_name: string; workflow_name: string }): Promise<WorkspaceDetails> {
-  return fetchJSON<WorkspaceDetails>("/peer-run/workspace/details", {
-    body: JSON.stringify(request),
-    headers: { "Content-Type": "application/json" },
-    method: "PUT",
-  });
-}
-
-function getActiveWorkspaceHistory(): Promise<PageResponse<WorkspaceHistoryEntry>> {
-  return fetchJSON<PageResponse<WorkspaceHistoryEntry>>("/peer-run/workspace/history");
-}
-
-function playActiveWorkspaceHistory(historyID: string): Promise<{ accepted: boolean; state?: string }> {
-  return fetchJSON<{ accepted: boolean; state?: string }>("/peer-run/workspace/history/play", {
-    body: JSON.stringify({ history_id: historyID }),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-}
-
-function getActiveWorkspaceMemoryStats(): Promise<WorkspaceMemoryStats> {
-  return fetchJSON<WorkspaceMemoryStats>("/peer-run/workspace/memory/stats");
-}
-
-function recallActiveWorkspace(query: string): Promise<WorkspaceRecallResponse> {
-  return fetchJSON<WorkspaceRecallResponse>("/peer-run/workspace/recall", {
-    body: JSON.stringify({ limit: 10, query }),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-}
-
 async function createWorkspaceVoiceSession({
   onEvent,
   onRemoteStream,
@@ -5216,7 +5111,7 @@ async function createWorkspaceVoiceSession({
     if (local == null) {
       throw new Error("WebRTC offer was not created.");
     }
-    const answer = await createWebRTCOffer({ sdp: local.sdp, type: local.type });
+    const answer = await expectData(createWebRtcOffer({ body: { sdp: local.sdp, type: local.type } }));
     await pc.setRemoteDescription(answer);
     await waitForDataChannelOpen(eventChannel);
   } catch (err) {
@@ -5385,23 +5280,7 @@ function waitForDataChannelOpen(channel: RTCDataChannel): Promise<void> {
   });
 }
 
-function createWebRTCOffer(offer: WebRTCSessionDescription): Promise<WebRTCSessionDescription> {
-  return fetchJSON<WebRTCSessionDescription>("/webrtc/offer", {
-    body: JSON.stringify(offer),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-}
-
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  if (!response.ok) {
-    throw new Error(await responseErrorMessage(response));
-  }
-  return (await response.json()) as T;
-}
-
-function normalizeWorkspaceState(state: ActiveWorkspaceState): ActiveWorkspaceState {
+function normalizeWorkspaceState(state: PlayWorkspaceState): PlayWorkspaceState {
   return {
     ...state,
     runtime_state: state.runtime_state ?? (state.workspace_name == null || state.workspace_name === "" ? "no active workspace" : "unknown"),
@@ -5409,7 +5288,7 @@ function normalizeWorkspaceState(state: ActiveWorkspaceState): ActiveWorkspaceSt
   };
 }
 
-function normalizeWorkspaceMode(mode: unknown): WorkspaceChatMode {
+function normalizeWorkspaceMode(mode: unknown): PlayWorkspaceMode {
   switch (String(mode ?? "").trim().toLowerCase()) {
     case "realtime":
     case "real_time":
@@ -5425,13 +5304,13 @@ function formatWorkspaceParameters(parameters: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-function parseWorkspaceParameters(text: string): Record<string, unknown> {
+function parseWorkspaceParameters(text: string): WorkspaceParameters {
   const trimmed = text.trim();
   const parsed = trimmed === "" ? {} : JSON.parse(trimmed);
   if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Workspace parameters must be a JSON object.");
   }
-  return parsed as Record<string, unknown>;
+  return parsed as WorkspaceParameters;
 }
 
 function workspaceFeatureMessage(err: unknown): string {

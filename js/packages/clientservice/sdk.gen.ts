@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AddPeerFriendData, AddPeerFriendGroupMemberData, AddPeerFriendGroupMemberResponses, AddPeerFriendResponses, AdoptPeerPetData, AdoptPeerPetResponses, ClaimPeerRewardData, ClaimPeerRewardResponses, ClearPeerFriendGroupInviteTokenData, ClearPeerFriendGroupInviteTokenResponses, ClearPeerFriendInviteTokenData, ClearPeerFriendInviteTokenResponses, CreatePeerContactData, CreatePeerContactResponses, CreatePeerFriendGroupData, CreatePeerFriendGroupInviteTokenData, CreatePeerFriendGroupInviteTokenResponses, CreatePeerFriendGroupResponses, CreatePeerFriendInviteTokenData, CreatePeerFriendInviteTokenResponses, CreateWebRtcOfferData, CreateWebRtcOfferResponses, DeletePeerContactData, DeletePeerContactResponses, DeletePeerFriendData, DeletePeerFriendGroupData, DeletePeerFriendGroupMemberData, DeletePeerFriendGroupMemberResponses, DeletePeerFriendGroupResponses, DeletePeerFriendResponses, DeletePeerPetData, DeletePeerPetResponses, FeedPeerPetData, FeedPeerPetResponses, GetPeerContactData, GetPeerContactResponses, GetPeerFriendGroupData, GetPeerFriendGroupInviteTokenData, GetPeerFriendGroupInviteTokenResponses, GetPeerFriendGroupResponses, GetPeerFriendInviteTokenData, GetPeerFriendInviteTokenResponses, GetPeerPetData, GetPeerPetResponses, GetPeerRewardData, GetPeerRewardResponses, GetPeerWalletData, GetPeerWalletResponses, GetPeerWalletTransactionData, GetPeerWalletTransactionResponses, GetPeerWorkspaceHistoryAudioData, GetPeerWorkspaceHistoryAudioResponses, GetPeerWorkspaceHistoryData, GetPeerWorkspaceHistoryResponses, JoinPeerFriendGroupData, JoinPeerFriendGroupResponses, ListClientVoicesData, ListClientVoicesResponses, ListPeerContactsData, ListPeerContactsResponses, ListPeerCredentialsData, ListPeerCredentialsResponses, ListPeerFirmwaresData, ListPeerFirmwaresResponses, ListPeerFriendGroupMembersData, ListPeerFriendGroupMembersResponses, ListPeerFriendGroupsData, ListPeerFriendGroupsResponses, ListPeerFriendsData, ListPeerFriendsResponses, ListPeerModelsData, ListPeerModelsResponses, ListPeerPetsData, ListPeerPetsResponses, ListPeerResourceNamesData, ListPeerResourceNamesResponses, ListPeerRewardsData, ListPeerRewardsResponses, ListPeerVoicesData, ListPeerVoicesResponses, ListPeerWalletTransactionsData, ListPeerWalletTransactionsResponses, ListPeerWorkflowsData, ListPeerWorkflowsResponses, ListPeerWorkspaceHistoryData, ListPeerWorkspaceHistoryResponses, ListPeerWorkspacesData, ListPeerWorkspacesResponses, PlayWithPeerPetData, PlayWithPeerPetResponses, PutPeerContactData, PutPeerContactResponses, PutPeerFriendGroupData, PutPeerFriendGroupMemberData, PutPeerFriendGroupMemberResponses, PutPeerFriendGroupResponses, PutPeerPetData, PutPeerPetResponses, StreamPlayableVoicesData, StreamPlayableVoicesResponse, StreamPlayableVoicesResponses, WashPeerPetData, WashPeerPetResponses } from './types.gen';
+import type { AddPeerFriendData, AddPeerFriendGroupMemberData, AddPeerFriendGroupMemberResponses, AddPeerFriendResponses, AdoptPeerPetData, AdoptPeerPetResponses, ClaimPeerRewardData, ClaimPeerRewardResponses, ClearPeerFriendGroupInviteTokenData, ClearPeerFriendGroupInviteTokenResponses, ClearPeerFriendInviteTokenData, ClearPeerFriendInviteTokenResponses, CreatePeerContactData, CreatePeerContactResponses, CreatePeerFriendGroupData, CreatePeerFriendGroupInviteTokenData, CreatePeerFriendGroupInviteTokenResponses, CreatePeerFriendGroupResponses, CreatePeerFriendInviteTokenData, CreatePeerFriendInviteTokenResponses, CreateWebRtcOfferData, CreateWebRtcOfferResponses, DeletePeerContactData, DeletePeerContactResponses, DeletePeerFriendData, DeletePeerFriendGroupData, DeletePeerFriendGroupMemberData, DeletePeerFriendGroupMemberResponses, DeletePeerFriendGroupResponses, DeletePeerFriendResponses, DeletePeerPetData, DeletePeerPetResponses, FeedPeerPetData, FeedPeerPetResponses, GetPeerContactData, GetPeerContactResponses, GetPeerFriendGroupData, GetPeerFriendGroupInviteTokenData, GetPeerFriendGroupInviteTokenResponses, GetPeerFriendGroupResponses, GetPeerFriendInviteTokenData, GetPeerFriendInviteTokenResponses, GetPeerPetData, GetPeerPetResponses, GetPeerRewardData, GetPeerRewardResponses, GetPeerRunWorkspaceData, GetPeerRunWorkspaceDetailsData, GetPeerRunWorkspaceDetailsResponses, GetPeerRunWorkspaceMemoryStatsData, GetPeerRunWorkspaceMemoryStatsResponses, GetPeerRunWorkspaceResponses, GetPeerWalletData, GetPeerWalletResponses, GetPeerWalletTransactionData, GetPeerWalletTransactionResponses, GetPeerWorkspaceHistoryAudioData, GetPeerWorkspaceHistoryAudioResponses, GetPeerWorkspaceHistoryData, GetPeerWorkspaceHistoryResponses, JoinPeerFriendGroupData, JoinPeerFriendGroupResponses, ListClientVoicesData, ListClientVoicesResponses, ListPeerContactsData, ListPeerContactsResponses, ListPeerCredentialsData, ListPeerCredentialsResponses, ListPeerFirmwaresData, ListPeerFirmwaresResponses, ListPeerFriendGroupMembersData, ListPeerFriendGroupMembersResponses, ListPeerFriendGroupsData, ListPeerFriendGroupsResponses, ListPeerFriendsData, ListPeerFriendsResponses, ListPeerModelsData, ListPeerModelsResponses, ListPeerPetsData, ListPeerPetsResponses, ListPeerResourceNamesData, ListPeerResourceNamesResponses, ListPeerRewardsData, ListPeerRewardsResponses, ListPeerRunWorkspaceHistoryData, ListPeerRunWorkspaceHistoryResponses, ListPeerVoicesData, ListPeerVoicesResponses, ListPeerWalletTransactionsData, ListPeerWalletTransactionsResponses, ListPeerWorkflowsData, ListPeerWorkflowsResponses, ListPeerWorkspaceHistoryData, ListPeerWorkspaceHistoryResponses, ListPeerWorkspacesData, ListPeerWorkspacesResponses, PlayPeerRunWorkspaceHistoryData, PlayPeerRunWorkspaceHistoryResponses, PlayWithPeerPetData, PlayWithPeerPetResponses, PutPeerContactData, PutPeerContactResponses, PutPeerFriendGroupData, PutPeerFriendGroupMemberData, PutPeerFriendGroupMemberResponses, PutPeerFriendGroupResponses, PutPeerPetData, PutPeerPetResponses, PutPeerRunWorkspaceDetailsData, PutPeerRunWorkspaceDetailsResponses, RecallPeerRunWorkspaceMemoryData, RecallPeerRunWorkspaceMemoryResponses, ReloadPeerRunWorkspaceData, ReloadPeerRunWorkspaceResponses, SetPeerRunWorkspaceData, SetPeerRunWorkspaceModeData, SetPeerRunWorkspaceModeResponses, SetPeerRunWorkspaceResponses, StreamPlayableVoicesData, StreamPlayableVoicesResponse, StreamPlayableVoicesResponses, WashPeerPetData, WashPeerPetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -356,6 +356,91 @@ export const deletePeerFriendGroupMember = <ThrowOnError extends boolean = false
  */
 export const putPeerFriendGroupMember = <ThrowOnError extends boolean = false>(options: Options<PutPeerFriendGroupMemberData, ThrowOnError>) => (options.client ?? client).put<PutPeerFriendGroupMemberResponses, unknown, ThrowOnError>({
     url: '/peer-resources/friend-groups/{id}/members/{member_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get the active Play UI workspace runtime state
+ */
+export const getPeerRunWorkspace = <ThrowOnError extends boolean = false>(options?: Options<GetPeerRunWorkspaceData, ThrowOnError>) => (options?.client ?? client).get<GetPeerRunWorkspaceResponses, unknown, ThrowOnError>({ url: '/peer-run/workspace', ...options });
+
+/**
+ * Set the active Play UI workspace
+ */
+export const setPeerRunWorkspace = <ThrowOnError extends boolean = false>(options: Options<SetPeerRunWorkspaceData, ThrowOnError>) => (options.client ?? client).put<SetPeerRunWorkspaceResponses, unknown, ThrowOnError>({
+    url: '/peer-run/workspace',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get the selected Play UI workspace definition
+ */
+export const getPeerRunWorkspaceDetails = <ThrowOnError extends boolean = false>(options?: Options<GetPeerRunWorkspaceDetailsData, ThrowOnError>) => (options?.client ?? client).get<GetPeerRunWorkspaceDetailsResponses, unknown, ThrowOnError>({ url: '/peer-run/workspace/details', ...options });
+
+/**
+ * Update the selected Play UI workspace definition
+ */
+export const putPeerRunWorkspaceDetails = <ThrowOnError extends boolean = false>(options: Options<PutPeerRunWorkspaceDetailsData, ThrowOnError>) => (options.client ?? client).put<PutPeerRunWorkspaceDetailsResponses, unknown, ThrowOnError>({
+    url: '/peer-run/workspace/details',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reload the active Play UI workspace runtime
+ */
+export const reloadPeerRunWorkspace = <ThrowOnError extends boolean = false>(options?: Options<ReloadPeerRunWorkspaceData, ThrowOnError>) => (options?.client ?? client).post<ReloadPeerRunWorkspaceResponses, unknown, ThrowOnError>({ url: '/peer-run/workspace/reload', ...options });
+
+/**
+ * Set the selected Play UI workspace input mode
+ */
+export const setPeerRunWorkspaceMode = <ThrowOnError extends boolean = false>(options: Options<SetPeerRunWorkspaceModeData, ThrowOnError>) => (options.client ?? client).put<SetPeerRunWorkspaceModeResponses, unknown, ThrowOnError>({
+    url: '/peer-run/workspace/mode',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List history for the active Play UI workspace
+ */
+export const listPeerRunWorkspaceHistory = <ThrowOnError extends boolean = false>(options?: Options<ListPeerRunWorkspaceHistoryData, ThrowOnError>) => (options?.client ?? client).get<ListPeerRunWorkspaceHistoryResponses, unknown, ThrowOnError>({ url: '/peer-run/workspace/history', ...options });
+
+/**
+ * Replay one active workspace history entry through the runtime stream
+ */
+export const playPeerRunWorkspaceHistory = <ThrowOnError extends boolean = false>(options: Options<PlayPeerRunWorkspaceHistoryData, ThrowOnError>) => (options.client ?? client).post<PlayPeerRunWorkspaceHistoryResponses, unknown, ThrowOnError>({
+    url: '/peer-run/workspace/history/play',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get active workspace memory statistics
+ */
+export const getPeerRunWorkspaceMemoryStats = <ThrowOnError extends boolean = false>(options?: Options<GetPeerRunWorkspaceMemoryStatsData, ThrowOnError>) => (options?.client ?? client).get<GetPeerRunWorkspaceMemoryStatsResponses, unknown, ThrowOnError>({ url: '/peer-run/workspace/memory/stats', ...options });
+
+/**
+ * Recall active workspace memory hits
+ */
+export const recallPeerRunWorkspaceMemory = <ThrowOnError extends boolean = false>(options: Options<RecallPeerRunWorkspaceMemoryData, ThrowOnError>) => (options.client ?? client).post<RecallPeerRunWorkspaceMemoryResponses, unknown, ThrowOnError>({
+    url: '/peer-run/workspace/recall',
     ...options,
     headers: {
         'Content-Type': 'application/json',

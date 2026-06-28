@@ -85,6 +85,27 @@ func (e PeerResourceName) Valid() bool {
 	}
 }
 
+// Defines values for PlayWorkspaceMode.
+const (
+	Push       PlayWorkspaceMode = "push"
+	PushToTalk PlayWorkspaceMode = "push-to-talk"
+	Realtime   PlayWorkspaceMode = "realtime"
+)
+
+// Valid indicates whether the value is a known member of the PlayWorkspaceMode enum.
+func (e PlayWorkspaceMode) Valid() bool {
+	switch e {
+	case Push:
+		return true
+	case PushToTalk:
+		return true
+	case Realtime:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WebRTCSessionDescriptionType.
 const (
 	Answer   WebRTCSessionDescriptionType = "answer"
@@ -172,6 +193,40 @@ type PlayVoiceStreamEvent struct {
 	Voice *externalRef0.Voice `json:"voice,omitempty"`
 }
 
+// PlayWorkspaceDetailsRequest defines model for PlayWorkspaceDetailsRequest.
+type PlayWorkspaceDetailsRequest struct {
+	// Parameters Agent-specific workspace parameters. The shape is selected by agent_type.
+	Parameters    *externalRef0.WorkspaceParameters `json:"parameters,omitempty"`
+	WorkflowName  *string                           `json:"workflow_name,omitempty"`
+	WorkspaceName *string                           `json:"workspace_name,omitempty"`
+}
+
+// PlayWorkspaceMode defines model for PlayWorkspaceMode.
+type PlayWorkspaceMode string
+
+// PlayWorkspaceModeRequest defines model for PlayWorkspaceModeRequest.
+type PlayWorkspaceModeRequest struct {
+	Mode          PlayWorkspaceMode `json:"mode"`
+	WorkspaceName *string           `json:"workspace_name,omitempty"`
+}
+
+// PlayWorkspaceSetRequest defines model for PlayWorkspaceSetRequest.
+type PlayWorkspaceSetRequest struct {
+	WorkspaceName string `json:"workspace_name"`
+}
+
+// PlayWorkspaceState defines model for PlayWorkspaceState.
+type PlayWorkspaceState struct {
+	ActiveWorkspaceName  *string            `json:"active_workspace_name,omitempty"`
+	AgentType            *string            `json:"agent_type,omitempty"`
+	Message              *string            `json:"message,omitempty"`
+	PendingWorkspaceName *string            `json:"pending_workspace_name,omitempty"`
+	RuntimeState         *string            `json:"runtime_state,omitempty"`
+	WorkflowName         *string            `json:"workflow_name,omitempty"`
+	WorkspaceMode        *PlayWorkspaceMode `json:"workspace_mode,omitempty"`
+	WorkspaceName        *string            `json:"workspace_name,omitempty"`
+}
+
 // WebRTCSessionDescription defines model for WebRTCSessionDescription.
 type WebRTCSessionDescription struct {
 	Sdp  string                       `json:"sdp"`
@@ -204,6 +259,9 @@ type HistoryOrder string
 
 // Limit defines model for Limit.
 type Limit = int
+
+// OptionalWorkspaceName defines model for OptionalWorkspaceName.
+type OptionalWorkspaceName = string
 
 // PetId defines model for PetId.
 type PetId = string
@@ -317,6 +375,11 @@ type ListPeerWorkspaceHistoryParams struct {
 // ListPeerWorkspaceHistoryParamsOrder defines parameters for ListPeerWorkspaceHistory.
 type ListPeerWorkspaceHistoryParamsOrder string
 
+// GetPeerRunWorkspaceDetailsParams defines parameters for GetPeerRunWorkspaceDetails.
+type GetPeerRunWorkspaceDetailsParams struct {
+	WorkspaceName *OptionalWorkspaceName `form:"workspace_name,omitempty" json:"workspace_name,omitempty"`
+}
+
 // StreamPlayableVoicesParams defines parameters for StreamPlayableVoices.
 type StreamPlayableVoicesParams struct {
 	ProviderKind *VoiceProviderKind `form:"provider_kind,omitempty" json:"provider_kind,omitempty"`
@@ -374,6 +437,21 @@ type WashPeerPetJSONRequestBody = externalRef1.PetWashRequest
 
 // ClaimPeerRewardJSONRequestBody defines body for ClaimPeerReward for application/json ContentType.
 type ClaimPeerRewardJSONRequestBody = externalRef1.RewardClaimRequest
+
+// SetPeerRunWorkspaceJSONRequestBody defines body for SetPeerRunWorkspace for application/json ContentType.
+type SetPeerRunWorkspaceJSONRequestBody = PlayWorkspaceSetRequest
+
+// PutPeerRunWorkspaceDetailsJSONRequestBody defines body for PutPeerRunWorkspaceDetails for application/json ContentType.
+type PutPeerRunWorkspaceDetailsJSONRequestBody = PlayWorkspaceDetailsRequest
+
+// PlayPeerRunWorkspaceHistoryJSONRequestBody defines body for PlayPeerRunWorkspaceHistory for application/json ContentType.
+type PlayPeerRunWorkspaceHistoryJSONRequestBody = externalRef1.ServerPlayRunWorkspaceHistoryRequest
+
+// SetPeerRunWorkspaceModeJSONRequestBody defines body for SetPeerRunWorkspaceMode for application/json ContentType.
+type SetPeerRunWorkspaceModeJSONRequestBody = PlayWorkspaceModeRequest
+
+// RecallPeerRunWorkspaceMemoryJSONRequestBody defines body for RecallPeerRunWorkspaceMemory for application/json ContentType.
+type RecallPeerRunWorkspaceMemoryJSONRequestBody = externalRef1.ServerRunWorkspaceRecallRequest
 
 // CreateWebRTCOfferJSONRequestBody defines body for CreateWebRTCOffer for application/json ContentType.
 type CreateWebRTCOfferJSONRequestBody = WebRTCSessionDescription
@@ -622,6 +700,46 @@ type ClientInterface interface {
 
 	// GetPeerWorkspaceHistoryAudio request
 	GetPeerWorkspaceHistoryAudio(ctx context.Context, workspaceName WorkspaceName, historyId HistoryId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPeerRunWorkspace request
+	GetPeerRunWorkspace(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPeerRunWorkspaceWithBody request with any body
+	SetPeerRunWorkspaceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetPeerRunWorkspace(ctx context.Context, body SetPeerRunWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPeerRunWorkspaceDetails request
+	GetPeerRunWorkspaceDetails(ctx context.Context, params *GetPeerRunWorkspaceDetailsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutPeerRunWorkspaceDetailsWithBody request with any body
+	PutPeerRunWorkspaceDetailsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutPeerRunWorkspaceDetails(ctx context.Context, body PutPeerRunWorkspaceDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPeerRunWorkspaceHistory request
+	ListPeerRunWorkspaceHistory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PlayPeerRunWorkspaceHistoryWithBody request with any body
+	PlayPeerRunWorkspaceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PlayPeerRunWorkspaceHistory(ctx context.Context, body PlayPeerRunWorkspaceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPeerRunWorkspaceMemoryStats request
+	GetPeerRunWorkspaceMemoryStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPeerRunWorkspaceModeWithBody request with any body
+	SetPeerRunWorkspaceModeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetPeerRunWorkspaceMode(ctx context.Context, body SetPeerRunWorkspaceModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RecallPeerRunWorkspaceMemoryWithBody request with any body
+	RecallPeerRunWorkspaceMemoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RecallPeerRunWorkspaceMemory(ctx context.Context, body RecallPeerRunWorkspaceMemoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReloadPeerRunWorkspace request
+	ReloadPeerRunWorkspace(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StreamPlayableVoices request
 	StreamPlayableVoices(ctx context.Context, params *StreamPlayableVoicesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1369,6 +1487,186 @@ func (c *Client) GetPeerWorkspaceHistory(ctx context.Context, workspaceName Work
 
 func (c *Client) GetPeerWorkspaceHistoryAudio(ctx context.Context, workspaceName WorkspaceName, historyId HistoryId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPeerWorkspaceHistoryAudioRequest(c.Server, workspaceName, historyId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPeerRunWorkspace(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPeerRunWorkspaceRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetPeerRunWorkspaceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPeerRunWorkspaceRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetPeerRunWorkspace(ctx context.Context, body SetPeerRunWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPeerRunWorkspaceRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPeerRunWorkspaceDetails(ctx context.Context, params *GetPeerRunWorkspaceDetailsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPeerRunWorkspaceDetailsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutPeerRunWorkspaceDetailsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutPeerRunWorkspaceDetailsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutPeerRunWorkspaceDetails(ctx context.Context, body PutPeerRunWorkspaceDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutPeerRunWorkspaceDetailsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListPeerRunWorkspaceHistory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPeerRunWorkspaceHistoryRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PlayPeerRunWorkspaceHistoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPlayPeerRunWorkspaceHistoryRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PlayPeerRunWorkspaceHistory(ctx context.Context, body PlayPeerRunWorkspaceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPlayPeerRunWorkspaceHistoryRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetPeerRunWorkspaceMemoryStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPeerRunWorkspaceMemoryStatsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetPeerRunWorkspaceModeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPeerRunWorkspaceModeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetPeerRunWorkspaceMode(ctx context.Context, body SetPeerRunWorkspaceModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPeerRunWorkspaceModeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RecallPeerRunWorkspaceMemoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecallPeerRunWorkspaceMemoryRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RecallPeerRunWorkspaceMemory(ctx context.Context, body RecallPeerRunWorkspaceMemoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecallPeerRunWorkspaceMemoryRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReloadPeerRunWorkspace(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReloadPeerRunWorkspaceRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -3704,6 +4002,363 @@ func NewGetPeerWorkspaceHistoryAudioRequest(server string, workspaceName Workspa
 	return req, nil
 }
 
+// NewGetPeerRunWorkspaceRequest generates requests for GetPeerRunWorkspace
+func NewGetPeerRunWorkspaceRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetPeerRunWorkspaceRequest calls the generic SetPeerRunWorkspace builder with application/json body
+func NewSetPeerRunWorkspaceRequest(server string, body SetPeerRunWorkspaceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPeerRunWorkspaceRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetPeerRunWorkspaceRequestWithBody generates requests for SetPeerRunWorkspace with any type of body
+func NewSetPeerRunWorkspaceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPeerRunWorkspaceDetailsRequest generates requests for GetPeerRunWorkspaceDetails
+func NewGetPeerRunWorkspaceDetailsRequest(server string, params *GetPeerRunWorkspaceDetailsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/details")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.WorkspaceName != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "workspace_name", *params.WorkspaceName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutPeerRunWorkspaceDetailsRequest calls the generic PutPeerRunWorkspaceDetails builder with application/json body
+func NewPutPeerRunWorkspaceDetailsRequest(server string, body PutPeerRunWorkspaceDetailsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutPeerRunWorkspaceDetailsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPutPeerRunWorkspaceDetailsRequestWithBody generates requests for PutPeerRunWorkspaceDetails with any type of body
+func NewPutPeerRunWorkspaceDetailsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/details")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListPeerRunWorkspaceHistoryRequest generates requests for ListPeerRunWorkspaceHistory
+func NewListPeerRunWorkspaceHistoryRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/history")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPlayPeerRunWorkspaceHistoryRequest calls the generic PlayPeerRunWorkspaceHistory builder with application/json body
+func NewPlayPeerRunWorkspaceHistoryRequest(server string, body PlayPeerRunWorkspaceHistoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPlayPeerRunWorkspaceHistoryRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPlayPeerRunWorkspaceHistoryRequestWithBody generates requests for PlayPeerRunWorkspaceHistory with any type of body
+func NewPlayPeerRunWorkspaceHistoryRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/history/play")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetPeerRunWorkspaceMemoryStatsRequest generates requests for GetPeerRunWorkspaceMemoryStats
+func NewGetPeerRunWorkspaceMemoryStatsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/memory/stats")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetPeerRunWorkspaceModeRequest calls the generic SetPeerRunWorkspaceMode builder with application/json body
+func NewSetPeerRunWorkspaceModeRequest(server string, body SetPeerRunWorkspaceModeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPeerRunWorkspaceModeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetPeerRunWorkspaceModeRequestWithBody generates requests for SetPeerRunWorkspaceMode with any type of body
+func NewSetPeerRunWorkspaceModeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/mode")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRecallPeerRunWorkspaceMemoryRequest calls the generic RecallPeerRunWorkspaceMemory builder with application/json body
+func NewRecallPeerRunWorkspaceMemoryRequest(server string, body RecallPeerRunWorkspaceMemoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRecallPeerRunWorkspaceMemoryRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRecallPeerRunWorkspaceMemoryRequestWithBody generates requests for RecallPeerRunWorkspaceMemory with any type of body
+func NewRecallPeerRunWorkspaceMemoryRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/recall")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReloadPeerRunWorkspaceRequest generates requests for ReloadPeerRunWorkspace
+func NewReloadPeerRunWorkspaceRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/peer-run/workspace/reload")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewStreamPlayableVoicesRequest generates requests for StreamPlayableVoices
 func NewStreamPlayableVoicesRequest(server string, params *StreamPlayableVoicesParams) (*http.Request, error) {
 	var err error
@@ -4152,6 +4807,46 @@ type ClientWithResponsesInterface interface {
 
 	// GetPeerWorkspaceHistoryAudioWithResponse request
 	GetPeerWorkspaceHistoryAudioWithResponse(ctx context.Context, workspaceName WorkspaceName, historyId HistoryId, reqEditors ...RequestEditorFn) (*GetPeerWorkspaceHistoryAudioResponse, error)
+
+	// GetPeerRunWorkspaceWithResponse request
+	GetPeerRunWorkspaceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceResponse, error)
+
+	// SetPeerRunWorkspaceWithBodyWithResponse request with any body
+	SetPeerRunWorkspaceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceResponse, error)
+
+	SetPeerRunWorkspaceWithResponse(ctx context.Context, body SetPeerRunWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceResponse, error)
+
+	// GetPeerRunWorkspaceDetailsWithResponse request
+	GetPeerRunWorkspaceDetailsWithResponse(ctx context.Context, params *GetPeerRunWorkspaceDetailsParams, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceDetailsResponse, error)
+
+	// PutPeerRunWorkspaceDetailsWithBodyWithResponse request with any body
+	PutPeerRunWorkspaceDetailsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutPeerRunWorkspaceDetailsResponse, error)
+
+	PutPeerRunWorkspaceDetailsWithResponse(ctx context.Context, body PutPeerRunWorkspaceDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutPeerRunWorkspaceDetailsResponse, error)
+
+	// ListPeerRunWorkspaceHistoryWithResponse request
+	ListPeerRunWorkspaceHistoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPeerRunWorkspaceHistoryResponse, error)
+
+	// PlayPeerRunWorkspaceHistoryWithBodyWithResponse request with any body
+	PlayPeerRunWorkspaceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PlayPeerRunWorkspaceHistoryResponse, error)
+
+	PlayPeerRunWorkspaceHistoryWithResponse(ctx context.Context, body PlayPeerRunWorkspaceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PlayPeerRunWorkspaceHistoryResponse, error)
+
+	// GetPeerRunWorkspaceMemoryStatsWithResponse request
+	GetPeerRunWorkspaceMemoryStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceMemoryStatsResponse, error)
+
+	// SetPeerRunWorkspaceModeWithBodyWithResponse request with any body
+	SetPeerRunWorkspaceModeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceModeResponse, error)
+
+	SetPeerRunWorkspaceModeWithResponse(ctx context.Context, body SetPeerRunWorkspaceModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceModeResponse, error)
+
+	// RecallPeerRunWorkspaceMemoryWithBodyWithResponse request with any body
+	RecallPeerRunWorkspaceMemoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecallPeerRunWorkspaceMemoryResponse, error)
+
+	RecallPeerRunWorkspaceMemoryWithResponse(ctx context.Context, body RecallPeerRunWorkspaceMemoryJSONRequestBody, reqEditors ...RequestEditorFn) (*RecallPeerRunWorkspaceMemoryResponse, error)
+
+	// ReloadPeerRunWorkspaceWithResponse request
+	ReloadPeerRunWorkspaceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadPeerRunWorkspaceResponse, error)
 
 	// StreamPlayableVoicesWithResponse request
 	StreamPlayableVoicesWithResponse(ctx context.Context, params *StreamPlayableVoicesParams, reqEditors ...RequestEditorFn) (*StreamPlayableVoicesResponse, error)
@@ -5220,6 +5915,226 @@ func (r GetPeerWorkspaceHistoryAudioResponse) StatusCode() int {
 	return 0
 }
 
+type GetPeerRunWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PlayWorkspaceState
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPeerRunWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPeerRunWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetPeerRunWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PlayWorkspaceState
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPeerRunWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPeerRunWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPeerRunWorkspaceDetailsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.WorkspaceGetResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPeerRunWorkspaceDetailsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPeerRunWorkspaceDetailsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutPeerRunWorkspaceDetailsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.WorkspacePutResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PutPeerRunWorkspaceDetailsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutPeerRunWorkspaceDetailsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListPeerRunWorkspaceHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.ServerListRunWorkspaceHistoryResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPeerRunWorkspaceHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPeerRunWorkspaceHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PlayPeerRunWorkspaceHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.ServerPlayRunWorkspaceHistoryResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PlayPeerRunWorkspaceHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PlayPeerRunWorkspaceHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetPeerRunWorkspaceMemoryStatsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.ServerGetRunWorkspaceMemoryStatsResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPeerRunWorkspaceMemoryStatsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPeerRunWorkspaceMemoryStatsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetPeerRunWorkspaceModeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PlayWorkspaceState
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPeerRunWorkspaceModeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPeerRunWorkspaceModeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RecallPeerRunWorkspaceMemoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *externalRef1.ServerRunWorkspaceRecallResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r RecallPeerRunWorkspaceMemoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RecallPeerRunWorkspaceMemoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReloadPeerRunWorkspaceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PlayWorkspaceState
+}
+
+// Status returns HTTPResponse.Status
+func (r ReloadPeerRunWorkspaceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReloadPeerRunWorkspaceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type StreamPlayableVoicesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5827,6 +6742,136 @@ func (c *ClientWithResponses) GetPeerWorkspaceHistoryAudioWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseGetPeerWorkspaceHistoryAudioResponse(rsp)
+}
+
+// GetPeerRunWorkspaceWithResponse request returning *GetPeerRunWorkspaceResponse
+func (c *ClientWithResponses) GetPeerRunWorkspaceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceResponse, error) {
+	rsp, err := c.GetPeerRunWorkspace(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPeerRunWorkspaceResponse(rsp)
+}
+
+// SetPeerRunWorkspaceWithBodyWithResponse request with arbitrary body returning *SetPeerRunWorkspaceResponse
+func (c *ClientWithResponses) SetPeerRunWorkspaceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceResponse, error) {
+	rsp, err := c.SetPeerRunWorkspaceWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPeerRunWorkspaceResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetPeerRunWorkspaceWithResponse(ctx context.Context, body SetPeerRunWorkspaceJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceResponse, error) {
+	rsp, err := c.SetPeerRunWorkspace(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPeerRunWorkspaceResponse(rsp)
+}
+
+// GetPeerRunWorkspaceDetailsWithResponse request returning *GetPeerRunWorkspaceDetailsResponse
+func (c *ClientWithResponses) GetPeerRunWorkspaceDetailsWithResponse(ctx context.Context, params *GetPeerRunWorkspaceDetailsParams, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceDetailsResponse, error) {
+	rsp, err := c.GetPeerRunWorkspaceDetails(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPeerRunWorkspaceDetailsResponse(rsp)
+}
+
+// PutPeerRunWorkspaceDetailsWithBodyWithResponse request with arbitrary body returning *PutPeerRunWorkspaceDetailsResponse
+func (c *ClientWithResponses) PutPeerRunWorkspaceDetailsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutPeerRunWorkspaceDetailsResponse, error) {
+	rsp, err := c.PutPeerRunWorkspaceDetailsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutPeerRunWorkspaceDetailsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutPeerRunWorkspaceDetailsWithResponse(ctx context.Context, body PutPeerRunWorkspaceDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutPeerRunWorkspaceDetailsResponse, error) {
+	rsp, err := c.PutPeerRunWorkspaceDetails(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutPeerRunWorkspaceDetailsResponse(rsp)
+}
+
+// ListPeerRunWorkspaceHistoryWithResponse request returning *ListPeerRunWorkspaceHistoryResponse
+func (c *ClientWithResponses) ListPeerRunWorkspaceHistoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPeerRunWorkspaceHistoryResponse, error) {
+	rsp, err := c.ListPeerRunWorkspaceHistory(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPeerRunWorkspaceHistoryResponse(rsp)
+}
+
+// PlayPeerRunWorkspaceHistoryWithBodyWithResponse request with arbitrary body returning *PlayPeerRunWorkspaceHistoryResponse
+func (c *ClientWithResponses) PlayPeerRunWorkspaceHistoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PlayPeerRunWorkspaceHistoryResponse, error) {
+	rsp, err := c.PlayPeerRunWorkspaceHistoryWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePlayPeerRunWorkspaceHistoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) PlayPeerRunWorkspaceHistoryWithResponse(ctx context.Context, body PlayPeerRunWorkspaceHistoryJSONRequestBody, reqEditors ...RequestEditorFn) (*PlayPeerRunWorkspaceHistoryResponse, error) {
+	rsp, err := c.PlayPeerRunWorkspaceHistory(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePlayPeerRunWorkspaceHistoryResponse(rsp)
+}
+
+// GetPeerRunWorkspaceMemoryStatsWithResponse request returning *GetPeerRunWorkspaceMemoryStatsResponse
+func (c *ClientWithResponses) GetPeerRunWorkspaceMemoryStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPeerRunWorkspaceMemoryStatsResponse, error) {
+	rsp, err := c.GetPeerRunWorkspaceMemoryStats(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPeerRunWorkspaceMemoryStatsResponse(rsp)
+}
+
+// SetPeerRunWorkspaceModeWithBodyWithResponse request with arbitrary body returning *SetPeerRunWorkspaceModeResponse
+func (c *ClientWithResponses) SetPeerRunWorkspaceModeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceModeResponse, error) {
+	rsp, err := c.SetPeerRunWorkspaceModeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPeerRunWorkspaceModeResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetPeerRunWorkspaceModeWithResponse(ctx context.Context, body SetPeerRunWorkspaceModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPeerRunWorkspaceModeResponse, error) {
+	rsp, err := c.SetPeerRunWorkspaceMode(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPeerRunWorkspaceModeResponse(rsp)
+}
+
+// RecallPeerRunWorkspaceMemoryWithBodyWithResponse request with arbitrary body returning *RecallPeerRunWorkspaceMemoryResponse
+func (c *ClientWithResponses) RecallPeerRunWorkspaceMemoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RecallPeerRunWorkspaceMemoryResponse, error) {
+	rsp, err := c.RecallPeerRunWorkspaceMemoryWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecallPeerRunWorkspaceMemoryResponse(rsp)
+}
+
+func (c *ClientWithResponses) RecallPeerRunWorkspaceMemoryWithResponse(ctx context.Context, body RecallPeerRunWorkspaceMemoryJSONRequestBody, reqEditors ...RequestEditorFn) (*RecallPeerRunWorkspaceMemoryResponse, error) {
+	rsp, err := c.RecallPeerRunWorkspaceMemory(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecallPeerRunWorkspaceMemoryResponse(rsp)
+}
+
+// ReloadPeerRunWorkspaceWithResponse request returning *ReloadPeerRunWorkspaceResponse
+func (c *ClientWithResponses) ReloadPeerRunWorkspaceWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ReloadPeerRunWorkspaceResponse, error) {
+	rsp, err := c.ReloadPeerRunWorkspace(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReloadPeerRunWorkspaceResponse(rsp)
 }
 
 // StreamPlayableVoicesWithResponse request returning *StreamPlayableVoicesResponse
@@ -7102,6 +8147,266 @@ func ParseGetPeerWorkspaceHistoryAudioResponse(rsp *http.Response) (*GetPeerWork
 	return response, nil
 }
 
+// ParseGetPeerRunWorkspaceResponse parses an HTTP response from a GetPeerRunWorkspaceWithResponse call
+func ParseGetPeerRunWorkspaceResponse(rsp *http.Response) (*GetPeerRunWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPeerRunWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlayWorkspaceState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPeerRunWorkspaceResponse parses an HTTP response from a SetPeerRunWorkspaceWithResponse call
+func ParseSetPeerRunWorkspaceResponse(rsp *http.Response) (*SetPeerRunWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPeerRunWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlayWorkspaceState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPeerRunWorkspaceDetailsResponse parses an HTTP response from a GetPeerRunWorkspaceDetailsWithResponse call
+func ParseGetPeerRunWorkspaceDetailsResponse(rsp *http.Response) (*GetPeerRunWorkspaceDetailsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPeerRunWorkspaceDetailsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.WorkspaceGetResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutPeerRunWorkspaceDetailsResponse parses an HTTP response from a PutPeerRunWorkspaceDetailsWithResponse call
+func ParsePutPeerRunWorkspaceDetailsResponse(rsp *http.Response) (*PutPeerRunWorkspaceDetailsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutPeerRunWorkspaceDetailsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.WorkspacePutResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPeerRunWorkspaceHistoryResponse parses an HTTP response from a ListPeerRunWorkspaceHistoryWithResponse call
+func ParseListPeerRunWorkspaceHistoryResponse(rsp *http.Response) (*ListPeerRunWorkspaceHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPeerRunWorkspaceHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.ServerListRunWorkspaceHistoryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePlayPeerRunWorkspaceHistoryResponse parses an HTTP response from a PlayPeerRunWorkspaceHistoryWithResponse call
+func ParsePlayPeerRunWorkspaceHistoryResponse(rsp *http.Response) (*PlayPeerRunWorkspaceHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PlayPeerRunWorkspaceHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.ServerPlayRunWorkspaceHistoryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPeerRunWorkspaceMemoryStatsResponse parses an HTTP response from a GetPeerRunWorkspaceMemoryStatsWithResponse call
+func ParseGetPeerRunWorkspaceMemoryStatsResponse(rsp *http.Response) (*GetPeerRunWorkspaceMemoryStatsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPeerRunWorkspaceMemoryStatsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.ServerGetRunWorkspaceMemoryStatsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPeerRunWorkspaceModeResponse parses an HTTP response from a SetPeerRunWorkspaceModeWithResponse call
+func ParseSetPeerRunWorkspaceModeResponse(rsp *http.Response) (*SetPeerRunWorkspaceModeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPeerRunWorkspaceModeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlayWorkspaceState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRecallPeerRunWorkspaceMemoryResponse parses an HTTP response from a RecallPeerRunWorkspaceMemoryWithResponse call
+func ParseRecallPeerRunWorkspaceMemoryResponse(rsp *http.Response) (*RecallPeerRunWorkspaceMemoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RecallPeerRunWorkspaceMemoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest externalRef1.ServerRunWorkspaceRecallResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReloadPeerRunWorkspaceResponse parses an HTTP response from a ReloadPeerRunWorkspaceWithResponse call
+func ParseReloadPeerRunWorkspaceResponse(rsp *http.Response) (*ReloadPeerRunWorkspaceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReloadPeerRunWorkspaceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlayWorkspaceState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStreamPlayableVoicesResponse parses an HTTP response from a StreamPlayableVoicesWithResponse call
 func ParseStreamPlayableVoicesResponse(rsp *http.Response) (*StreamPlayableVoicesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7316,6 +8621,36 @@ type ServerInterface interface {
 	// Get one workspace history audio asset
 	// (GET /peer-resources/workspaces/{workspace_name}/history/{history_id}/audio)
 	GetPeerWorkspaceHistoryAudio(c *fiber.Ctx, workspaceName WorkspaceName, historyId HistoryId) error
+	// Get the active Play UI workspace runtime state
+	// (GET /peer-run/workspace)
+	GetPeerRunWorkspace(c *fiber.Ctx) error
+	// Set the active Play UI workspace
+	// (PUT /peer-run/workspace)
+	SetPeerRunWorkspace(c *fiber.Ctx) error
+	// Get the selected Play UI workspace definition
+	// (GET /peer-run/workspace/details)
+	GetPeerRunWorkspaceDetails(c *fiber.Ctx, params GetPeerRunWorkspaceDetailsParams) error
+	// Update the selected Play UI workspace definition
+	// (PUT /peer-run/workspace/details)
+	PutPeerRunWorkspaceDetails(c *fiber.Ctx) error
+	// List history for the active Play UI workspace
+	// (GET /peer-run/workspace/history)
+	ListPeerRunWorkspaceHistory(c *fiber.Ctx) error
+	// Replay one active workspace history entry through the runtime stream
+	// (POST /peer-run/workspace/history/play)
+	PlayPeerRunWorkspaceHistory(c *fiber.Ctx) error
+	// Get active workspace memory statistics
+	// (GET /peer-run/workspace/memory/stats)
+	GetPeerRunWorkspaceMemoryStats(c *fiber.Ctx) error
+	// Set the selected Play UI workspace input mode
+	// (PUT /peer-run/workspace/mode)
+	SetPeerRunWorkspaceMode(c *fiber.Ctx) error
+	// Recall active workspace memory hits
+	// (POST /peer-run/workspace/recall)
+	RecallPeerRunWorkspaceMemory(c *fiber.Ctx) error
+	// Reload the active Play UI workspace runtime
+	// (POST /peer-run/workspace/reload)
+	ReloadPeerRunWorkspace(c *fiber.Ctx) error
 	// Stream playable voices as server-sent events
 	// (GET /play/voices/stream)
 	StreamPlayableVoices(c *fiber.Ctx, params StreamPlayableVoicesParams) error
@@ -8278,6 +9613,84 @@ func (siw *ServerInterfaceWrapper) GetPeerWorkspaceHistoryAudio(c *fiber.Ctx) er
 	return siw.Handler.GetPeerWorkspaceHistoryAudio(c, workspaceName, historyId)
 }
 
+// GetPeerRunWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) GetPeerRunWorkspace(c *fiber.Ctx) error {
+
+	return siw.Handler.GetPeerRunWorkspace(c)
+}
+
+// SetPeerRunWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) SetPeerRunWorkspace(c *fiber.Ctx) error {
+
+	return siw.Handler.SetPeerRunWorkspace(c)
+}
+
+// GetPeerRunWorkspaceDetails operation middleware
+func (siw *ServerInterfaceWrapper) GetPeerRunWorkspaceDetails(c *fiber.Ctx) error {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPeerRunWorkspaceDetailsParams
+
+	var query url.Values
+	query, err = url.ParseQuery(string(c.Request().URI().QueryString()))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for query string: %w", err).Error())
+	}
+
+	// ------------- Optional query parameter "workspace_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "workspace_name", query, &params.WorkspaceName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter workspace_name: %w", err).Error())
+	}
+
+	return siw.Handler.GetPeerRunWorkspaceDetails(c, params)
+}
+
+// PutPeerRunWorkspaceDetails operation middleware
+func (siw *ServerInterfaceWrapper) PutPeerRunWorkspaceDetails(c *fiber.Ctx) error {
+
+	return siw.Handler.PutPeerRunWorkspaceDetails(c)
+}
+
+// ListPeerRunWorkspaceHistory operation middleware
+func (siw *ServerInterfaceWrapper) ListPeerRunWorkspaceHistory(c *fiber.Ctx) error {
+
+	return siw.Handler.ListPeerRunWorkspaceHistory(c)
+}
+
+// PlayPeerRunWorkspaceHistory operation middleware
+func (siw *ServerInterfaceWrapper) PlayPeerRunWorkspaceHistory(c *fiber.Ctx) error {
+
+	return siw.Handler.PlayPeerRunWorkspaceHistory(c)
+}
+
+// GetPeerRunWorkspaceMemoryStats operation middleware
+func (siw *ServerInterfaceWrapper) GetPeerRunWorkspaceMemoryStats(c *fiber.Ctx) error {
+
+	return siw.Handler.GetPeerRunWorkspaceMemoryStats(c)
+}
+
+// SetPeerRunWorkspaceMode operation middleware
+func (siw *ServerInterfaceWrapper) SetPeerRunWorkspaceMode(c *fiber.Ctx) error {
+
+	return siw.Handler.SetPeerRunWorkspaceMode(c)
+}
+
+// RecallPeerRunWorkspaceMemory operation middleware
+func (siw *ServerInterfaceWrapper) RecallPeerRunWorkspaceMemory(c *fiber.Ctx) error {
+
+	return siw.Handler.RecallPeerRunWorkspaceMemory(c)
+}
+
+// ReloadPeerRunWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) ReloadPeerRunWorkspace(c *fiber.Ctx) error {
+
+	return siw.Handler.ReloadPeerRunWorkspace(c)
+}
+
 // StreamPlayableVoices operation middleware
 func (siw *ServerInterfaceWrapper) StreamPlayableVoices(c *fiber.Ctx) error {
 
@@ -8490,6 +9903,26 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Get(options.BaseURL+"/peer-resources/workspaces/:workspace_name/history/:history_id", wrapper.GetPeerWorkspaceHistory)
 
 	router.Get(options.BaseURL+"/peer-resources/workspaces/:workspace_name/history/:history_id/audio", wrapper.GetPeerWorkspaceHistoryAudio)
+
+	router.Get(options.BaseURL+"/peer-run/workspace", wrapper.GetPeerRunWorkspace)
+
+	router.Put(options.BaseURL+"/peer-run/workspace", wrapper.SetPeerRunWorkspace)
+
+	router.Get(options.BaseURL+"/peer-run/workspace/details", wrapper.GetPeerRunWorkspaceDetails)
+
+	router.Put(options.BaseURL+"/peer-run/workspace/details", wrapper.PutPeerRunWorkspaceDetails)
+
+	router.Get(options.BaseURL+"/peer-run/workspace/history", wrapper.ListPeerRunWorkspaceHistory)
+
+	router.Post(options.BaseURL+"/peer-run/workspace/history/play", wrapper.PlayPeerRunWorkspaceHistory)
+
+	router.Get(options.BaseURL+"/peer-run/workspace/memory/stats", wrapper.GetPeerRunWorkspaceMemoryStats)
+
+	router.Put(options.BaseURL+"/peer-run/workspace/mode", wrapper.SetPeerRunWorkspaceMode)
+
+	router.Post(options.BaseURL+"/peer-run/workspace/recall", wrapper.RecallPeerRunWorkspaceMemory)
+
+	router.Post(options.BaseURL+"/peer-run/workspace/reload", wrapper.ReloadPeerRunWorkspace)
 
 	router.Get(options.BaseURL+"/play/voices/stream", wrapper.StreamPlayableVoices)
 
@@ -9334,6 +10767,172 @@ func (response GetPeerWorkspaceHistoryAudio200ApplicationoctetStreamResponse) Vi
 	return err
 }
 
+type GetPeerRunWorkspaceRequestObject struct {
+}
+
+type GetPeerRunWorkspaceResponseObject interface {
+	VisitGetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error
+}
+
+type GetPeerRunWorkspace200JSONResponse PlayWorkspaceState
+
+func (response GetPeerRunWorkspace200JSONResponse) VisitGetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type SetPeerRunWorkspaceRequestObject struct {
+	Body *SetPeerRunWorkspaceJSONRequestBody
+}
+
+type SetPeerRunWorkspaceResponseObject interface {
+	VisitSetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error
+}
+
+type SetPeerRunWorkspace200JSONResponse PlayWorkspaceState
+
+func (response SetPeerRunWorkspace200JSONResponse) VisitSetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type GetPeerRunWorkspaceDetailsRequestObject struct {
+	Params GetPeerRunWorkspaceDetailsParams
+}
+
+type GetPeerRunWorkspaceDetailsResponseObject interface {
+	VisitGetPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error
+}
+
+type GetPeerRunWorkspaceDetails200JSONResponse externalRef1.WorkspaceGetResponse
+
+func (response GetPeerRunWorkspaceDetails200JSONResponse) VisitGetPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type PutPeerRunWorkspaceDetailsRequestObject struct {
+	Body *PutPeerRunWorkspaceDetailsJSONRequestBody
+}
+
+type PutPeerRunWorkspaceDetailsResponseObject interface {
+	VisitPutPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error
+}
+
+type PutPeerRunWorkspaceDetails200JSONResponse externalRef1.WorkspacePutResponse
+
+func (response PutPeerRunWorkspaceDetails200JSONResponse) VisitPutPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type ListPeerRunWorkspaceHistoryRequestObject struct {
+}
+
+type ListPeerRunWorkspaceHistoryResponseObject interface {
+	VisitListPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error
+}
+
+type ListPeerRunWorkspaceHistory200JSONResponse externalRef1.ServerListRunWorkspaceHistoryResponse
+
+func (response ListPeerRunWorkspaceHistory200JSONResponse) VisitListPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type PlayPeerRunWorkspaceHistoryRequestObject struct {
+	Body *PlayPeerRunWorkspaceHistoryJSONRequestBody
+}
+
+type PlayPeerRunWorkspaceHistoryResponseObject interface {
+	VisitPlayPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error
+}
+
+type PlayPeerRunWorkspaceHistory200JSONResponse externalRef1.ServerPlayRunWorkspaceHistoryResponse
+
+func (response PlayPeerRunWorkspaceHistory200JSONResponse) VisitPlayPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type GetPeerRunWorkspaceMemoryStatsRequestObject struct {
+}
+
+type GetPeerRunWorkspaceMemoryStatsResponseObject interface {
+	VisitGetPeerRunWorkspaceMemoryStatsResponse(ctx *fiber.Ctx) error
+}
+
+type GetPeerRunWorkspaceMemoryStats200JSONResponse externalRef1.ServerGetRunWorkspaceMemoryStatsResponse
+
+func (response GetPeerRunWorkspaceMemoryStats200JSONResponse) VisitGetPeerRunWorkspaceMemoryStatsResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type SetPeerRunWorkspaceModeRequestObject struct {
+	Body *SetPeerRunWorkspaceModeJSONRequestBody
+}
+
+type SetPeerRunWorkspaceModeResponseObject interface {
+	VisitSetPeerRunWorkspaceModeResponse(ctx *fiber.Ctx) error
+}
+
+type SetPeerRunWorkspaceMode200JSONResponse PlayWorkspaceState
+
+func (response SetPeerRunWorkspaceMode200JSONResponse) VisitSetPeerRunWorkspaceModeResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type RecallPeerRunWorkspaceMemoryRequestObject struct {
+	Body *RecallPeerRunWorkspaceMemoryJSONRequestBody
+}
+
+type RecallPeerRunWorkspaceMemoryResponseObject interface {
+	VisitRecallPeerRunWorkspaceMemoryResponse(ctx *fiber.Ctx) error
+}
+
+type RecallPeerRunWorkspaceMemory200JSONResponse externalRef1.ServerRunWorkspaceRecallResponse
+
+func (response RecallPeerRunWorkspaceMemory200JSONResponse) VisitRecallPeerRunWorkspaceMemoryResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
+type ReloadPeerRunWorkspaceRequestObject struct {
+}
+
+type ReloadPeerRunWorkspaceResponseObject interface {
+	VisitReloadPeerRunWorkspaceResponse(ctx *fiber.Ctx) error
+}
+
+type ReloadPeerRunWorkspace200JSONResponse PlayWorkspaceState
+
+func (response ReloadPeerRunWorkspace200JSONResponse) VisitReloadPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
+	ctx.Response().Header.Set("Content-Type", "application/json")
+	ctx.Status(200)
+
+	return ctx.JSON(&response)
+}
+
 type StreamPlayableVoicesRequestObject struct {
 	Params StreamPlayableVoicesParams
 }
@@ -9541,6 +11140,36 @@ type StrictServerInterface interface {
 	// Get one workspace history audio asset
 	// (GET /peer-resources/workspaces/{workspace_name}/history/{history_id}/audio)
 	GetPeerWorkspaceHistoryAudio(ctx context.Context, request GetPeerWorkspaceHistoryAudioRequestObject) (GetPeerWorkspaceHistoryAudioResponseObject, error)
+	// Get the active Play UI workspace runtime state
+	// (GET /peer-run/workspace)
+	GetPeerRunWorkspace(ctx context.Context, request GetPeerRunWorkspaceRequestObject) (GetPeerRunWorkspaceResponseObject, error)
+	// Set the active Play UI workspace
+	// (PUT /peer-run/workspace)
+	SetPeerRunWorkspace(ctx context.Context, request SetPeerRunWorkspaceRequestObject) (SetPeerRunWorkspaceResponseObject, error)
+	// Get the selected Play UI workspace definition
+	// (GET /peer-run/workspace/details)
+	GetPeerRunWorkspaceDetails(ctx context.Context, request GetPeerRunWorkspaceDetailsRequestObject) (GetPeerRunWorkspaceDetailsResponseObject, error)
+	// Update the selected Play UI workspace definition
+	// (PUT /peer-run/workspace/details)
+	PutPeerRunWorkspaceDetails(ctx context.Context, request PutPeerRunWorkspaceDetailsRequestObject) (PutPeerRunWorkspaceDetailsResponseObject, error)
+	// List history for the active Play UI workspace
+	// (GET /peer-run/workspace/history)
+	ListPeerRunWorkspaceHistory(ctx context.Context, request ListPeerRunWorkspaceHistoryRequestObject) (ListPeerRunWorkspaceHistoryResponseObject, error)
+	// Replay one active workspace history entry through the runtime stream
+	// (POST /peer-run/workspace/history/play)
+	PlayPeerRunWorkspaceHistory(ctx context.Context, request PlayPeerRunWorkspaceHistoryRequestObject) (PlayPeerRunWorkspaceHistoryResponseObject, error)
+	// Get active workspace memory statistics
+	// (GET /peer-run/workspace/memory/stats)
+	GetPeerRunWorkspaceMemoryStats(ctx context.Context, request GetPeerRunWorkspaceMemoryStatsRequestObject) (GetPeerRunWorkspaceMemoryStatsResponseObject, error)
+	// Set the selected Play UI workspace input mode
+	// (PUT /peer-run/workspace/mode)
+	SetPeerRunWorkspaceMode(ctx context.Context, request SetPeerRunWorkspaceModeRequestObject) (SetPeerRunWorkspaceModeResponseObject, error)
+	// Recall active workspace memory hits
+	// (POST /peer-run/workspace/recall)
+	RecallPeerRunWorkspaceMemory(ctx context.Context, request RecallPeerRunWorkspaceMemoryRequestObject) (RecallPeerRunWorkspaceMemoryResponseObject, error)
+	// Reload the active Play UI workspace runtime
+	// (POST /peer-run/workspace/reload)
+	ReloadPeerRunWorkspace(ctx context.Context, request ReloadPeerRunWorkspaceRequestObject) (ReloadPeerRunWorkspaceResponseObject, error)
 	// Stream playable voices as server-sent events
 	// (GET /play/voices/stream)
 	StreamPlayableVoices(ctx context.Context, request StreamPlayableVoicesRequestObject) (StreamPlayableVoicesResponseObject, error)
@@ -10921,6 +12550,288 @@ func (sh *strictHandler) GetPeerWorkspaceHistoryAudio(ctx *fiber.Ctx, workspaceN
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	} else if validResponse, ok := response.(GetPeerWorkspaceHistoryAudioResponseObject); ok {
 		if err := validResponse.VisitGetPeerWorkspaceHistoryAudioResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPeerRunWorkspace operation middleware
+func (sh *strictHandler) GetPeerRunWorkspace(ctx *fiber.Ctx) error {
+	var request GetPeerRunWorkspaceRequestObject
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPeerRunWorkspace(ctx.UserContext(), request.(GetPeerRunWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPeerRunWorkspace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(GetPeerRunWorkspaceResponseObject); ok {
+		if err := validResponse.VisitGetPeerRunWorkspaceResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SetPeerRunWorkspace operation middleware
+func (sh *strictHandler) SetPeerRunWorkspace(ctx *fiber.Ctx) error {
+	var request SetPeerRunWorkspaceRequestObject
+
+	var body SetPeerRunWorkspaceJSONRequestBody
+	if err := ctx.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	request.Body = &body
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPeerRunWorkspace(ctx.UserContext(), request.(SetPeerRunWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPeerRunWorkspace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(SetPeerRunWorkspaceResponseObject); ok {
+		if err := validResponse.VisitSetPeerRunWorkspaceResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPeerRunWorkspaceDetails operation middleware
+func (sh *strictHandler) GetPeerRunWorkspaceDetails(ctx *fiber.Ctx, params GetPeerRunWorkspaceDetailsParams) error {
+	var request GetPeerRunWorkspaceDetailsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPeerRunWorkspaceDetails(ctx.UserContext(), request.(GetPeerRunWorkspaceDetailsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPeerRunWorkspaceDetails")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(GetPeerRunWorkspaceDetailsResponseObject); ok {
+		if err := validResponse.VisitGetPeerRunWorkspaceDetailsResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PutPeerRunWorkspaceDetails operation middleware
+func (sh *strictHandler) PutPeerRunWorkspaceDetails(ctx *fiber.Ctx) error {
+	var request PutPeerRunWorkspaceDetailsRequestObject
+
+	var body PutPeerRunWorkspaceDetailsJSONRequestBody
+	if err := ctx.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	request.Body = &body
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.PutPeerRunWorkspaceDetails(ctx.UserContext(), request.(PutPeerRunWorkspaceDetailsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutPeerRunWorkspaceDetails")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(PutPeerRunWorkspaceDetailsResponseObject); ok {
+		if err := validResponse.VisitPutPeerRunWorkspaceDetailsResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListPeerRunWorkspaceHistory operation middleware
+func (sh *strictHandler) ListPeerRunWorkspaceHistory(ctx *fiber.Ctx) error {
+	var request ListPeerRunWorkspaceHistoryRequestObject
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPeerRunWorkspaceHistory(ctx.UserContext(), request.(ListPeerRunWorkspaceHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPeerRunWorkspaceHistory")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(ListPeerRunWorkspaceHistoryResponseObject); ok {
+		if err := validResponse.VisitListPeerRunWorkspaceHistoryResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PlayPeerRunWorkspaceHistory operation middleware
+func (sh *strictHandler) PlayPeerRunWorkspaceHistory(ctx *fiber.Ctx) error {
+	var request PlayPeerRunWorkspaceHistoryRequestObject
+
+	var body PlayPeerRunWorkspaceHistoryJSONRequestBody
+	if err := ctx.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	request.Body = &body
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.PlayPeerRunWorkspaceHistory(ctx.UserContext(), request.(PlayPeerRunWorkspaceHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PlayPeerRunWorkspaceHistory")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(PlayPeerRunWorkspaceHistoryResponseObject); ok {
+		if err := validResponse.VisitPlayPeerRunWorkspaceHistoryResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPeerRunWorkspaceMemoryStats operation middleware
+func (sh *strictHandler) GetPeerRunWorkspaceMemoryStats(ctx *fiber.Ctx) error {
+	var request GetPeerRunWorkspaceMemoryStatsRequestObject
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPeerRunWorkspaceMemoryStats(ctx.UserContext(), request.(GetPeerRunWorkspaceMemoryStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPeerRunWorkspaceMemoryStats")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(GetPeerRunWorkspaceMemoryStatsResponseObject); ok {
+		if err := validResponse.VisitGetPeerRunWorkspaceMemoryStatsResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SetPeerRunWorkspaceMode operation middleware
+func (sh *strictHandler) SetPeerRunWorkspaceMode(ctx *fiber.Ctx) error {
+	var request SetPeerRunWorkspaceModeRequestObject
+
+	var body SetPeerRunWorkspaceModeJSONRequestBody
+	if err := ctx.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	request.Body = &body
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPeerRunWorkspaceMode(ctx.UserContext(), request.(SetPeerRunWorkspaceModeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPeerRunWorkspaceMode")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(SetPeerRunWorkspaceModeResponseObject); ok {
+		if err := validResponse.VisitSetPeerRunWorkspaceModeResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RecallPeerRunWorkspaceMemory operation middleware
+func (sh *strictHandler) RecallPeerRunWorkspaceMemory(ctx *fiber.Ctx) error {
+	var request RecallPeerRunWorkspaceMemoryRequestObject
+
+	var body RecallPeerRunWorkspaceMemoryJSONRequestBody
+	if err := ctx.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	request.Body = &body
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.RecallPeerRunWorkspaceMemory(ctx.UserContext(), request.(RecallPeerRunWorkspaceMemoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RecallPeerRunWorkspaceMemory")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(RecallPeerRunWorkspaceMemoryResponseObject); ok {
+		if err := validResponse.VisitRecallPeerRunWorkspaceMemoryResponse(ctx); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ReloadPeerRunWorkspace operation middleware
+func (sh *strictHandler) ReloadPeerRunWorkspace(ctx *fiber.Ctx) error {
+	var request ReloadPeerRunWorkspaceRequestObject
+
+	handler := func(ctx *fiber.Ctx, request interface{}) (interface{}, error) {
+		return sh.ssi.ReloadPeerRunWorkspace(ctx.UserContext(), request.(ReloadPeerRunWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReloadPeerRunWorkspace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else if validResponse, ok := response.(ReloadPeerRunWorkspaceResponseObject); ok {
+		if err := validResponse.VisitReloadPeerRunWorkspaceResponse(ctx); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	} else if response != nil {

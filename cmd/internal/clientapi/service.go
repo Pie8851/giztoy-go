@@ -20,6 +20,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkg/gizclaw/gizcli"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	oapiruntime "github.com/oapi-codegen/runtime"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -727,6 +728,351 @@ func (s *playHTTPService) GetPeerWorkspaceHistoryAudio(ctx context.Context, requ
 	return clientservice.GetPeerWorkspaceHistoryAudio200ApplicationoctetStreamResponse{Body: bytes.NewReader(audio.Bytes()), ContentLength: size}, nil
 }
 
+func (s *playHTTPService) GetPeerRunWorkspace(ctx context.Context, _ clientservice.GetPeerRunWorkspaceRequestObject) (clientservice.GetPeerRunWorkspaceResponseObject, error) {
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.GetServerRunWorkspace(ctx, s.rpcID())
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.GetPeerRunWorkspace200JSONResponse(s.playWorkspaceState(ctx, c, result)), nil
+}
+
+func (s *playHTTPService) SetPeerRunWorkspace(ctx context.Context, request clientservice.SetPeerRunWorkspaceRequestObject) (clientservice.SetPeerRunWorkspaceResponseObject, error) {
+	if request.Body == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "request body required"}, nil
+	}
+	workspaceName := strings.TrimSpace(request.Body.WorkspaceName)
+	if workspaceName == "" {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "workspace_name is required"}, nil
+	}
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.SetServerRunWorkspace(ctx, s.rpcID(), rpcapi.ServerSetRunWorkspaceRequest{WorkspaceName: workspaceName})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.SetPeerRunWorkspace200JSONResponse(s.playWorkspaceState(ctx, c, result)), nil
+}
+
+func (s *playHTTPService) GetPeerRunWorkspaceDetails(ctx context.Context, request clientservice.GetPeerRunWorkspaceDetailsRequestObject) (clientservice.GetPeerRunWorkspaceDetailsResponseObject, error) {
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	workspaceName, err := s.selectedWorkspaceName(ctx, c, request.Params.WorkspaceName)
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	result, err := c.GetWorkspace(ctx, s.rpcID(), rpcapi.WorkspaceGetRequest{Name: workspaceName})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.GetPeerRunWorkspaceDetails200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) PutPeerRunWorkspaceDetails(ctx context.Context, request clientservice.PutPeerRunWorkspaceDetailsRequestObject) (clientservice.PutPeerRunWorkspaceDetailsResponseObject, error) {
+	if request.Body == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "request body required"}, nil
+	}
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	workspaceName, err := s.selectedWorkspaceName(ctx, c, request.Body.WorkspaceName)
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	workspace, err := c.GetWorkspace(ctx, s.rpcID(), rpcapi.WorkspaceGetRequest{Name: workspaceName})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	if request.Body.WorkflowName != nil && strings.TrimSpace(*request.Body.WorkflowName) != "" {
+		workspace.WorkflowName = strings.TrimSpace(*request.Body.WorkflowName)
+	}
+	if request.Body.Parameters != nil {
+		params, err := rpcWorkspaceParametersFromClient(request.Body.Parameters)
+		if err != nil {
+			return playHTTPErrorResponse{status: http.StatusBadRequest, message: err.Error()}, nil
+		}
+		workspace.Parameters = params
+	}
+	result, err := c.PutWorkspace(ctx, s.rpcID(), rpcapi.WorkspacePutRequest{Name: workspaceName, Body: *workspace})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.PutPeerRunWorkspaceDetails200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) ListPeerRunWorkspaceHistory(ctx context.Context, _ clientservice.ListPeerRunWorkspaceHistoryRequestObject) (clientservice.ListPeerRunWorkspaceHistoryResponseObject, error) {
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.ListServerRunWorkspaceHistory(ctx, s.rpcID(), rpcapi.ServerListRunWorkspaceHistoryRequest{})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.ListPeerRunWorkspaceHistory200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) PlayPeerRunWorkspaceHistory(ctx context.Context, request clientservice.PlayPeerRunWorkspaceHistoryRequestObject) (clientservice.PlayPeerRunWorkspaceHistoryResponseObject, error) {
+	if request.Body == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "request body required"}, nil
+	}
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.PlayServerRunWorkspaceHistory(ctx, s.rpcID(), *request.Body)
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.PlayPeerRunWorkspaceHistory200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) GetPeerRunWorkspaceMemoryStats(ctx context.Context, _ clientservice.GetPeerRunWorkspaceMemoryStatsRequestObject) (clientservice.GetPeerRunWorkspaceMemoryStatsResponseObject, error) {
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.GetServerRunWorkspaceMemoryStats(ctx, s.rpcID(), rpcapi.ServerGetRunWorkspaceMemoryStatsRequest{})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.GetPeerRunWorkspaceMemoryStats200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) SetPeerRunWorkspaceMode(ctx context.Context, request clientservice.SetPeerRunWorkspaceModeRequestObject) (clientservice.SetPeerRunWorkspaceModeResponseObject, error) {
+	if request.Body == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "request body required"}, nil
+	}
+	if !request.Body.Mode.Valid() {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "workspace mode must be push or realtime"}, nil
+	}
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	workspaceName, err := s.selectedWorkspaceName(ctx, c, request.Body.WorkspaceName)
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	workspace, err := c.GetWorkspace(ctx, s.rpcID(), rpcapi.WorkspaceGetRequest{Name: workspaceName})
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	if workspace.Parameters == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "workspace parameters are required"}, nil
+	}
+	params, err := clientPlayWorkspaceParametersWithMode(workspace.Parameters, string(request.Body.Mode))
+	if err != nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: err.Error()}, nil
+	}
+	workspace.Parameters = params
+	if _, err := c.PutWorkspace(ctx, s.rpcID(), rpcapi.WorkspacePutRequest{Name: workspaceName, Body: *workspace}); err != nil {
+		return playHTTPError(err), nil
+	}
+	result, err := c.ReloadServerRunWorkspace(ctx, s.rpcID())
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.SetPeerRunWorkspaceMode200JSONResponse(s.playWorkspaceState(ctx, c, result)), nil
+}
+
+func (s *playHTTPService) RecallPeerRunWorkspaceMemory(ctx context.Context, request clientservice.RecallPeerRunWorkspaceMemoryRequestObject) (clientservice.RecallPeerRunWorkspaceMemoryResponseObject, error) {
+	if request.Body == nil {
+		return playHTTPErrorResponse{status: http.StatusBadRequest, message: "request body required"}, nil
+	}
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.ServerRunWorkspaceRecall(ctx, s.rpcID(), *request.Body)
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.RecallPeerRunWorkspaceMemory200JSONResponse(*result), nil
+}
+
+func (s *playHTTPService) ReloadPeerRunWorkspace(ctx context.Context, _ clientservice.ReloadPeerRunWorkspaceRequestObject) (clientservice.ReloadPeerRunWorkspaceResponseObject, error) {
+	c, errResp, ok := s.gizCLIClient()
+	if !ok {
+		return errResp, nil
+	}
+	result, err := c.ReloadServerRunWorkspace(ctx, s.rpcID())
+	if err != nil {
+		return playHTTPError(err), nil
+	}
+	return clientservice.ReloadPeerRunWorkspace200JSONResponse(s.playWorkspaceState(ctx, c, result)), nil
+}
+
+func (s *playHTTPService) selectedWorkspaceName(ctx context.Context, c *gizcli.Client, explicit *string) (string, error) {
+	if explicit != nil && strings.TrimSpace(*explicit) != "" {
+		return strings.TrimSpace(*explicit), nil
+	}
+	state, err := c.GetServerRunWorkspace(ctx, s.rpcID())
+	if err != nil {
+		return "", err
+	}
+	name := selectedPlayWorkspaceNameFromState(state)
+	if name == "" {
+		return "", fmt.Errorf("workspace_name is required")
+	}
+	return name, nil
+}
+
+func (s *playHTTPService) playWorkspaceState(ctx context.Context, c *gizcli.Client, state *rpcapi.ServerGetRunWorkspaceResponse) clientservice.PlayWorkspaceState {
+	if state == nil {
+		return clientservice.PlayWorkspaceState{}
+	}
+	workspaceName := strings.TrimSpace(state.WorkspaceName)
+	if workspaceName == "" {
+		workspaceName = selectedPlayWorkspaceNameFromState(state)
+	}
+	payload := clientservice.PlayWorkspaceState{
+		ActiveWorkspaceName:  trimmedStringPtr(state.ActiveWorkspaceName),
+		AgentType:            trimmedStringPtr(state.AgentType),
+		Message:              trimmedStringPtr(state.Message),
+		PendingWorkspaceName: trimmedStringPtr(state.PendingWorkspaceName),
+		RuntimeState:         stringPtr(string(state.RuntimeState)),
+		WorkflowName:         trimmedStringPtr(state.WorkflowName),
+		WorkspaceName:        stringPtr(workspaceName),
+	}
+	if workspaceName == "" {
+		return payload
+	}
+	workspace, err := c.GetWorkspace(ctx, s.rpcID(), rpcapi.WorkspaceGetRequest{Name: workspaceName})
+	if err != nil || workspace == nil {
+		return payload
+	}
+	payload.WorkflowName = stringPtr(workspace.WorkflowName)
+	if workspace.Parameters != nil {
+		if discriminator, err := workspace.Parameters.Discriminator(); err == nil {
+			payload.AgentType = stringPtr(strings.TrimSpace(discriminator))
+		}
+		if mode := clientPlayWorkspaceParametersInputMode(workspace.Parameters); mode != nil {
+			payload.WorkspaceMode = mode
+		}
+	}
+	return payload
+}
+
+func selectedPlayWorkspaceNameFromState(state *rpcapi.ServerGetRunWorkspaceResponse) string {
+	if state == nil {
+		return ""
+	}
+	for _, candidate := range []*string{
+		&state.WorkspaceName,
+		state.SelectedWorkspaceName,
+		state.ActiveWorkspaceName,
+		state.PendingWorkspaceName,
+	} {
+		if candidate != nil && strings.TrimSpace(*candidate) != "" {
+			return strings.TrimSpace(*candidate)
+		}
+	}
+	return ""
+}
+
+func rpcWorkspaceParametersFromClient(parameters *apitypes.WorkspaceParameters) (*rpcapi.WorkspaceParameters, error) {
+	raw, err := parameters.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("encode workspace parameters: %w", err)
+	}
+	var out rpcapi.WorkspaceParameters
+	if err := out.UnmarshalJSON(raw); err != nil {
+		return nil, fmt.Errorf("decode workspace parameters: %w", err)
+	}
+	return &out, nil
+}
+
+func clientPlayWorkspaceParametersWithMode(parameters *rpcapi.WorkspaceParameters, mode string) (*rpcapi.WorkspaceParameters, error) {
+	raw, err := parameters.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("encode workspace parameters: %w", err)
+	}
+	overlay, err := json.Marshal(struct {
+		Input rpcapi.WorkspaceInputMode `json:"input"`
+	}{
+		Input: rpcapi.WorkspaceInputMode(workspaceInputModeForPatch(mode)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode workspace mode overlay: %w", err)
+	}
+	merged, err := oapiruntime.JSONMerge(raw, overlay)
+	if err != nil {
+		return nil, fmt.Errorf("merge workspace mode: %w", err)
+	}
+	var params rpcapi.WorkspaceParameters
+	if err := params.UnmarshalJSON(merged); err != nil {
+		return nil, fmt.Errorf("decode workspace parameters: %w", err)
+	}
+	return &params, nil
+}
+
+func clientPlayWorkspaceParametersInputMode(parameters *rpcapi.WorkspaceParameters) *clientservice.PlayWorkspaceMode {
+	raw, err := parameters.MarshalJSON()
+	if err != nil {
+		return nil
+	}
+	var input struct {
+		Input string `json:"input"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return nil
+	}
+	mode := uiWorkspaceMode(input.Input)
+	if mode == "" {
+		return nil
+	}
+	return ptrPlayWorkspaceMode(mode)
+}
+
+func workspaceInputModeForPatch(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "push", "push_to_talk", "push-to-talk", "ptt":
+		return "push-to-talk"
+	default:
+		return strings.TrimSpace(mode)
+	}
+}
+
+func uiWorkspaceMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "push", "push_to_talk", "push-to-talk", "ptt":
+		return "push"
+	case "realtime", "real_time", "real-time":
+		return "realtime"
+	default:
+		return ""
+	}
+}
+
+func stringPtr(value string) *string {
+	return &value
+}
+
+func trimmedStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func ptrPlayWorkspaceMode(value string) *clientservice.PlayWorkspaceMode {
+	mode := clientservice.PlayWorkspaceMode(value)
+	return &mode
+}
+
 func (s *playHTTPService) StreamPlayableVoices(ctx context.Context, request clientservice.StreamPlayableVoicesRequestObject) (clientservice.StreamPlayableVoicesResponseObject, error) {
 	c, errResp, ok := s.gizCLIClient()
 	if !ok {
@@ -916,6 +1262,46 @@ func (r playHTTPErrorResponse) VisitGetPeerWorkspaceHistoryResponse(ctx *fiber.C
 }
 
 func (r playHTTPErrorResponse) VisitGetPeerWorkspaceHistoryAudioResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitGetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitSetPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitGetPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitPutPeerRunWorkspaceDetailsResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitListPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitPlayPeerRunWorkspaceHistoryResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitGetPeerRunWorkspaceMemoryStatsResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitSetPeerRunWorkspaceModeResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitRecallPeerRunWorkspaceMemoryResponse(ctx *fiber.Ctx) error {
+	return r.write(ctx)
+}
+
+func (r playHTTPErrorResponse) VisitReloadPeerRunWorkspaceResponse(ctx *fiber.Ctx) error {
 	return r.write(ctx)
 }
 

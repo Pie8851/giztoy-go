@@ -18,6 +18,34 @@ export type ClientVoiceListResponse = {
     next_cursor?: string;
 };
 
+export type PlayWorkspaceSetRequest = {
+    workspace_name: string;
+};
+
+export type PlayWorkspaceMode = 'push' | 'push-to-talk' | 'realtime';
+
+export type PlayWorkspaceModeRequest = {
+    mode: PlayWorkspaceMode;
+    workspace_name?: string;
+};
+
+export type PlayWorkspaceDetailsRequest = {
+    parameters?: WorkspaceParameters;
+    workspace_name?: string;
+    workflow_name?: string;
+};
+
+export type PlayWorkspaceState = {
+    active_workspace_name?: string;
+    agent_type?: string;
+    message?: string;
+    pending_workspace_name?: string;
+    runtime_state?: string;
+    workspace_mode?: PlayWorkspaceMode;
+    workspace_name?: string;
+    workflow_name?: string;
+};
+
 export type PlayVoiceStreamEvent = {
     done?: boolean;
     error?: string;
@@ -508,6 +536,59 @@ export type PeerRunHistoryListResponse = {
     message?: string;
 };
 
+export type PeerRunHistoryPlayRequest = {
+    history_id: string;
+};
+
+export type PeerRunHistoryPlayResponse = {
+    accepted: boolean;
+    history_id: string;
+    state: string;
+    message?: string;
+};
+
+export type PeerRunMemoryStatsResponse = {
+    available: boolean;
+    enabled: boolean;
+    item_count: number;
+    storage_bytes: number;
+    message?: string;
+    embedding_enabled?: boolean;
+    embedding_status?: string;
+    index_status?: string;
+    last_updated_at?: string;
+    backend?: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type PeerRunRecallHit = {
+    id: string;
+    score: number;
+    source_type?: string;
+    source_id?: string;
+    snippet: string;
+    created_at?: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type PeerRunRecallRequest = {
+    query: string;
+    limit?: number;
+    filters?: {
+        [key: string]: unknown;
+    };
+};
+
+export type PeerRunRecallResponse = {
+    available: boolean;
+    hits: Array<PeerRunRecallHit>;
+    message?: string;
+};
+
 export type Voice = {
     id: string;
     source: VoiceSource;
@@ -962,6 +1043,8 @@ export type FriendGroupId = string;
 export type FriendGroupMemberId = string;
 
 export type WorkspaceName = string;
+
+export type OptionalWorkspaceName = string;
 
 export type HistoryId = string;
 
@@ -1832,6 +1915,168 @@ export type PutPeerFriendGroupMemberResponses = {
 };
 
 export type PutPeerFriendGroupMemberResponse = PutPeerFriendGroupMemberResponses[keyof PutPeerFriendGroupMemberResponses];
+
+export type GetPeerRunWorkspaceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace';
+};
+
+export type GetPeerRunWorkspaceResponses = {
+    /**
+     * The active workspace runtime state.
+     */
+    200: PlayWorkspaceState;
+};
+
+export type GetPeerRunWorkspaceResponse = GetPeerRunWorkspaceResponses[keyof GetPeerRunWorkspaceResponses];
+
+export type SetPeerRunWorkspaceData = {
+    body: PlayWorkspaceSetRequest;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace';
+};
+
+export type SetPeerRunWorkspaceResponses = {
+    /**
+     * The active workspace runtime state.
+     */
+    200: PlayWorkspaceState;
+};
+
+export type SetPeerRunWorkspaceResponse = SetPeerRunWorkspaceResponses[keyof SetPeerRunWorkspaceResponses];
+
+export type GetPeerRunWorkspaceDetailsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspace_name?: string;
+    };
+    url: '/peer-run/workspace/details';
+};
+
+export type GetPeerRunWorkspaceDetailsResponses = {
+    /**
+     * The workspace definition.
+     */
+    200: Workspace;
+};
+
+export type GetPeerRunWorkspaceDetailsResponse = GetPeerRunWorkspaceDetailsResponses[keyof GetPeerRunWorkspaceDetailsResponses];
+
+export type PutPeerRunWorkspaceDetailsData = {
+    body: PlayWorkspaceDetailsRequest;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/details';
+};
+
+export type PutPeerRunWorkspaceDetailsResponses = {
+    /**
+     * The updated workspace definition.
+     */
+    200: Workspace;
+};
+
+export type PutPeerRunWorkspaceDetailsResponse = PutPeerRunWorkspaceDetailsResponses[keyof PutPeerRunWorkspaceDetailsResponses];
+
+export type ReloadPeerRunWorkspaceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/reload';
+};
+
+export type ReloadPeerRunWorkspaceResponses = {
+    /**
+     * The active workspace runtime state.
+     */
+    200: PlayWorkspaceState;
+};
+
+export type ReloadPeerRunWorkspaceResponse = ReloadPeerRunWorkspaceResponses[keyof ReloadPeerRunWorkspaceResponses];
+
+export type SetPeerRunWorkspaceModeData = {
+    body: PlayWorkspaceModeRequest;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/mode';
+};
+
+export type SetPeerRunWorkspaceModeResponses = {
+    /**
+     * The active workspace runtime state.
+     */
+    200: PlayWorkspaceState;
+};
+
+export type SetPeerRunWorkspaceModeResponse = SetPeerRunWorkspaceModeResponses[keyof SetPeerRunWorkspaceModeResponses];
+
+export type ListPeerRunWorkspaceHistoryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/history';
+};
+
+export type ListPeerRunWorkspaceHistoryResponses = {
+    /**
+     * A page of workspace history entries.
+     */
+    200: PeerRunHistoryListResponse;
+};
+
+export type ListPeerRunWorkspaceHistoryResponse = ListPeerRunWorkspaceHistoryResponses[keyof ListPeerRunWorkspaceHistoryResponses];
+
+export type PlayPeerRunWorkspaceHistoryData = {
+    body: PeerRunHistoryPlayRequest;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/history/play';
+};
+
+export type PlayPeerRunWorkspaceHistoryResponses = {
+    /**
+     * History playback status.
+     */
+    200: PeerRunHistoryPlayResponse;
+};
+
+export type PlayPeerRunWorkspaceHistoryResponse = PlayPeerRunWorkspaceHistoryResponses[keyof PlayPeerRunWorkspaceHistoryResponses];
+
+export type GetPeerRunWorkspaceMemoryStatsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/memory/stats';
+};
+
+export type GetPeerRunWorkspaceMemoryStatsResponses = {
+    /**
+     * Active workspace memory statistics.
+     */
+    200: PeerRunMemoryStatsResponse;
+};
+
+export type GetPeerRunWorkspaceMemoryStatsResponse = GetPeerRunWorkspaceMemoryStatsResponses[keyof GetPeerRunWorkspaceMemoryStatsResponses];
+
+export type RecallPeerRunWorkspaceMemoryData = {
+    body: PeerRunRecallRequest;
+    path?: never;
+    query?: never;
+    url: '/peer-run/workspace/recall';
+};
+
+export type RecallPeerRunWorkspaceMemoryResponses = {
+    /**
+     * Active workspace recall hits.
+     */
+    200: PeerRunRecallResponse;
+};
+
+export type RecallPeerRunWorkspaceMemoryResponse = RecallPeerRunWorkspaceMemoryResponses[keyof RecallPeerRunWorkspaceMemoryResponses];
 
 export type ListPeerWorkspaceHistoryData = {
     body?: never;
