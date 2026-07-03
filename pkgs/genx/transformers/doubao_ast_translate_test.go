@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"strings"
 	"testing"
 
 	"github.com/GizClaw/doubao-speech-go"
@@ -156,11 +157,335 @@ func TestDoubaoASTTranslateSplitsProviderSubtitleSegments(t *testing.T) {
 	assertASTTranslateEOS(t, chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-1:ast:2")
 }
 
+func TestDoubaoASTTranslatePushToTalkKeepsProviderSegmentsInOneTurn(t *testing.T) {
+	if !opus.IsRuntimeSupported() {
+		t.Skip("native opus runtime is not available")
+	}
+	input := newBufferStream(8)
+	audioPacket := buildASTTranslateRawOpusPacket(t, buildASRAudioFrame(doubaoASTTranslateSourceSampleRate/50, 1))
+	tr := NewDoubaoASTTranslate(doubaospeech.NewClient("app-id"),
+		WithDoubaoASTTranslateMode(doubaospeech.ASTTranslateModeS2S),
+		WithDoubaoASTTranslateInputMode(DoubaoASTTranslateInputModePushToTalk),
+	)
+	fake := &fakeASTTranslateSession{
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventSourceSubtitleStart},
+			{Type: doubaospeech.ASTEventSourceSubtitleResponse, Text: "好"},
+			{Type: doubaospeech.ASTEventSourceSubtitleEnd, Text: "好的", StartTimeMS: 0, EndTimeMS: 20},
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "Okay"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "Okay"},
+			{Type: doubaospeech.ASTEventTTSSentenceStart},
+			{Type: doubaospeech.ASTEventTTSResponse, Audio: buildASTTranslateOggPackets(t, astTranslateOpusHeadPacket(48000, 1), astTranslateOpusTagsPacket("test"), []byte{1, 2, 3})},
+			{Type: doubaospeech.ASTEventTTSSentenceEnd},
+			{Type: doubaospeech.ASTEventSourceSubtitleStart},
+			{Type: doubaospeech.ASTEventSourceSubtitleResponse, Text: "我们继续下一轮测试"},
+			{Type: doubaospeech.ASTEventSourceSubtitleEnd, Text: "好的我们继续下一轮测试", StartTimeMS: 20, EndTimeMS: 40},
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "let's continue"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "Okay let's continue to the next round of testing."},
+			{Type: doubaospeech.ASTEventTTSSentenceStart},
+			{Type: doubaospeech.ASTEventTTSResponse, Audio: buildASTTranslateOggPackets(t, astTranslateOpusHeadPacket(48000, 1), astTranslateOpusTagsPacket("test"), []byte{4, 5, 6})},
+			{Type: doubaospeech.ASTEventTTSSentenceEnd},
+			{Type: doubaospeech.ASTEventSessionFinished},
+		},
+	}
+	tr.newSession = func(context.Context, doubaospeech.ASTTranslateConfig) (doubaoASTTranslateSession, error) {
+		return fake, nil
+	}
+	out, err := tr.Transform(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{Ctrl: &genx.StreamCtrl{StreamID: "turn-1", BeginOfStream: true}}); err != nil {
+		t.Fatalf("Push(BOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/opus", Data: audioPacket},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1", Timestamp: 1_000},
+	}); err != nil {
+		t.Fatalf("Push(audio): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{Part: &genx.Blob{MIMEType: "audio/opus"}, Ctrl: &genx.StreamCtrl{StreamID: "turn-1", EndOfStream: true}}); err != nil {
+		t.Fatalf("Push(EOS): %v", err)
+	}
+	if err := input.Close(); err != nil {
+		t.Fatalf("Close(input): %v", err)
+	}
+
+	chunks := readAllASTTranslateChunks(t, out)
+	if got := collectASTTranslateText(chunks, genx.RoleUser, doubaoASTTranslateTranscriptLabel, "turn-1"); got != "好的我们继续下一轮测试" {
+		t.Fatalf("transcript text = %q, want full push-to-talk transcript", got)
+	}
+	if got := collectASTTranslateText(chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-1"); got != "Okay let's continue to the next round of testing." {
+		t.Fatalf("assistant text = %q, want full push-to-talk translation", got)
+	}
+	assertASTTranslateAudioChunk(t, chunks, "turn-1", []byte{1, 2, 3})
+	assertASTTranslateAudioChunk(t, chunks, "turn-1", []byte{4, 5, 6})
+	assertASTTranslateHistoryAudioChunk(t, chunks, "turn-1", audioPacket)
+	if got := countASTTranslateTextEOS(chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-1"); got != 1 {
+		t.Fatalf("assistant text EOS count = %d, want 1; chunks=%#v", got, chunks)
+	}
+	if got := countASTTranslateAudioEOS(chunks, "turn-1"); got != 1 {
+		t.Fatalf("assistant audio EOS count = %d, want 1; chunks=%#v", got, chunks)
+	}
+	if got := countASTTranslateTextEOS(chunks, genx.RoleUser, doubaoASTTranslateTranscriptLabel, "turn-1"); got != 1 {
+		t.Fatalf("transcript EOS count = %d, want 1; chunks=%#v", got, chunks)
+	}
+	if got := countASTTranslateHistoryAudioEOS(chunks, "turn-1"); got != 1 {
+		t.Fatalf("history audio EOS count = %d, want 1; chunks=%#v", got, chunks)
+	}
+	if got := countASTTranslateStreamChunks(chunks, "turn-1:ast:2"); got != 0 {
+		t.Fatalf("split stream chunks = %d, want 0; chunks=%#v", got, chunks)
+	}
+}
+
+func TestDoubaoASTTranslateInterruptsActiveSessionOnNewInputStream(t *testing.T) {
+	input := newBufferStream(8)
+	tr := NewDoubaoASTTranslate(doubaospeech.NewClient("app-id"),
+		WithDoubaoASTTranslateMode(doubaospeech.ASTTranslateModeS2S),
+	)
+	first := &fakeASTTranslateSession{
+		closeCh: make(chan struct{}),
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "stale"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "stale"},
+		},
+	}
+	second := &fakeASTTranslateSession{
+		events: []*doubaospeech.ASTTranslateEvent{{Type: doubaospeech.ASTEventSessionFinished}},
+	}
+	sessions := []*fakeASTTranslateSession{first, second}
+	tr.newSession = func(context.Context, doubaospeech.ASTTranslateConfig) (doubaoASTTranslateSession, error) {
+		if len(sessions) == 0 {
+			t.Fatal("unexpected extra AST session")
+		}
+		next := sessions[0]
+		sessions = sessions[1:]
+		return next, nil
+	}
+	out, err := tr.Transform(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{Ctrl: &genx.StreamCtrl{StreamID: "turn-1", BeginOfStream: true}}); err != nil {
+		t.Fatalf("Push(first BOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1, 0, 2, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1"},
+	}); err != nil {
+		t.Fatalf("Push(first audio): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push(first EOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{Ctrl: &genx.StreamCtrl{StreamID: "turn-2", BeginOfStream: true}}); err != nil {
+		t.Fatalf("Push(second BOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{3, 0, 4, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2"},
+	}); err != nil {
+		t.Fatalf("Push(second audio): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push(second EOS): %v", err)
+	}
+	if err := input.Close(); err != nil {
+		t.Fatalf("Close(input): %v", err)
+	}
+
+	chunks := readAllASTTranslateChunks(t, out)
+	if !first.closed || !first.finished {
+		t.Fatalf("first session closed/finished = %t/%t, want finished and closed interrupt", first.closed, first.finished)
+	}
+	if !second.finished {
+		t.Fatal("second session was not finished")
+	}
+	assertASTTranslateInterruptedEOS(t, chunks, "turn-1", genx.Text(""))
+	assertASTTranslateInterruptedEOS(t, chunks, "turn-1", &genx.Blob{MIMEType: "audio/opus"})
+	if got := collectASTTranslateText(chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-1"); strings.Contains(got, "stale") {
+		t.Fatalf("stale interrupted session output leaked: text=%q chunks=%#v", got, chunks)
+	}
+}
+
+func TestDoubaoASTTranslateRealtimeStartsNextSessionAfterPreviousFinished(t *testing.T) {
+	input := newBufferStream(8)
+	tr := NewDoubaoASTTranslate(doubaospeech.NewClient("app-id"),
+		WithDoubaoASTTranslateMode(doubaospeech.ASTTranslateModeS2S),
+		WithDoubaoASTTranslateInputMode(DoubaoASTTranslateInputModeRealtime),
+	)
+	firstDone := make(chan struct{})
+	first := &fakeASTTranslateSession{
+		doneCh: firstDone,
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventSessionFinished},
+		},
+	}
+	second := &fakeASTTranslateSession{
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "second"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "second"},
+			{Type: doubaospeech.ASTEventSessionFinished},
+		},
+	}
+	sessions := []*fakeASTTranslateSession{first, second}
+	tr.newSession = func(context.Context, doubaospeech.ASTTranslateConfig) (doubaoASTTranslateSession, error) {
+		if len(sessions) == 0 {
+			t.Fatal("unexpected extra AST session")
+		}
+		next := sessions[0]
+		sessions = sessions[1:]
+		return next, nil
+	}
+	out, err := tr.Transform(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Push(genx.NewBeginOfStream("turn-1")); err != nil {
+		t.Fatalf("Push(first BOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1, 0, 2, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1"},
+	}); err != nil {
+		t.Fatalf("Push(first audio): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push(first EOS): %v", err)
+	}
+	<-firstDone
+	if err := input.Push(genx.NewBeginOfStream("turn-2")); err != nil {
+		t.Fatalf("Push(second BOS): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{3, 0, 4, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2"},
+	}); err != nil {
+		t.Fatalf("Push(second audio): %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push(second EOS): %v", err)
+	}
+	if err := input.Close(); err != nil {
+		t.Fatalf("Close(input): %v", err)
+	}
+
+	chunks := readAllASTTranslateChunks(t, out)
+	for _, chunk := range chunks {
+		if chunk.Ctrl != nil && chunk.Ctrl.Error == "interrupted" {
+			t.Fatalf("unexpected interrupted chunk after normal session completion: %#v", chunk)
+		}
+	}
+	if got := collectASTTranslateText(chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-2"); !strings.Contains(got, "second") {
+		t.Fatalf("turn-2 text = %q, want second", got)
+	}
+}
+
+func TestDoubaoASTTranslateIgnoresLateInterruptedStreamChunks(t *testing.T) {
+	input := newBufferStream(10)
+	tr := NewDoubaoASTTranslate(doubaospeech.NewClient("app-id"),
+		WithDoubaoASTTranslateMode(doubaospeech.ASTTranslateModeS2S),
+		WithDoubaoASTTranslateInputMode(DoubaoASTTranslateInputModeRealtime),
+	)
+	first := &fakeASTTranslateSession{
+		closeCh: make(chan struct{}),
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "stale"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "stale"},
+		},
+	}
+	second := &fakeASTTranslateSession{
+		events: []*doubaospeech.ASTTranslateEvent{
+			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
+			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "second"},
+			{Type: doubaospeech.ASTEventTranslationSubtitleEnd, Text: "second"},
+			{Type: doubaospeech.ASTEventSessionFinished},
+		},
+	}
+	sessions := []*fakeASTTranslateSession{first, second}
+	tr.newSession = func(context.Context, doubaospeech.ASTTranslateConfig) (doubaoASTTranslateSession, error) {
+		if len(sessions) == 0 {
+			t.Fatal("unexpected extra AST session")
+		}
+		next := sessions[0]
+		sessions = sessions[1:]
+		return next, nil
+	}
+	out, err := tr.Transform(context.Background(), "", input)
+	if err != nil {
+		t.Fatalf("Transform() error = %v", err)
+	}
+	if err := input.Push(genx.NewBeginOfStream("turn-1")); err != nil {
+		t.Fatalf("Push first BOS: %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{1, 0, 2, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1"},
+	}); err != nil {
+		t.Fatalf("Push first audio: %v", err)
+	}
+	if err := input.Push(genx.NewBeginOfStream("turn-2")); err != nil {
+		t.Fatalf("Push second BOS: %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-1", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push stale first EOS: %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm", Data: []byte{3, 0, 4, 0}},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2"},
+	}); err != nil {
+		t.Fatalf("Push second audio: %v", err)
+	}
+	if err := input.Push(&genx.MessageChunk{
+		Part: &genx.Blob{MIMEType: "audio/pcm"},
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-2", EndOfStream: true},
+	}); err != nil {
+		t.Fatalf("Push second EOS: %v", err)
+	}
+	if err := input.Close(); err != nil {
+		t.Fatalf("Close(input): %v", err)
+	}
+
+	chunks := readAllASTTranslateChunks(t, out)
+	assertASTTranslateInterruptedEOS(t, chunks, "turn-1", genx.Text(""))
+	if got := collectASTTranslateText(chunks, genx.RoleModel, doubaoASTTranslateAssistantLabel, "turn-2"); !strings.Contains(got, "second") {
+		t.Fatalf("turn-2 text = %q, want second; chunks=%#v", got, chunks)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("unused sessions = %d", len(sessions))
+	}
+	if !second.finished {
+		t.Fatal("second session was not finished")
+	}
+}
+
 type fakeASTTranslateSession struct {
 	events    []*doubaospeech.ASTTranslateEvent
 	sentAudio [][]byte
 	finished  bool
 	closed    bool
+	closeCh   chan struct{}
+	doneCh    chan struct{}
 }
 
 func (s *fakeASTTranslateSession) SendAudio(_ context.Context, audio []byte) error {
@@ -176,6 +501,22 @@ func (s *fakeASTTranslateSession) Finish(context.Context) error {
 
 func (s *fakeASTTranslateSession) Recv() iter.Seq2[*doubaospeech.ASTTranslateEvent, error] {
 	return func(yield func(*doubaospeech.ASTTranslateEvent, error) bool) {
+		if s.doneCh != nil {
+			defer func() {
+				close(s.doneCh)
+				s.doneCh = nil
+			}()
+		}
+		if s.closeCh != nil {
+			<-s.closeCh
+			for _, event := range s.events {
+				if !yield(event, nil) {
+					return
+				}
+			}
+			_ = yield(nil, io.ErrClosedPipe)
+			return
+		}
 		for _, event := range s.events {
 			if !yield(event, nil) {
 				return
@@ -186,6 +527,10 @@ func (s *fakeASTTranslateSession) Recv() iter.Seq2[*doubaospeech.ASTTranslateEve
 
 func (s *fakeASTTranslateSession) Close() error {
 	s.closed = true
+	if s.closeCh != nil {
+		close(s.closeCh)
+		s.closeCh = nil
+	}
 	return nil
 }
 
@@ -252,6 +597,87 @@ func assertASTTranslateEOS(t *testing.T, chunks []*genx.MessageChunk, role genx.
 		}
 	}
 	t.Fatalf("missing EOS role=%s label=%s stream=%s in %#v", role, label, streamID, chunks)
+}
+
+func assertASTTranslateInterruptedEOS(t *testing.T, chunks []*genx.MessageChunk, streamID string, part any) {
+	t.Helper()
+	for _, chunk := range chunks {
+		if chunk.Role != genx.RoleModel || chunk.Ctrl == nil ||
+			chunk.Ctrl.Label != doubaoASTTranslateAssistantLabel ||
+			chunk.Ctrl.StreamID != streamID ||
+			!chunk.Ctrl.EndOfStream ||
+			chunk.Ctrl.Error != "interrupted" {
+			continue
+		}
+		switch part.(type) {
+		case genx.Text:
+			if _, ok := chunk.Part.(genx.Text); ok {
+				return
+			}
+		case *genx.Blob:
+			if _, ok := chunk.Part.(*genx.Blob); ok {
+				return
+			}
+		}
+	}
+	t.Fatalf("missing interrupted EOS stream=%s part=%T in %#v", streamID, part, chunks)
+}
+
+func countASTTranslateTextEOS(chunks []*genx.MessageChunk, role genx.Role, label, streamID string) int {
+	count := 0
+	for _, chunk := range chunks {
+		if chunk.Role == role && chunk.Ctrl != nil && chunk.Ctrl.Label == label && chunk.Ctrl.StreamID == streamID && chunk.Ctrl.EndOfStream {
+			if _, ok := chunk.Part.(genx.Text); ok {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func countASTTranslateAudioEOS(chunks []*genx.MessageChunk, streamID string) int {
+	count := 0
+	for _, chunk := range chunks {
+		if chunk.Role == genx.RoleModel && chunk.Ctrl != nil && chunk.Ctrl.Label == doubaoASTTranslateAssistantLabel && chunk.Ctrl.StreamID == streamID && chunk.Ctrl.EndOfStream {
+			if _, ok := chunk.Part.(*genx.Blob); ok {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func countASTTranslateHistoryAudioEOS(chunks []*genx.MessageChunk, streamID string) int {
+	count := 0
+	for _, chunk := range chunks {
+		if chunk.Role == genx.RoleUser && chunk.Ctrl != nil && chunk.Ctrl.Label == genx.HistoryUserAudioLabel && chunk.Ctrl.StreamID == streamID && chunk.Ctrl.EndOfStream {
+			count++
+		}
+	}
+	return count
+}
+
+func collectASTTranslateText(chunks []*genx.MessageChunk, role genx.Role, label, streamID string) string {
+	var out string
+	for _, chunk := range chunks {
+		if chunk.Role != role || chunk.Ctrl == nil || chunk.Ctrl.Label != label || chunk.Ctrl.StreamID != streamID {
+			continue
+		}
+		if text, ok := chunk.Part.(genx.Text); ok {
+			out += string(text)
+		}
+	}
+	return out
+}
+
+func countASTTranslateStreamChunks(chunks []*genx.MessageChunk, streamID string) int {
+	count := 0
+	for _, chunk := range chunks {
+		if chunk.Ctrl != nil && chunk.Ctrl.StreamID == streamID {
+			count++
+		}
+	}
+	return count
 }
 
 func buildASTTranslateRawOpusPacket(t *testing.T, frame []int16) []byte {

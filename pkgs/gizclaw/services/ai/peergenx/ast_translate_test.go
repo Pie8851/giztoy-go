@@ -28,8 +28,10 @@ func TestDefaultBuilderBuildsVolcASTTranslateTransformer(t *testing.T) {
 			Body: body,
 		},
 		Params: map[string]any{
-			"mode":      string(doubaospeech.ASTTranslateModeS2T),
-			"lang_pair": "auto",
+			"mode":            string(doubaospeech.ASTTranslateModeS2T),
+			"input":           "push-to-talk",
+			"lang_pair":       "auto",
+			"realtime_pacing": false,
 		},
 	})
 	if err != nil {
@@ -37,6 +39,12 @@ func TestDefaultBuilderBuildsVolcASTTranslateTransformer(t *testing.T) {
 	}
 	if _, ok := transformer.(*transformers.DoubaoASTTranslate); !ok {
 		t.Fatalf("transformer = %T, want *DoubaoASTTranslate", transformer)
+	}
+	if got := transformerStringField(t, transformer, "inputMode"); got != "push-to-talk" {
+		t.Fatalf("AST translate inputMode = %q, want push-to-talk", got)
+	}
+	if transformerBoolField(t, transformer, "realtimePacing") {
+		t.Fatal("AST translate realtimePacing = true, want false")
 	}
 }
 
