@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkgs/audio/pcm"
-	"github.com/GizClaw/gizclaw-go/pkgs/vecid"
+	"github.com/GizClaw/gizclaw-go/pkgs/store/vecid"
 )
 
 const (

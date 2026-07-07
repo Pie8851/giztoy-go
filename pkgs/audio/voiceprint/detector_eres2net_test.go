@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/GizClaw/gizclaw-go/pkgs/audio/pcm"
-	"github.com/GizClaw/gizclaw-go/pkgs/vecid"
+	"github.com/GizClaw/gizclaw-go/pkgs/store/vecid"
 )
 
 func TestERes2NetDetectorDetectAndUpdateCommitsEmbedding(t *testing.T) {
