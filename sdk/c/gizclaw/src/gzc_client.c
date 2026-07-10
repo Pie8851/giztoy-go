@@ -6,6 +6,17 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct gzc_rpc_inbound gzc_rpc_inbound_t;
+int gzc_rpc_inbound_create(
+    gzc_client_t *client,
+    gzc_rtc_channel_t *channel,
+    gzc_rpc_inbound_t **out_inbound);
+int gzc_rpc_inbound_feed(gzc_rpc_inbound_t *inbound, const uint8_t *data, size_t len, bool is_text);
+int gzc_rpc_inbound_poll(gzc_rpc_inbound_t *inbound);
+bool gzc_rpc_inbound_has_pending_output(gzc_rpc_inbound_t *inbound);
+bool gzc_rpc_inbound_close_requested(gzc_rpc_inbound_t *inbound);
+void gzc_rpc_inbound_destroy(gzc_rpc_inbound_t *inbound);
+
 struct gzc_service_channel {
   gzc_client_t *client;
   gzc_rtc_channel_t *rtc;
@@ -25,6 +36,9 @@ struct gzc_client {
   gzc_buf_t packet_rx;
   gzc_buf_t rpc_rx;
   gzc_buf_t rpc_response;
+  gzc_rpc_inbound_t *inbound[GZC_RPC_MAX_INBOUND_CHANNELS];
+  gzc_rtc_channel_t *inbound_channels[GZC_RPC_MAX_INBOUND_CHANNELS];
+  int dispatch_error;
   bool has_local_sdp;
   bool packet_channel_open;
   bool rpc_channel_open;
@@ -54,7 +68,7 @@ static bool str_empty(gzc_str_t value) {
 
 static bool str_eq_cstr(gzc_str_t value, const char *want) {
   size_t want_len = strlen(want);
-  return value.len == want_len && strncmp(value.data, want, want_len) == 0;
+  return value.data != NULL && value.len == want_len && strncmp(value.data, want, want_len) == 0;
 }
 
 static bool valid_packet_protocol(uint8_t protocol) {
@@ -229,6 +243,16 @@ static void on_channel_state(
   } else if (client->service_channel != NULL && channel == client->service_channel->rtc) {
     open_flag = &client->service_channel->open;
   }
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    if (channel == client->inbound_channels[i]) {
+      if (state == GZC_RTC_CHANNEL_CLOSED || state == GZC_RTC_CHANNEL_ERROR) {
+        gzc_rpc_inbound_destroy(client->inbound[i]);
+        client->inbound[i] = NULL;
+        client->inbound_channels[i] = NULL;
+      }
+      return;
+    }
+  }
   if (open_flag == NULL) {
     return;
   }
@@ -240,6 +264,54 @@ static void on_channel_state(
       client->service_channel->closed = true;
     }
   }
+}
+
+static void on_remote_channel(
+    void *userdata,
+    gzc_rtc_peer_t *peer,
+    gzc_rtc_channel_t *channel,
+    const gzc_rtc_channel_info_t *info) {
+  (void)peer;
+  gzc_client_t *client = (gzc_client_t *)userdata;
+  if (client == NULL || channel == NULL || info == NULL) {
+    return;
+  }
+  if (client->closed) {
+    if (client->config.webrtc != NULL && client->config.webrtc->channel_close != NULL) {
+      client->config.webrtc->channel_close(channel);
+    }
+    return;
+  }
+  if (!str_eq_cstr(info->label, "giznet/v1/service/0") || !info->ordered || !info->reliable) {
+    if (client->config.webrtc->channel_close != NULL) {
+      client->config.webrtc->channel_close(channel);
+    }
+    return;
+  }
+  size_t slot = GZC_RPC_MAX_INBOUND_CHANNELS;
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    if (client->inbound[i] == NULL) {
+      slot = i;
+      break;
+    }
+  }
+  if (slot == GZC_RPC_MAX_INBOUND_CHANNELS) {
+    if (client->config.webrtc->channel_close != NULL) {
+      client->config.webrtc->channel_close(channel);
+    }
+    return;
+  }
+  gzc_rpc_inbound_t *inbound = NULL;
+  int rc = gzc_rpc_inbound_create(client, channel, &inbound);
+  if (rc != GZC_OK) {
+    client->dispatch_error = rc;
+    if (client->config.webrtc->channel_close != NULL) {
+      client->config.webrtc->channel_close(channel);
+    }
+    return;
+  }
+  client->inbound[slot] = inbound;
+  client->inbound_channels[slot] = channel;
 }
 
 static void on_channel_message(
@@ -254,12 +326,30 @@ static void on_channel_message(
   (void)info;
   gzc_client_t *client = (gzc_client_t *)userdata;
   (void)is_text;
-  if (client == NULL || channel == NULL) {
+  if (client == NULL || channel == NULL || client->closed) {
     return;
   }
   if (channel == client->rpc_channel) {
     (void)gzc_buf_append(&client->rpc_rx, client->config.platform, data, len);
     return;
+  }
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    if (channel == client->inbound_channels[i] && client->inbound[i] != NULL) {
+      gzc_rpc_inbound_t *inbound = client->inbound[i];
+      int rc = gzc_rpc_inbound_feed(inbound, data, len, is_text);
+      if (gzc_rpc_inbound_close_requested(inbound)) {
+        client->inbound[i] = NULL;
+        client->inbound_channels[i] = NULL;
+        if (client->config.webrtc->channel_close != NULL) {
+          client->config.webrtc->channel_close(channel);
+        }
+        gzc_rpc_inbound_destroy(inbound);
+      }
+      if (rc != GZC_OK) {
+        client->dispatch_error = rc;
+      }
+      return;
+    }
   }
   if (channel == client->packet_channel) {
     (void)append_framed_rx(&client->packet_rx, client->config.platform, data, len);
@@ -277,14 +367,9 @@ static int wait_until(gzc_client_t *client, bool *flag, int timeout_ms) {
     if (client->closed) {
       return GZC_ERR_CLOSED;
     }
-    int rc = GZC_OK;
-    if (client->config.webrtc->peer_poll != NULL) {
-      rc = client->config.webrtc->peer_poll(client->peer, 10);
-      if (rc != GZC_OK) {
-        return rc;
-      }
-    } else {
-      return GZC_ERR_TIMEOUT;
+    int rc = gzc_client_poll(client, 10);
+    if (rc != GZC_OK) {
+      return rc;
     }
     if (timeout_ms >= 0 && now_ms(client) - start >= timeout_ms) {
       return GZC_ERR_TIMEOUT;
@@ -384,6 +469,7 @@ int gzc_client_connect(gzc_client_t *client) {
   callbacks.on_local_sdp = on_local_sdp;
   callbacks.on_channel_state = on_channel_state;
   callbacks.on_channel_message = on_channel_message;
+  callbacks.on_remote_channel = on_remote_channel;
 
   int rc = client->config.webrtc->peer_create(client->config.webrtc->userdata, &callbacks, &client->peer);
   if (rc != GZC_OK) {
@@ -511,29 +597,87 @@ int gzc_client_close(gzc_client_t *client) {
   if (client == NULL) {
     return GZC_ERR_INVALID_ARGUMENT;
   }
-  if (client->rpc_channel != NULL) {
-    if (client->config.webrtc->channel_close != NULL) {
+  client->closed = true;
+  if (client->peer != NULL && client->config.webrtc->channel_close != NULL) {
+    for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+      if (client->inbound_channels[i] != NULL) {
+        client->config.webrtc->channel_close(client->inbound_channels[i]);
+      }
+    }
+    if (client->service_channel != NULL) {
+      gzc_service_channel_close(client->service_channel);
+    }
+    if (client->rpc_channel != NULL) {
       client->config.webrtc->channel_close(client->rpc_channel);
     }
-    client->rpc_channel = NULL;
-  }
-  if (client->packet_channel != NULL) {
-    if (client->config.webrtc->channel_close != NULL) {
+    if (client->packet_channel != NULL) {
       client->config.webrtc->channel_close(client->packet_channel);
     }
-    client->packet_channel = NULL;
-  }
-  if (client->service_channel != NULL) {
-    gzc_service_channel_close(client->service_channel);
   }
   if (client->peer != NULL && client->config.webrtc->peer_close != NULL) {
     client->config.webrtc->peer_close(client->peer);
-    client->peer = NULL;
+  }
+  client->peer = NULL;
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    gzc_rpc_inbound_t *inbound = client->inbound[i];
+    client->inbound_channels[i] = NULL;
+    client->inbound[i] = NULL;
+    gzc_rpc_inbound_destroy(inbound);
+  }
+  client->rpc_channel = NULL;
+  client->packet_channel = NULL;
+  if (client->service_channel != NULL) {
+    gzc_service_channel_close(client->service_channel);
   }
   client->packet_channel_open = false;
   client->rpc_channel_open = false;
   client->has_local_sdp = false;
-  client->closed = true;
+  return GZC_OK;
+}
+
+int gzc_client_poll(gzc_client_t *client, int timeout_ms) {
+  if (client == NULL) {
+    return GZC_ERR_INVALID_ARGUMENT;
+  }
+  if (client->closed || client->peer == NULL) {
+    return GZC_ERR_CLOSED;
+  }
+  if (client->config.webrtc == NULL || client->config.webrtc->peer_poll == NULL) {
+    return GZC_ERR_UNSUPPORTED;
+  }
+  client->dispatch_error = GZC_OK;
+  int backend_timeout_ms = timeout_ms;
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    if (gzc_rpc_inbound_has_pending_output(client->inbound[i])) {
+      backend_timeout_ms = 0;
+      break;
+    }
+  }
+  int rc = client->config.webrtc->peer_poll(client->peer, backend_timeout_ms);
+  if (rc != GZC_OK) {
+    return rc;
+  }
+  if (client->dispatch_error != GZC_OK) {
+    return client->dispatch_error;
+  }
+  for (size_t i = 0; i < GZC_RPC_MAX_INBOUND_CHANNELS; i++) {
+    if (client->inbound[i] != NULL) {
+      gzc_rpc_inbound_t *inbound = client->inbound[i];
+      gzc_rtc_channel_t *channel = client->inbound_channels[i];
+      rc = gzc_rpc_inbound_poll(inbound);
+      if (gzc_rpc_inbound_close_requested(inbound)) {
+        client->inbound[i] = NULL;
+        client->inbound_channels[i] = NULL;
+        if (channel != NULL && client->config.webrtc->channel_close != NULL) {
+          client->config.webrtc->channel_close(channel);
+        }
+        gzc_rpc_inbound_destroy(inbound);
+      }
+      if (rc != GZC_OK) {
+        return rc;
+      }
+    }
+  }
   return GZC_OK;
 }
 
@@ -658,7 +802,7 @@ int gzc_client_read_rpc_frame_internal(gzc_client_t *client, int timeout_ms, gzc
     if (client->config.webrtc->peer_poll == NULL) {
       return GZC_ERR_TIMEOUT;
     }
-    rc = client->config.webrtc->peer_poll(client->peer, 10);
+    rc = gzc_client_poll(client, 10);
     if (rc != GZC_OK) {
       return rc;
     }
@@ -797,7 +941,7 @@ int gzc_service_channel_read_frame(gzc_service_channel_t *channel, int timeout_m
     if (client->config.webrtc->peer_poll == NULL) {
       return GZC_ERR_TIMEOUT;
     }
-    rc = client->config.webrtc->peer_poll(client->peer, 10);
+    rc = gzc_client_poll(client, 10);
     if (rc != GZC_OK) {
       return rc;
     }
@@ -820,7 +964,8 @@ void gzc_service_channel_close(gzc_service_channel_t *channel) {
   }
   gzc_client_t *client = channel->client;
   const gzc_platform_t *platform = client == NULL || client->config.platform == NULL ? gzc_default_platform() : client->config.platform;
-  if (client != NULL && channel->rtc != NULL && client->config.webrtc != NULL && client->config.webrtc->channel_close != NULL) {
+  if (client != NULL && client->peer != NULL && channel->rtc != NULL && client->config.webrtc != NULL &&
+      client->config.webrtc->channel_close != NULL) {
     client->config.webrtc->channel_close(channel->rtc);
   }
   if (client != NULL && client->service_channel == channel) {
@@ -874,7 +1019,7 @@ int gzc_client_read_packet(gzc_client_t *client, int timeout_ms, uint8_t *out_pr
     if (client->config.webrtc->peer_poll == NULL) {
       return GZC_ERR_TIMEOUT;
     }
-    rc = client->config.webrtc->peer_poll(client->peer, 10);
+    rc = gzc_client_poll(client, 10);
     if (rc != GZC_OK) {
       return rc;
     }

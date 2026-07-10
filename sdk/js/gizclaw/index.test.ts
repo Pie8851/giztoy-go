@@ -21,6 +21,7 @@ import {
   decodeFrames,
   encodeTelemetryPacket,
   encodeFrame,
+  encodeRPCRequest,
   encodeRPCResponse,
   fetchGiznetServerInfo,
   giznetServiceDataChannelLabel,
@@ -791,6 +792,105 @@ test("prepareGiznetWebRTCPeerConnection creates packet channel and audio transce
   assert.deepEqual(pc.transceivers, [{ kind: "audio", init: { direction: "sendrecv" } }]);
 });
 
+test("prepared WebRTC peer serves server-initiated protobuf ping", async () => {
+  const pc = new FakePeerConnection();
+  prepareGiznetWebRTCPeerConnection(pc as unknown as RTCPeerConnection);
+  const channel = new FakeDataChannel(giznetServiceDataChannelLabel(GIZCLAW_SERVICE_PEER_RPC));
+  channel.open();
+  pc.receiveDataChannel(channel);
+
+  channel.receive(encodeRPCRequest({
+    id: "server-ping",
+    method: "all.ping",
+    params: { client_send_time: 123 },
+    v: 1,
+  }));
+  await channel.waitForSentCount(2);
+
+  const response = parseRPCResponse<{ server_time: number }>(concatBuffers(channel.sent), "all.ping");
+  assert.equal(response.id, "server-ping");
+  assert.ok((response.result?.server_time ?? 0) > 0);
+});
+
+test("prepared WebRTC peer serves full-duplex server-initiated speed test", async () => {
+  const pc = new FakePeerConnection();
+  prepareGiznetWebRTCPeerConnection(pc as unknown as RTCPeerConnection);
+  const channel = new FakeDataChannel(giznetServiceDataChannelLabel(GIZCLAW_SERVICE_PEER_RPC));
+  channel.open();
+  pc.receiveDataChannel(channel);
+
+  const request = decodeFrames(encodeRPCRequest({
+    id: "server-speed",
+    method: "all.speed_test.run",
+    params: { down_content_length: 32 * 1024 + 7, up_content_length: 32 * 1024 + 5 },
+    v: 1,
+  }));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, request[0]?.payload));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array(32 * 1024)));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array(5)));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_EOS));
+  await channel.waitForSentCount(4);
+
+  const frames = decodeFrames(concatBuffers(channel.sent));
+  assert.deepEqual(frames.map((frame) => frame.type), [
+    RPC_FRAME_TYPE_BINARY,
+    RPC_FRAME_TYPE_BINARY,
+    RPC_FRAME_TYPE_BINARY,
+    RPC_FRAME_TYPE_EOS,
+  ]);
+  assert.deepEqual(frames.slice(1, 3).map((frame) => frame.payload.length), [32 * 1024, 7]);
+});
+
+test("prepared WebRTC peer finishes a continued server-initiated ping on its envelope EOS", async () => {
+  const pc = new FakePeerConnection();
+  prepareGiznetWebRTCPeerConnection(pc as unknown as RTCPeerConnection);
+  const channel = new FakeDataChannel(giznetServiceDataChannelLabel(GIZCLAW_SERVICE_PEER_RPC));
+  channel.open();
+  pc.receiveDataChannel(channel);
+  const id = "p".repeat(70_000);
+
+  channel.receive(encodeRPCRequest({
+    id,
+    method: "all.ping",
+    params: { client_send_time: 123 },
+    v: 1,
+  }));
+  await channel.waitForSentCount(3);
+
+  const response = parseRPCResponse<{ server_time: number }>(concatBuffers(channel.sent), "all.ping");
+  assert.equal(response.id, id);
+  assert.ok((response.result?.server_time ?? 0) > 0);
+});
+
+test("prepared WebRTC peer delimits a continued speed-test response envelope", async () => {
+  const pc = new FakePeerConnection();
+  prepareGiznetWebRTCPeerConnection(pc as unknown as RTCPeerConnection);
+  const channel = new FakeDataChannel(giznetServiceDataChannelLabel(GIZCLAW_SERVICE_PEER_RPC));
+  channel.open();
+  pc.receiveDataChannel(channel);
+  const id = "s".repeat(70_000);
+
+  channel.receive(encodeRPCRequest({
+    id,
+    method: "all.speed_test.run",
+    params: { down_content_length: 7, up_content_length: 5 },
+    v: 1,
+  }));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array(5)));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_EOS));
+  await channel.waitForSentCount(5);
+
+  const frames = decodeFrames(concatBuffers(channel.sent));
+  assert.deepEqual(frames.map((frame) => frame.type), [
+    RPC_FRAME_TYPE_TEXT,
+    RPC_FRAME_TYPE_TEXT,
+    RPC_FRAME_TYPE_EOS,
+    RPC_FRAME_TYPE_BINARY,
+    RPC_FRAME_TYPE_EOS,
+  ]);
+  assert.equal(frames[3]?.payload.length, 7);
+});
+
 test("sendGiznetWebRTCTelemetry uses the prepared packet channel", async () => {
   const pc = new FakePeerConnection();
   prepareGiznetWebRTCPeerConnection(pc as unknown as RTCPeerConnection);
@@ -1045,6 +1145,7 @@ test("prepareEncryptedGiznetWebRTCOffer builds a browser-safe encrypted offer", 
 class FakePeerConnection {
   channels: FakeDataChannel[] = [];
   transceivers: Array<{ init?: RTCRtpTransceiverInit; kind: string }> = [];
+  readonly listeners = new Map<string, Set<(event: unknown) => void>>();
 
   createDataChannel(label: string, options?: RTCDataChannelInit): FakeDataChannel {
     const channel = new FakeDataChannel(label, options);
@@ -1054,6 +1155,21 @@ class FakePeerConnection {
 
   addTransceiver(kind: string, init?: RTCRtpTransceiverInit): void {
     this.transceivers.push({ kind, init });
+  }
+
+  addEventListener(type: string, listener: (event: unknown) => void): void {
+    let listeners = this.listeners.get(type);
+    if (listeners == null) {
+      listeners = new Set();
+      this.listeners.set(type, listeners);
+    }
+    listeners.add(listener);
+  }
+
+  receiveDataChannel(channel: FakeDataChannel): void {
+    for (const listener of this.listeners.get("datachannel") ?? []) {
+      listener({ channel });
+    }
   }
 
   lastChannel(): FakeDataChannel {
@@ -1170,6 +1286,16 @@ class FakeDataChannel {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     throw new Error("fake data channel did not send data");
+  }
+
+  async waitForSentCount(count: number): Promise<void> {
+    for (let i = 0; i < 50; i += 1) {
+      if (this.sent.length >= count) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    throw new Error(`fake data channel sent ${this.sent.length} messages, want ${count}`);
   }
 
   private emit(type: string, event?: unknown): void {
