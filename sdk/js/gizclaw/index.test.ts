@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { x25519 } from "@noble/curves/ed25519.js";
 
@@ -11,7 +12,7 @@ import {
   GIZNET_WEBRTC_SIGNALING_PATH,
   RPC_FRAME_TYPE_EOS,
   RPC_FRAME_TYPE_BINARY,
-  RPC_FRAME_TYPE_JSON,
+  RPC_FRAME_TYPE_TEXT,
   WebRTCRPCClient,
   WebRTCRPCError,
   createAdminAPIFetch,
@@ -24,6 +25,7 @@ import {
   fetchGiznetServerInfo,
   giznetServiceDataChannelLabel,
   getGiznetWebRTCPacketDataChannel,
+  parseRPCResponse,
   prepareGiznetWebRTCPeerConnection,
   sendGiznetWebRTCTelemetry,
   sendGiznetWebRTCOffer,
@@ -31,61 +33,356 @@ import {
   waitForICEGatheringComplete,
 } from "./index.ts";
 import { createSseClient } from "./generated/adminhttp/core/serverSentEvents.gen.ts";
+import { decodeRPCRequestPayload, decodeRPCResponsePayload, encodeRPCRequestPayload } from "./generated/rpc/payload-codec.ts";
 import { createPeerRPCClient } from "./rpc.ts";
 import { base58Decode, base58Encode, base64Decode, prepareEncryptedGiznetWebRTCOffer } from "./signaling.ts";
 
-test("WebRTCRPCClient sends JSON-RPC over an rpc data channel", async () => {
+function concatBuffers(parts: Array<ArrayBuffer | Uint8Array>): ArrayBuffer {
+  let total = 0;
+  for (const part of parts) {
+    total += part.byteLength;
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    const bytes = part instanceof Uint8Array ? part : new Uint8Array(part);
+    out.set(bytes, offset);
+    offset += bytes.byteLength;
+  }
+  return out.buffer;
+}
+
+function includesBytes(bytes: Uint8Array, needle: number[]): boolean {
+  if (needle.length === 0) {
+    return true;
+  }
+  for (let i = 0; i <= bytes.length - needle.length; i += 1) {
+    let matches = true;
+    for (let j = 0; j < needle.length; j += 1) {
+      if (bytes[i + j] !== needle[j]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return true;
+    }
+  }
+  return false;
+}
+
+test("WebRTCRPCClient sends protobuf RPC over an rpc data channel", async () => {
   const pc = new FakePeerConnection();
   const client = new WebRTCRPCClient(pc, { createID: () => "req-1" });
 
-  const promise = client.call<{ ok: boolean }>("server.run.workspace.get", {});
+  const promise = client.call<{ server_time: number }>("all.ping", { client_send_time: 1 });
   const channel = pc.lastChannel();
   channel.open();
 
   assert.equal(channel.label, giznetServiceDataChannelLabel(GIZCLAW_SERVICE_PEER_RPC));
   const frames = decodeFrames(channel.sent[0] ?? new ArrayBuffer(0));
   assert.equal(frames.length, 2);
-  assert.equal(frames[0]?.type, RPC_FRAME_TYPE_JSON);
+  assert.equal(frames[0]?.type, RPC_FRAME_TYPE_BINARY);
+  assert.ok((frames[0]?.payload.length ?? 0) > 0);
+  assert.equal(new TextDecoder().decode(frames[0]?.payload ?? new Uint8Array()).includes("client_send_time"), false);
+  assert.equal(includesBytes(frames[0]?.payload ?? new Uint8Array(), [0x1a, 0x02, 0x08, 0x01]), true);
   assert.equal(frames[1]?.type, RPC_FRAME_TYPE_EOS);
-  assert.deepEqual(JSON.parse(new TextDecoder().decode(frames[0]?.payload)), {
-    id: "req-1",
-    method: "server.run.workspace.get",
-    params: {},
-    v: 1,
+
+  channel.receive(encodeRPCResponse({ id: "req-1", result: { server_time: 99 }, v: 1 }, "all.ping"));
+
+  assert.deepEqual(await promise, { server_time: 99 });
+  assert.equal(channel.closed, true);
+});
+
+test("WebRTCRPCClient omits protobuf payload when params are absent", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-no-params" });
+
+  const promise = client.call<{ server_time: number }>("all.ping");
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const frames = decodeFrames(channel.sent[0] ?? new ArrayBuffer(0));
+  assert.equal(frames.length, 2);
+  assert.equal(frames[0]?.type, RPC_FRAME_TYPE_BINARY);
+  assert.equal(includesBytes(frames[0]?.payload ?? new Uint8Array(), [0x1a]), false);
+  assert.equal(frames[1]?.type, RPC_FRAME_TYPE_EOS);
+
+  channel.receive(encodeRPCResponse({ id: "req-no-params", result: { server_time: 98 }, v: 1 }, "all.ping"));
+
+  assert.deepEqual(await promise, { server_time: 98 });
+});
+
+test("WebRTCRPCClient splits oversized request envelopes into continuation frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-large" });
+
+  const promise = client.call<{ accepted: boolean }>("server.run.say", { text: "x".repeat(70000) });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const frames = decodeFrames(channel.sent[0] ?? new ArrayBuffer(0));
+  assert.equal(frames.length >= 3, true);
+  assert.equal(frames[0]?.type, RPC_FRAME_TYPE_TEXT);
+  assert.equal(frames[0]?.payload.length, 0xffff);
+  assert.equal(frames[frames.length - 1]?.type, RPC_FRAME_TYPE_EOS);
+  assert.equal(frames.slice(0, -1).every((frame) => frame.type === RPC_FRAME_TYPE_TEXT), true);
+
+  channel.receive(encodeRPCResponse({ id: "req-large", result: { accepted: true }, v: 1 }, "server.run.say"));
+
+  assert.deepEqual(await promise, { accepted: true });
+});
+
+test("WebRTCRPCClient decodes Go-compatible protobuf payload bytes", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-go" });
+
+  const promise = client.call<{ server_time: number }>("all.ping", { client_send_time: 5 });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  channel.receive(concatBuffers([
+    encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array([
+      0x0a, 0x06, 0x72, 0x65, 0x71, 0x2d, 0x67, 0x6f,
+      0x12, 0x03, 0x08, 0xe3, 0x07,
+    ])),
+    encodeFrame(RPC_FRAME_TYPE_EOS),
+  ]));
+
+  assert.deepEqual(await promise, { server_time: 995 });
+});
+
+test("parseRPCResponse decodes framed protobuf responses", () => {
+  const response = parseRPCResponse<{ server_time: number }>(
+    encodeRPCResponse({ id: "req-low", result: { server_time: 77 }, v: 1 }, "all.ping"),
+    "all.ping",
+  );
+
+  assert.deepEqual(response, { id: "req-low", result: { server_time: 77 }, v: 1 });
+});
+
+test("RPC payload codec selects workspace oneofs from discriminators", () => {
+  const payload = encodeRPCRequestPayload("server.workspace.create", {
+    created_at: "now",
+    last_active_at: "now",
+    name: "main",
+    parameters: {
+      agent_type: "doubao-realtime",
+    },
+    updated_at: "now",
+    workflow_name: "chat",
   });
 
-  channel.receive(encodeRPCResponse({ id: "req-1", result: { ok: true }, v: 1 }));
+  const decoded = decodeRPCRequestPayload("server.workspace.create", payload) as {
+    parameters?: { agent_type?: string; input?: string };
+  };
 
-  assert.deepEqual(await promise, { ok: true });
-  assert.equal(channel.closed, true);
+  assert.equal(decoded.parameters?.agent_type, "doubao-realtime");
+});
+
+test("RPC payload codec rejects ambiguous numeric workspace discriminators", () => {
+  assert.throws(
+    () => encodeRPCRequestPayload("server.workspace.create", {
+      created_at: "now",
+      last_active_at: "now",
+      name: "main",
+      parameters: {
+        agent_type: 1,
+      },
+      updated_at: "now",
+      workflow_name: "chat",
+    }),
+    /no protobuf oneof candidate for WorkspaceParameters/,
+  );
+});
+
+test("RPC payload codec maps numeric provider discriminators", () => {
+  const payload = encodeRPCRequestPayload("server.model.create", {
+    created_at: "now",
+    id: "model-1",
+    kind: "llm",
+    name: "model",
+    provider: {
+      kind: 1,
+      name: "gemini",
+    },
+    provider_data: {
+      upstream_model: "gemini-2",
+    },
+    source: "manual",
+    updated_at: "now",
+  });
+
+  const decoded = decodeRPCRequestPayload("server.model.create", payload) as {
+    provider?: { kind?: string };
+    provider_data?: { upstream_model?: string };
+  };
+
+  assert.equal(decoded.provider?.kind, "gemini-tenant");
+  assert.equal(decoded.provider_data?.upstream_model, "gemini-2");
+});
+
+test("RPC payload codec rejects ambiguous oneof payloads", () => {
+  assert.throws(
+    () => encodeRPCRequestPayload("server.credential.create", {
+      body: {
+        unknown: true,
+      },
+      created_at: "now",
+      name: "cred",
+      provider: "unknown",
+      updated_at: "now",
+    }),
+    /no protobuf oneof candidate for CredentialBody/,
+  );
+});
+
+test("RPC method map preserves generated payload types", () => {
+  const source = readFileSync(new URL("./generated/rpc/method-map.ts", import.meta.url), "utf8");
+
+  assert.match(source, /request: PingRequest;/);
+  assert.match(source, /response: PingResponse;/);
+  assert.doesNotMatch(source, /request: unknown;/);
+  assert.doesNotMatch(source, /response: unknown;/);
+});
+
+test("RPC payload codec decodes omitted proto3 defaults", () => {
+  assert.deepEqual(decodeRPCResponsePayload("all.speed_test.run", new Uint8Array()), {
+    down_content_length: 0,
+    up_content_length: 0,
+  });
+  assert.deepEqual(decodeRPCResponsePayload("server.workspace.list", new Uint8Array()), {
+    has_next: false,
+    items: [],
+  });
+});
+
+test("RPC payload codec preserves optional JSON schema field absence", () => {
+  const payload = encodeRPCRequestPayload("server.workflow.create", {
+    metadata: {
+      name: "doubao",
+    },
+    spec: {
+      driver: "doubao-realtime",
+      doubao_realtime: {
+        model: "realtime",
+        tools: [
+          {
+            type: "function",
+            name: "lookup",
+            parameters: {
+              type: "string",
+              additionalProperties: false,
+              minLength: 1,
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const decoded = decodeRPCRequestPayload("server.workflow.create", payload) as {
+    spec?: { doubao_realtime?: { tools?: Array<{ parameters?: Record<string, unknown> }> } };
+  };
+  const parameters = decoded.spec?.doubao_realtime?.tools?.[0]?.parameters;
+
+  assert.equal(parameters?.additionalProperties, false);
+  assert.equal(parameters?.minLength, 1);
+  assert.equal(parameters?.type, "string");
+  assert.equal(Object.prototype.hasOwnProperty.call(parameters ?? {}, "enum"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parameters ?? {}, "required"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parameters ?? {}, "anyOf"), false);
+});
+
+test("RPC payload codec rejects string values for bool fields", () => {
+  assert.throws(
+    () => encodeRPCRequestPayload("server.workspace.create", {
+      created_at: "now",
+      last_active_at: "now",
+      name: "main",
+      parameters: {
+        agent_type: "doubao-realtime",
+        e2e: "false",
+      },
+      updated_at: "now",
+      workflow_name: "chat",
+    }),
+    /protobuf bool field expects boolean/,
+  );
+});
+
+test("RPC payload codec rejects unknown enum strings", () => {
+  assert.throws(
+    () => encodeRPCRequestPayload("server.firmware.files.download", {
+      channel: "stabel",
+      firmware_id: "devkit",
+      path: "firmware.bin",
+    }),
+    /unknown protobuf enum value for FirmwareChannelName: stabel/,
+  );
 });
 
 test("WebRTCRPCClient reassembles response frames split across messages", async () => {
   const pc = new FakePeerConnection();
   const client = new WebRTCRPCClient(pc, { createID: () => "req-split" });
 
-  const promise = client.call<{ ok: boolean }>("server.run.workspace.get", {});
+  const promise = client.call<{ server_time: number }>("all.ping", { client_send_time: 2 });
   const channel = pc.lastChannel();
   channel.open();
 
-  const response = new Uint8Array(encodeRPCResponse({ id: "req-split", result: { ok: true }, v: 1 }));
+  const response = new Uint8Array(encodeRPCResponse({ id: "req-split", result: { server_time: 100 }, v: 1 }, "all.ping"));
   channel.receiveBytes(response.slice(0, 5));
   channel.receiveBytes(response.slice(5));
 
-  assert.deepEqual(await promise, { ok: true });
+  assert.deepEqual(await promise, { server_time: 100 });
+});
+
+test("WebRTCRPCClient reassembles oversized protobuf envelope continuation frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-continuation" });
+
+  const promise = client.call<{ server_time: number }>("all.ping", { client_send_time: 3 });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const responseFrames = decodeFrames(encodeRPCResponse({ id: "req-continuation", result: { server_time: 101 }, v: 1 }, "all.ping"));
+  const envelope = responseFrames[0]?.payload;
+  assert.ok(envelope);
+  const split = Math.floor(envelope.length / 2);
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_TEXT, envelope.slice(0, split)));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_TEXT, envelope.slice(split)));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_EOS));
+
+  assert.deepEqual(await promise, { server_time: 101 });
+});
+
+test("WebRTCRPCClient rejects oversized protobuf response continuation frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-continuation-too-large" });
+
+  const promise = client.call("all.ping", { client_send_time: 3 });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const chunk = new Uint8Array(0xffff);
+  for (let i = 0; i < 17; i += 1) {
+    channel.receive(encodeFrame(RPC_FRAME_TYPE_TEXT, chunk));
+  }
+
+  await assert.rejects(promise, /RPC protobuf envelope too large/);
 });
 
 test("WebRTCRPCClient resolves queued response before close", async () => {
   const pc = new FakePeerConnection();
   const client = new WebRTCRPCClient(pc, { createID: () => "req-close" });
 
-  const promise = client.call<{ ok: boolean }>("all.ping", {});
+  const promise = client.call<{ server_time: number }>("all.ping", { client_send_time: 4 });
   const channel = pc.lastChannel();
   channel.open();
-  channel.receive(encodeRPCResponse({ id: "req-close", result: { ok: true }, v: 1 }));
+  channel.receive(encodeRPCResponse({ id: "req-close", result: { server_time: 102 }, v: 1 }, "all.ping"));
   channel.remoteClose();
 
-  assert.deepEqual(await promise, { ok: true });
+  assert.deepEqual(await promise, { server_time: 102 });
 });
 
 test("WebRTCRPCClient reads metadata plus binary response frames", async () => {
@@ -99,15 +396,89 @@ test("WebRTCRPCClient reads metadata plus binary response frames", async () => {
   const channel = pc.lastChannel();
   channel.open();
 
-  channel.receive(encodeFrame(RPC_FRAME_TYPE_JSON, new TextEncoder().encode(JSON.stringify({ id: "req-binary", result: { mime_type: "audio/ogg", size_bytes: 5 }, v: 1 }))));
+  channel.receive(encodeRPCResponse({ id: "req-binary", result: { mime_type: "audio/ogg", size_bytes: 5 }, v: 1 }, "server.workspace.history.audio.get").slice(0, -4));
   channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array([1, 2])));
   channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array([3, 4, 5])));
   channel.receive(encodeFrame(RPC_FRAME_TYPE_EOS));
 
   const result = await promise;
-  assert.deepEqual(result.result, { mime_type: "audio/ogg", size_bytes: 5 });
+  assert.deepEqual(result.result, {
+    history_id: "",
+    mime_type: "audio/ogg",
+    size_bytes: 5,
+    workspace_name: "",
+  });
   assert.deepEqual(result.body, new Uint8Array([1, 2, 3, 4, 5]));
   assert.equal(channel.closed, true);
+});
+
+test("WebRTCRPCClient reads continuation metadata plus binary response frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-binary-continuation" });
+
+  const promise = client.callBinary<{ mime_type: string; size_bytes: number; workspace_name: string }>("server.workspace.history.audio.get", {
+    history_id: "h1",
+    workspace_name: "main",
+  });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const workspaceName = "w".repeat(70000);
+  channel.receive(encodeRPCResponse({
+    id: "req-binary-continuation",
+    result: { mime_type: "audio/ogg", size_bytes: 2, workspace_name: workspaceName },
+    v: 1,
+  }, "server.workspace.history.audio.get"));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_BINARY, new Uint8Array([8, 9])));
+  channel.receive(encodeFrame(RPC_FRAME_TYPE_EOS));
+
+  const result = await promise;
+  assert.equal(result.result.workspace_name, workspaceName);
+  assert.deepEqual(result.body, new Uint8Array([8, 9]));
+});
+
+test("WebRTCRPCClient rejects oversized binary metadata continuation frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-binary-continuation-too-large" });
+
+  const promise = client.callBinary("server.workspace.history.audio.get", {
+    history_id: "h1",
+    workspace_name: "main",
+  });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  const chunk = new Uint8Array(0xffff);
+  for (let i = 0; i < 17; i += 1) {
+    channel.receive(encodeFrame(RPC_FRAME_TYPE_TEXT, chunk));
+  }
+
+  await assert.rejects(promise, /RPC protobuf envelope too large/);
+});
+
+test("WebRTCRPCClient rejects continuation binary RPC errors without body frames", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-binary-error" });
+
+  const promise = client.callBinary("server.workspace.history.audio.get", {
+    history_id: "h1",
+    workspace_name: "main",
+  });
+  const channel = pc.lastChannel();
+  channel.open();
+
+  channel.receive(encodeRPCResponse({
+    error: { code: -32000, message: "x".repeat(70000) },
+    id: "req-binary-error",
+    v: 1,
+  }, "server.workspace.history.audio.get"));
+
+  await assert.rejects(promise, (err) => {
+    assert.equal(err instanceof WebRTCRPCError, true);
+    assert.equal((err as WebRTCRPCError).code, -32000);
+    assert.equal((err as WebRTCRPCError).message, "x".repeat(70000));
+    return true;
+  });
 });
 
 test("WebRTCRPCClient rejects RPC error responses", async () => {
@@ -117,7 +488,7 @@ test("WebRTCRPCClient rejects RPC error responses", async () => {
   const promise = client.call("server.run.workspace.reload");
   const channel = pc.lastChannel();
   channel.open();
-  channel.receive(encodeRPCResponse({ error: { code: -32000, message: "boom" }, id: "req-2", v: 1 }));
+  channel.receive(encodeRPCResponse({ error: { code: -32000, message: "boom" }, id: "req-2", v: 1 }, "server.run.workspace.reload"));
 
   await assert.rejects(promise, (err) => {
     assert.equal(err instanceof WebRTCRPCError, true);
@@ -125,6 +496,24 @@ test("WebRTCRPCClient rejects RPC error responses", async () => {
     assert.equal((err as WebRTCRPCError).message, "boom");
     return true;
   });
+});
+
+test("WebRTCRPCClient rejects unknown methods before data channel open", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-unknown", requestTimeoutMs: 0 });
+
+  await assert.rejects(client.call("peer.unknown", {}), /unknown RPC method: peer\.unknown/);
+  assert.equal(pc.lastChannel().closed, true);
+  assert.equal(pc.lastChannel().sent.length, 0);
+});
+
+test("WebRTCRPCClient rejects unknown binary methods before data channel open", async () => {
+  const pc = new FakePeerConnection();
+  const client = new WebRTCRPCClient(pc, { createID: () => "req-unknown-binary", requestTimeoutMs: 0 });
+
+  await assert.rejects(client.callBinary("peer.unknown", {}), /unknown RPC method: peer\.unknown/);
+  assert.equal(pc.lastChannel().closed, true);
+  assert.equal(pc.lastChannel().sent.length, 0);
 });
 
 test("WebRTCRPCClient honors AbortSignal", async () => {

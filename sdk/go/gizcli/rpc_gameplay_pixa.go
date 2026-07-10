@@ -23,7 +23,7 @@ func (c *rpcClient) DownloadPetDefPixa(ctx context.Context, conn net.Conn, id st
 	if out == nil {
 		return PetDefPixaDownloadResult{}, fmt.Errorf("petdef pixa download output is required")
 	}
-	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromPetDefPixaDownloadRequest)
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCPayload).FromPetDefPixaDownloadRequest)
 	if err != nil {
 		return PetDefPixaDownloadResult{}, err
 	}
@@ -38,12 +38,14 @@ func (c *rpcClient) DownloadPetDefPixa(ctx context.Context, conn net.Conn, id st
 	if err := stream.WriteEOS(); err != nil {
 		return PetDefPixaDownloadResult{}, err
 	}
-	resp, err := stream.ReadResponse()
+	resp, responseEOS, err := stream.ReadResponseEnvelopeForMethod(rpcapi.RPCMethodServerPetDefPixaDownload)
 	if err != nil {
 		return PetDefPixaDownloadResult{}, err
 	}
 	if resp.Error != nil {
-		_ = stream.ReadEOS()
+		if !responseEOS {
+			_ = stream.ReadEOS()
+		}
 		return PetDefPixaDownloadResult{}, fmt.Errorf("rpc: %w", rpcapi.Error{RequestID: resp.Id, Code: resp.Error.Code, Message: resp.Error.Message})
 	}
 	if resp.Result == nil {
@@ -64,7 +66,7 @@ func (c *rpcClient) DownloadBadgeDefPixa(ctx context.Context, conn net.Conn, id 
 	if out == nil {
 		return BadgeDefPixaDownloadResult{}, fmt.Errorf("badgedef pixa download output is required")
 	}
-	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromBadgeDefPixaDownloadRequest)
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCPayload).FromBadgeDefPixaDownloadRequest)
 	if err != nil {
 		return BadgeDefPixaDownloadResult{}, err
 	}
@@ -79,12 +81,14 @@ func (c *rpcClient) DownloadBadgeDefPixa(ctx context.Context, conn net.Conn, id 
 	if err := stream.WriteEOS(); err != nil {
 		return BadgeDefPixaDownloadResult{}, err
 	}
-	resp, err := stream.ReadResponse()
+	resp, responseEOS, err := stream.ReadResponseEnvelopeForMethod(rpcapi.RPCMethodServerBadgeDefPixaDownload)
 	if err != nil {
 		return BadgeDefPixaDownloadResult{}, err
 	}
 	if resp.Error != nil {
-		_ = stream.ReadEOS()
+		if !responseEOS {
+			_ = stream.ReadEOS()
+		}
 		return BadgeDefPixaDownloadResult{}, fmt.Errorf("rpc: %w", rpcapi.Error{RequestID: resp.Id, Code: resp.Error.Code, Message: resp.Error.Message})
 	}
 	if resp.Result == nil {

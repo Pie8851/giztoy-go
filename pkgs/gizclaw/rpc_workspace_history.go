@@ -37,12 +37,18 @@ func (s *rpcServer) handleWorkspaceHistoryAudioGet(ctx context.Context, stream *
 		return writeRPCErrorResponse(stream, req.Id, rpcapi.RPCErrorCodeInternalError, "workspace history audio reader not configured")
 	}
 	defer reader.Close()
-	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCResponse_Result).FromWorkspaceHistoryAudioGetResponse)
+	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetResponse)
 	if err != nil {
 		return err
 	}
-	if err := stream.WriteResponse(resp); err != nil {
+	metadataEOS, err := stream.WriteResponseEnvelopeForMethod(req.Method, resp)
+	if err != nil {
 		return err
+	}
+	if metadataEOS {
+		if err := stream.WriteEOS(); err != nil {
+			return err
+		}
 	}
 	return writeReaderBinaryFrames(stream, reader)
 }

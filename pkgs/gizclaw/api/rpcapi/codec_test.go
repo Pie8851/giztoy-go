@@ -8,6 +8,10 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	rpcpb "github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcproto"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestFrameRequestResponseRoundTrip(t *testing.T) {
@@ -23,7 +27,7 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 		t.Fatalf("ReadFrame() = %+v", frame)
 	}
 
-	var reqParams RPCRequest_Params
+	var reqParams RPCPayload
 	if err := reqParams.FromPingRequest(PingRequest{ClientSendTime: 123}); err != nil {
 		t.Fatalf("FromPingRequest() error = %v", err)
 	}
@@ -52,7 +56,7 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 		t.Fatalf("AsPingRequest().ClientSendTime = %d", gotReqParams.ClientSendTime)
 	}
 
-	var respResult RPCResponse_Result
+	var respResult RPCPayload
 	if err := respResult.FromPingResponse(PingResponse{ServerTime: 456}); err != nil {
 		t.Fatalf("FromPingResponse() error = %v", err)
 	}
@@ -62,12 +66,12 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 		Id:     "req-1",
 		Result: &respResult,
 	}
-	if err := WriteResponse(&respBuf, resp); err != nil {
-		t.Fatalf("WriteResponse() error = %v", err)
+	if err := WriteResponseForMethod(&respBuf, RPCMethodAllPing, resp); err != nil {
+		t.Fatalf("WriteResponseForMethod() error = %v", err)
 	}
-	gotResp, err := ReadResponse(&respBuf)
+	gotResp, err := ReadResponseForMethod(&respBuf, RPCMethodAllPing)
 	if err != nil {
-		t.Fatalf("ReadResponse() error = %v", err)
+		t.Fatalf("ReadResponseForMethod() error = %v", err)
 	}
 	if gotResp.Id != resp.Id || gotResp.Result == nil {
 		t.Fatalf("ReadResponse() = %+v", gotResp)
@@ -81,8 +85,42 @@ func TestFrameRequestResponseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEncodeRPCResponseRejectsResultWithoutMethod(t *testing.T) {
+	var result RPCPayload
+	if err := result.FromPingResponse(PingResponse{ServerTime: 456}); err != nil {
+		t.Fatalf("FromPingResponse() error = %v", err)
+	}
+	_, err := EncodeRPCResponse(&RPCResponse{
+		V:      RPCVersionV1,
+		Id:     "req-1",
+		Result: &result,
+	})
+	if err == nil || err.Error() != "rpc: response result requires method-specific encoding" {
+		t.Fatalf("EncodeRPCResponse() err = %v", err)
+	}
+}
+
+func TestReadResponseRejectsGenericSuccessPayload(t *testing.T) {
+	var result RPCPayload
+	if err := result.FromPingResponse(PingResponse{ServerTime: 456}); err != nil {
+		t.Fatalf("FromPingResponse() error = %v", err)
+	}
+	var buf bytes.Buffer
+	if err := WriteResponseForMethod(&buf, RPCMethodAllPing, &RPCResponse{
+		V:      RPCVersionV1,
+		Id:     "req-1",
+		Result: &result,
+	}); err != nil {
+		t.Fatalf("WriteResponseForMethod() error = %v", err)
+	}
+	_, err := ReadResponse(&buf)
+	if err == nil || err.Error() != "rpc: unmarshal response: rpc: response payload requires method-specific decoding" {
+		t.Fatalf("ReadResponse() err = %v", err)
+	}
+}
+
 func TestRPCUnionTypes(t *testing.T) {
-	var pingParams RPCRequest_Params
+	var pingParams RPCPayload
 	if err := pingParams.MergePingRequest(PingRequest{ClientSendTime: 100}); err != nil {
 		t.Fatalf("MergePingRequest() error = %v", err)
 	}
@@ -90,13 +128,13 @@ func TestRPCUnionTypes(t *testing.T) {
 		t.Fatalf("AsPingRequest() = %+v, %v", got, err)
 	}
 
-	assertRequestUnion(t, "ServerPutInfo", ServerPutInfoRequest{Name: stringPtr("peer-1")}, (*RPCRequest_Params).FromServerPutInfoRequest, RPCRequest_Params.AsServerPutInfoRequest, (*RPCRequest_Params).MergeServerPutInfoRequest)
-	assertRequestUnion(t, "ServerGetRuntime", ServerGetRuntimeRequest{}, (*RPCRequest_Params).FromServerGetRuntimeRequest, RPCRequest_Params.AsServerGetRuntimeRequest, (*RPCRequest_Params).MergeServerGetRuntimeRequest)
-	assertRequestUnion(t, "ClientGetInfo", ClientGetInfoRequest{}, (*RPCRequest_Params).FromClientGetInfoRequest, RPCRequest_Params.AsClientGetInfoRequest, (*RPCRequest_Params).MergeClientGetInfoRequest)
-	assertRequestUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersRequest{}, (*RPCRequest_Params).FromClientGetIdentifiersRequest, RPCRequest_Params.AsClientGetIdentifiersRequest, (*RPCRequest_Params).MergeClientGetIdentifiersRequest)
-	assertRequestUnion(t, "ServerGetInfo", ServerGetInfoRequest{}, (*RPCRequest_Params).FromServerGetInfoRequest, RPCRequest_Params.AsServerGetInfoRequest, (*RPCRequest_Params).MergeServerGetInfoRequest)
+	assertRequestUnion(t, "ServerPutInfo", ServerPutInfoRequest{Name: stringPtr("peer-1")}, (*RPCPayload).FromServerPutInfoRequest, RPCPayload.AsServerPutInfoRequest, (*RPCPayload).MergeServerPutInfoRequest)
+	assertRequestUnion(t, "ServerGetRuntime", ServerGetRuntimeRequest{}, (*RPCPayload).FromServerGetRuntimeRequest, RPCPayload.AsServerGetRuntimeRequest, (*RPCPayload).MergeServerGetRuntimeRequest)
+	assertRequestUnion(t, "ClientGetInfo", ClientGetInfoRequest{}, (*RPCPayload).FromClientGetInfoRequest, RPCPayload.AsClientGetInfoRequest, (*RPCPayload).MergeClientGetInfoRequest)
+	assertRequestUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersRequest{}, (*RPCPayload).FromClientGetIdentifiersRequest, RPCPayload.AsClientGetIdentifiersRequest, (*RPCPayload).MergeClientGetIdentifiersRequest)
+	assertRequestUnion(t, "ServerGetInfo", ServerGetInfoRequest{}, (*RPCPayload).FromServerGetInfoRequest, RPCPayload.AsServerGetInfoRequest, (*RPCPayload).MergeServerGetInfoRequest)
 
-	var pingResult RPCResponse_Result
+	var pingResult RPCPayload
 	if err := pingResult.MergePingResponse(PingResponse{ServerTime: 200}); err != nil {
 		t.Fatalf("MergePingResponse() error = %v", err)
 	}
@@ -105,11 +143,308 @@ func TestRPCUnionTypes(t *testing.T) {
 	}
 
 	now := time.Unix(100, 0).UTC()
-	assertResponseUnion(t, "ServerGetInfo", ServerGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCResponse_Result).FromServerGetInfoResponse, RPCResponse_Result.AsServerGetInfoResponse, (*RPCResponse_Result).MergeServerGetInfoResponse)
-	assertResponseUnion(t, "ServerPutInfo", ServerPutInfoResponse{Name: stringPtr("peer-2")}, (*RPCResponse_Result).FromServerPutInfoResponse, RPCResponse_Result.AsServerPutInfoResponse, (*RPCResponse_Result).MergeServerPutInfoResponse)
-	assertResponseUnion(t, "ServerGetRuntime", ServerGetRuntimeResponse{Online: true, LastSeenAt: now}, (*RPCResponse_Result).FromServerGetRuntimeResponse, RPCResponse_Result.AsServerGetRuntimeResponse, (*RPCResponse_Result).MergeServerGetRuntimeResponse)
-	assertResponseUnion(t, "ClientGetInfo", ClientGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCResponse_Result).FromClientGetInfoResponse, RPCResponse_Result.AsClientGetInfoResponse, (*RPCResponse_Result).MergeClientGetInfoResponse)
-	assertResponseUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersResponse{Sn: stringPtr("sn-1")}, (*RPCResponse_Result).FromClientGetIdentifiersResponse, RPCResponse_Result.AsClientGetIdentifiersResponse, (*RPCResponse_Result).MergeClientGetIdentifiersResponse)
+	assertResponseUnion(t, "ServerGetInfo", ServerGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCPayload).FromServerGetInfoResponse, RPCPayload.AsServerGetInfoResponse, (*RPCPayload).MergeServerGetInfoResponse)
+	assertResponseUnion(t, "ServerPutInfo", ServerPutInfoResponse{Name: stringPtr("peer-2")}, (*RPCPayload).FromServerPutInfoResponse, RPCPayload.AsServerPutInfoResponse, (*RPCPayload).MergeServerPutInfoResponse)
+	assertResponseUnion(t, "ServerGetRuntime", ServerGetRuntimeResponse{Online: true, LastSeenAt: now}, (*RPCPayload).FromServerGetRuntimeResponse, RPCPayload.AsServerGetRuntimeResponse, (*RPCPayload).MergeServerGetRuntimeResponse)
+	assertResponseUnion(t, "ClientGetInfo", ClientGetInfoResponse{Name: stringPtr("peer-1")}, (*RPCPayload).FromClientGetInfoResponse, RPCPayload.AsClientGetInfoResponse, (*RPCPayload).MergeClientGetInfoResponse)
+	assertResponseUnion(t, "ClientGetIdentifiers", ClientGetIdentifiersResponse{Sn: stringPtr("sn-1")}, (*RPCPayload).FromClientGetIdentifiersResponse, RPCPayload.AsClientGetIdentifiersResponse, (*RPCPayload).MergeClientGetIdentifiersResponse)
+}
+
+func TestMethodPayloadsUseProtobufBytes(t *testing.T) {
+	var params RPCPayload
+	if err := params.FromPingRequest(PingRequest{ClientSendTime: 123}); err != nil {
+		t.Fatalf("FromPingRequest() error = %v", err)
+	}
+	reqMsg, err := EncodeRPCRequest(&RPCRequest{
+		V:      RPCVersionV1,
+		Id:     "req-1",
+		Method: RPCMethodAllPing,
+		Params: &params,
+	})
+	if err != nil {
+		t.Fatalf("EncodeRPCRequest() error = %v", err)
+	}
+	if bytes.Contains(reqMsg.GetPayload(), []byte("client_send_time")) {
+		t.Fatalf("request payload is JSON: %q", reqMsg.GetPayload())
+	}
+	var protoReq rpcpb.PingRequest
+	if err := proto.Unmarshal(reqMsg.GetPayload(), &protoReq); err != nil {
+		t.Fatalf("protobuf request payload unmarshal error = %v", err)
+	}
+	if protoReq.GetClientSendTime() != 123 {
+		t.Fatalf("protobuf request payload = %+v", protoReq)
+	}
+
+	var result RPCPayload
+	if err := result.FromPingResponse(PingResponse{ServerTime: 456}); err != nil {
+		t.Fatalf("FromPingResponse() error = %v", err)
+	}
+	respMsg, err := EncodeRPCResponseForMethod(RPCMethodAllPing, &RPCResponse{
+		V:      RPCVersionV1,
+		Id:     "req-1",
+		Result: &result,
+	})
+	if err != nil {
+		t.Fatalf("EncodeRPCResponseForMethod() error = %v", err)
+	}
+	if bytes.Contains(respMsg.GetPayload(), []byte("server_time")) {
+		t.Fatalf("response payload is JSON: %q", respMsg.GetPayload())
+	}
+	var protoResp rpcpb.PingResponse
+	if err := proto.Unmarshal(respMsg.GetPayload(), &protoResp); err != nil {
+		t.Fatalf("protobuf response payload unmarshal error = %v", err)
+	}
+	if protoResp.GetServerTime() != 456 {
+		t.Fatalf("protobuf response payload = %+v", protoResp)
+	}
+
+	decoded, err := DecodeRPCResponseForMethod(RPCMethodAllPing, respMsg)
+	if err != nil {
+		t.Fatalf("DecodeRPCResponseForMethod() error = %v", err)
+	}
+	got, err := decoded.Result.AsPingResponse()
+	if err != nil {
+		t.Fatalf("AsPingResponse() error = %v", err)
+	}
+	if got.ServerTime != 456 {
+		t.Fatalf("decoded response = %+v", got)
+	}
+}
+
+func TestDecodeRPCRequestPreservesMissingPayload(t *testing.T) {
+	msg := &rpcpb.RpcRequest{
+		Id:     "req-1",
+		Method: rpcpb.RpcMethod_RPC_METHOD_SERVER_INFO_PUT,
+	}
+	req, err := DecodeRPCRequest(msg)
+	if err != nil {
+		t.Fatalf("DecodeRPCRequest() error = %v", err)
+	}
+	if req.Params != nil {
+		t.Fatalf("DecodeRPCRequest().Params = %+v, want nil", req.Params)
+	}
+
+	msg.Payload = []byte{}
+	req, err = DecodeRPCRequest(msg)
+	if err != nil {
+		t.Fatalf("DecodeRPCRequest(empty payload) error = %v", err)
+	}
+	if req.Params == nil {
+		t.Fatal("DecodeRPCRequest(empty payload).Params = nil, want present empty payload")
+	}
+}
+
+func TestEncodeRPCRequestPreservesEmptyPayloadPresence(t *testing.T) {
+	var params RPCPayload
+	if err := params.FromPingRequest(PingRequest{}); err != nil {
+		t.Fatalf("FromPingRequest() error = %v", err)
+	}
+	msg, err := EncodeRPCRequest(&RPCRequest{
+		V:      RPCVersionV1,
+		Id:     "req-empty",
+		Method: RPCMethodAllPing,
+		Params: &params,
+	})
+	if err != nil {
+		t.Fatalf("EncodeRPCRequest() error = %v", err)
+	}
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatalf("proto.Marshal() error = %v", err)
+	}
+	var roundTrip rpcpb.RpcRequest
+	if err := proto.Unmarshal(data, &roundTrip); err != nil {
+		t.Fatalf("proto.Unmarshal() error = %v", err)
+	}
+	req, err := DecodeRPCRequest(&roundTrip)
+	if err != nil {
+		t.Fatalf("DecodeRPCRequest() error = %v", err)
+	}
+	if req.Params == nil {
+		t.Fatal("DecodeRPCRequest(round trip empty payload).Params = nil, want present")
+	}
+	got, err := req.Params.AsPingRequest()
+	if err != nil {
+		t.Fatalf("AsPingRequest() error = %v", err)
+	}
+	if got.ClientSendTime != 0 {
+		t.Fatalf("AsPingRequest().ClientSendTime = %d, want 0", got.ClientSendTime)
+	}
+}
+
+func TestDecodeRPCResponseRejectsGenericPayload(t *testing.T) {
+	msg := &rpcpb.RpcResponse{
+		Id:   "resp-empty",
+		Body: &rpcpb.RpcResponse_Payload{Payload: []byte{}},
+	}
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatalf("proto.Marshal() error = %v", err)
+	}
+	var roundTrip rpcpb.RpcResponse
+	if err := proto.Unmarshal(data, &roundTrip); err != nil {
+		t.Fatalf("proto.Unmarshal() error = %v", err)
+	}
+	_, err = DecodeRPCResponse(&roundTrip)
+	if err == nil || err.Error() != "rpc: response payload requires method-specific decoding" {
+		t.Fatalf("DecodeRPCResponse() err = %v", err)
+	}
+
+	resp, err := DecodeRPCResponseForMethod(RPCMethodAllPing, &roundTrip)
+	if err != nil {
+		t.Fatalf("DecodeRPCResponseForMethod() error = %v", err)
+	}
+	if resp.Result == nil {
+		t.Fatal("DecodeRPCResponseForMethod(empty payload oneof).Result = nil, want present")
+	}
+	got, err := resp.Result.AsPingResponse()
+	if err != nil {
+		t.Fatalf("AsPingResponse() error = %v", err)
+	}
+	if got.ServerTime != 0 {
+		t.Fatalf("AsPingResponse().ServerTime = %d, want 0", got.ServerTime)
+	}
+}
+
+func TestPayloadCodecMapsGoDTOsDirectlyToProtobuf(t *testing.T) {
+	var recall RPCPayload
+	if err := recall.FromServerRunWorkspaceRecallRequest(ServerRunWorkspaceRecallRequest{
+		Filters: &map[string]interface{}{
+			"score":  float64(1),
+			"nested": map[string]interface{}{"weight": float64(2)},
+		},
+	}); err != nil {
+		t.Fatalf("FromServerRunWorkspaceRecallRequest() error = %v", err)
+	}
+	var recallProto rpcpb.ServerRunWorkspaceRecallRequest
+	if err := proto.Unmarshal(recall.payload, &recallProto); err != nil {
+		t.Fatalf("unmarshal recall payload error = %v", err)
+	}
+	if recallProto.GetValue().GetFilters().GetFields()["score"].GetNumberValue() != 1 {
+		t.Fatalf("recall filters = %+v", recallProto.GetValue().GetFilters())
+	}
+
+	var chatParams RPCPayload
+	if err := chatParams.encode("ChatRoomWorkspaceParameters", ChatRoomWorkspaceParameters{Input: ptr(WorkspaceInputModePushToTalk)}); err != nil {
+		t.Fatalf("encode ChatRoomWorkspaceParameters error = %v", err)
+	}
+	var chatProto rpcpb.ChatRoomWorkspaceParameters
+	if err := proto.Unmarshal(chatParams.payload, &chatProto); err != nil {
+		t.Fatalf("unmarshal chatroom payload error = %v", err)
+	}
+	if chatProto.GetInput() != rpcpb.WorkspaceInputMode_WORKSPACE_INPUT_MODE_PUSH_TO_TALK {
+		t.Fatalf("chatroom input = %s", chatProto.GetInput())
+	}
+
+	var modelPayload RPCPayload
+	if err := modelPayload.FromModelCreateRequest(ModelCreateRequest{
+		Id:     "m1",
+		Kind:   ModelKindLlm,
+		Source: ModelSourceManual,
+		Provider: ModelProvider{
+			Kind: ModelProviderKindDashscopeTenant,
+			Name: "dash",
+		},
+	}); err != nil {
+		t.Fatalf("FromModel() error = %v", err)
+	}
+	var modelProto rpcpb.ModelCreateRequest
+	if err := proto.Unmarshal(modelPayload.payload, &modelProto); err != nil {
+		t.Fatalf("unmarshal model payload error = %v", err)
+	}
+	if modelProto.GetValue().GetProvider().GetKind() != rpcpb.ModelProviderKind_MODEL_PROVIDER_KIND_DASHSCOPE_TENANT {
+		t.Fatalf("model provider kind = %s", modelProto.GetValue().GetProvider().GetKind())
+	}
+
+	var workspaceCreate RPCPayload
+	if err := workspaceCreate.FromWorkspaceCreateRequest(WorkspaceCreateRequest{
+		Name:         "demo",
+		WorkflowName: "chat",
+	}); err != nil {
+		t.Fatalf("FromWorkspaceCreateRequest() error = %v", err)
+	}
+	var workspaceCreateProto rpcpb.WorkspaceCreateRequest
+	if err := proto.Unmarshal(workspaceCreate.payload, &workspaceCreateProto); err != nil {
+		t.Fatalf("unmarshal workspace create payload error = %v", err)
+	}
+	if workspaceCreateProto.GetValue().GetName() != "demo" || workspaceCreateProto.GetValue().GetWorkflowName() != "chat" {
+		t.Fatalf("workspace create = %+v", workspaceCreateProto.GetValue())
+	}
+
+	var statPayload RPCPayload
+	if err := statPayload.encode("StatMap", StatMap{"hunger": 1, "clean": 2}); err != nil {
+		t.Fatalf("encode StatMap error = %v", err)
+	}
+	var statProto rpcpb.StatMap
+	if err := proto.Unmarshal(statPayload.payload, &statProto); err != nil {
+		t.Fatalf("unmarshal stat map payload error = %v", err)
+	}
+	if statProto.GetValue()["hunger"] != 1 || statProto.GetValue()["clean"] != 2 {
+		t.Fatalf("stat map = %+v", statProto.GetValue())
+	}
+}
+
+func TestPayloadCodecMapsProtobufDirectlyToGoDTOs(t *testing.T) {
+	firmwareData, err := proto.Marshal(&rpcpb.FirmwareListResponse{})
+	if err != nil {
+		t.Fatalf("marshal firmware list payload error = %v", err)
+	}
+	firmwarePayload := newRPCPayload("FirmwareListResponse", firmwareData, true)
+	firmware, err := firmwarePayload.AsFirmwareListResponse()
+	if err != nil {
+		t.Fatalf("AsFirmwareListResponse() error = %v", err)
+	}
+	if firmware.HasNext || len(firmware.Items) != 0 {
+		t.Fatalf("firmware list = %+v", firmware)
+	}
+
+	schemaData, err := proto.Marshal(&rpcpb.DoubaoRealtimeJSONSchema{
+		AdditionalProperties: ptr(false),
+		AnyOf: []*rpcpb.DoubaoRealtimeJSONSchema{
+			{Type: ptr("string")},
+		},
+		EnumValues: []string{"red", "green"},
+		MinLength:  ptr(int64(2)),
+	})
+	if err != nil {
+		t.Fatalf("marshal JSON schema payload error = %v", err)
+	}
+	schemaPayload := newRPCPayload("DoubaoRealtimeJSONSchema", schemaData, false)
+	var schema DoubaoRealtimeJSONSchema
+	if err := schemaPayload.decode("DoubaoRealtimeJSONSchema", &schema); err != nil {
+		t.Fatalf("decode DoubaoRealtimeJSONSchema error = %v", err)
+	}
+	if schema.AdditionalProperties == nil || *schema.AdditionalProperties ||
+		schema.AnyOf == nil || len(*schema.AnyOf) != 1 ||
+		schema.Enum == nil || len(*schema.Enum) != 2 ||
+		schema.MinLength == nil || *schema.MinLength != 2 {
+		t.Fatalf("schema = %+v", schema)
+	}
+
+	recallData, err := proto.Marshal(&rpcpb.ServerRunWorkspaceRecallRequest{
+		Value: &rpcpb.PeerRunRecallRequest{
+			Filters: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					"deleted_at": structpb.NewNullValue(),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal recall payload error = %v", err)
+	}
+	recallPayload := newRPCPayload("ServerRunWorkspaceRecallRequest", recallData, false)
+	recall, err := recallPayload.AsServerRunWorkspaceRecallRequest()
+	if err != nil {
+		t.Fatalf("AsServerRunWorkspaceRecallRequest() error = %v", err)
+	}
+	if recall.Filters == nil {
+		t.Fatal("recall filters = nil")
+	}
+	item, ok := (*recall.Filters)["deleted_at"]
+	if !ok || item != nil {
+		t.Fatalf("recall deleted_at = %#v, present=%v; want explicit nil", item, ok)
+	}
 }
 
 func TestRPCMethodValid(t *testing.T) {
@@ -135,7 +470,7 @@ func TestRPCMethodValid(t *testing.T) {
 	if RPCVersion(2).Valid() {
 		t.Fatal("unknown RPC version should be invalid")
 	}
-	for _, code := range []RPCErrorCode{RPCErrorCodeInvalidRequest, RPCErrorCodeMethodNotFound, RPCErrorCodeInvalidParams, RPCErrorCodeInternalError, RPCErrorCodeBadRequest, RPCErrorCodeForbidden, RPCErrorCodeNotFound, RPCErrorCodeConflict} {
+	for _, code := range []RPCErrorCode{RPCErrorCodeParseError, RPCErrorCodeInvalidRequest, RPCErrorCodeMethodNotFound, RPCErrorCodeInvalidParams, RPCErrorCodeInternalError, RPCErrorCodeBadRequest, RPCErrorCodeForbidden, RPCErrorCodeNotFound, RPCErrorCodeConflict} {
 		if !code.Valid() {
 			t.Fatalf("%d should be valid", code)
 		}
@@ -145,16 +480,33 @@ func TestRPCMethodValid(t *testing.T) {
 	}
 }
 
+func TestProtoMethodRegistry(t *testing.T) {
+	if err := ValidateProtoMethodRegistry(); err != nil {
+		t.Fatalf("ValidateProtoMethodRegistry() error = %v", err)
+	}
+	protoMethod, err := ProtoMethod(RPCMethodAllPing)
+	if err != nil {
+		t.Fatalf("ProtoMethod() error = %v", err)
+	}
+	method, err := MethodFromProto(protoMethod)
+	if err != nil {
+		t.Fatalf("MethodFromProto() error = %v", err)
+	}
+	if method != RPCMethodAllPing {
+		t.Fatalf("MethodFromProto() = %q, want %q", method, RPCMethodAllPing)
+	}
+}
+
 func assertRequestUnion[T any](
 	t *testing.T,
 	name string,
 	value T,
-	from func(*RPCRequest_Params, T) error,
-	as func(RPCRequest_Params) (T, error),
-	merge func(*RPCRequest_Params, T) error,
+	from func(*RPCPayload, T) error,
+	as func(RPCPayload) (T, error),
+	merge func(*RPCPayload, T) error,
 ) {
 	t.Helper()
-	var params RPCRequest_Params
+	var params RPCPayload
 	if err := from(&params, value); err != nil {
 		t.Fatalf("From%sRequest() error = %v", name, err)
 	}
@@ -170,12 +522,12 @@ func assertResponseUnion[T any](
 	t *testing.T,
 	name string,
 	value T,
-	from func(*RPCResponse_Result, T) error,
-	as func(RPCResponse_Result) (T, error),
-	merge func(*RPCResponse_Result, T) error,
+	from func(*RPCPayload, T) error,
+	as func(RPCPayload) (T, error),
+	merge func(*RPCPayload, T) error,
 ) {
 	t.Helper()
-	var result RPCResponse_Result
+	var result RPCPayload
 	if err := from(&result, value); err != nil {
 		t.Fatalf("From%sResponse() error = %v", name, err)
 	}
@@ -191,9 +543,13 @@ func stringPtr(value string) *string {
 	return &value
 }
 
+func ptr[T any](value T) *T {
+	return &value
+}
+
 func TestWriteFramePropagatesHeaderWriteError(t *testing.T) {
 	writeErr := errors.New("write failed")
-	if err := WriteFrame(errorWriter{err: writeErr}, Frame{Type: FrameTypeJSON, Payload: []byte("payload")}); !errors.Is(err, writeErr) {
+	if err := WriteFrame(errorWriter{err: writeErr}, Frame{Type: FrameTypeBinary, Payload: []byte("payload")}); !errors.Is(err, writeErr) {
 		t.Fatalf("WriteFrame() err = %v, want %v", err, writeErr)
 	}
 }
@@ -281,30 +637,30 @@ func (w *recordingBuffersWriter) WriteBuffers(buffers net.Buffers) (int64, error
 	return total, nil
 }
 
-func TestReadRequestAndResponseRejectInvalidJSON(t *testing.T) {
+func TestReadRequestAndResponseRejectInvalidProtobuf(t *testing.T) {
 	var reqBuf bytes.Buffer
-	if err := WriteFrame(&reqBuf, Frame{Type: FrameTypeJSON, Payload: []byte("{")}); err != nil {
+	if err := WriteFrame(&reqBuf, Frame{Type: FrameTypeBinary, Payload: []byte("{")}); err != nil {
 		t.Fatalf("WriteFrame(request) error = %v", err)
 	}
 	if _, err := ReadRequest(&reqBuf); err == nil {
-		t.Fatal("ReadRequest() should fail for invalid JSON")
+		t.Fatal("ReadRequest() should fail for invalid protobuf")
 	}
 
 	var respBuf bytes.Buffer
-	if err := WriteFrame(&respBuf, Frame{Type: FrameTypeJSON, Payload: []byte("{")}); err != nil {
+	if err := WriteFrame(&respBuf, Frame{Type: FrameTypeBinary, Payload: []byte("{")}); err != nil {
 		t.Fatalf("WriteFrame(response) error = %v", err)
 	}
 	if _, err := ReadResponse(&respBuf); err == nil {
-		t.Fatal("ReadResponse() should fail for invalid JSON")
+		t.Fatal("ReadResponse() should fail for invalid protobuf")
 	}
 }
 
-func TestReadRequestAndResponseRejectNonJSONFrames(t *testing.T) {
+func TestReadRequestAndResponseRejectNonProtobufFrames(t *testing.T) {
 	var reqBuf bytes.Buffer
-	if err := WriteFrame(&reqBuf, Frame{Type: FrameTypeBinary, Payload: []byte("{}")}); err != nil {
+	if err := WriteFrame(&reqBuf, Frame{Type: FrameTypeText, Payload: []byte("{}")}); err != nil {
 		t.Fatalf("WriteFrame(request) error = %v", err)
 	}
-	if _, err := ReadRequest(&reqBuf); err == nil || err.Error() != "rpc: unmarshal request: rpc: expected JSON frame, got type 2" {
+	if _, err := ReadRequest(&reqBuf); err == nil || err.Error() != "rpc: unmarshal request: rpc: expected protobuf binary frame, got type 3" {
 		t.Fatalf("ReadRequest() err = %v", err)
 	}
 
@@ -312,7 +668,7 @@ func TestReadRequestAndResponseRejectNonJSONFrames(t *testing.T) {
 	if err := WriteFrame(&respBuf, Frame{Type: FrameTypeText, Payload: []byte("{}")}); err != nil {
 		t.Fatalf("WriteFrame(response) error = %v", err)
 	}
-	if _, err := ReadResponse(&respBuf); err == nil || err.Error() != "rpc: unmarshal response: rpc: expected JSON frame, got type 3" {
+	if _, err := ReadResponse(&respBuf); err == nil || err.Error() != "rpc: unmarshal response: rpc: expected protobuf binary frame, got type 3" {
 		t.Fatalf("ReadResponse() err = %v", err)
 	}
 }
@@ -370,7 +726,6 @@ func TestReadFrameRejectsTruncatedPayload(t *testing.T) {
 func TestReadWriteFrames(t *testing.T) {
 	var buf bytes.Buffer
 	err := WriteFrames(&buf, func(yield func(Frame, error) bool) {
-		yield(Frame{Type: FrameTypeJSON, Payload: []byte("{}")}, nil)
 		yield(Frame{Type: FrameTypeText, Payload: []byte("hello")}, nil)
 		yield(Frame{Type: FrameTypeBinary, Payload: []byte{1, 2, 3}}, nil)
 	})
@@ -388,17 +743,14 @@ func TestReadWriteFrames(t *testing.T) {
 		}
 		got = append(got, frame)
 	}
-	if len(got) != 3 {
+	if len(got) != 2 {
 		t.Fatalf("ReadFrames() got %d frames", len(got))
 	}
-	if got[0].Type != FrameTypeJSON || string(got[0].Payload) != "{}" {
+	if got[0].Type != FrameTypeText || string(got[0].Payload) != "hello" {
 		t.Fatalf("frame[0] = %+v", got[0])
 	}
-	if got[1].Type != FrameTypeText || string(got[1].Payload) != "hello" {
+	if got[1].Type != FrameTypeBinary || !bytes.Equal(got[1].Payload, []byte{1, 2, 3}) {
 		t.Fatalf("frame[1] = %+v", got[1])
-	}
-	if got[2].Type != FrameTypeBinary || !bytes.Equal(got[2].Payload, []byte{1, 2, 3}) {
-		t.Fatalf("frame[2] = %+v", got[2])
 	}
 }
 
@@ -439,6 +791,44 @@ func TestReadWriteResponses(t *testing.T) {
 	}
 }
 
+func TestReadWriteResponsesForMethod(t *testing.T) {
+	serverTimes := []int64{11, 22}
+	ids := []string{"one", "two"}
+	var buf bytes.Buffer
+	err := WriteResponsesForMethod(&buf, RPCMethodAllPing, func(yield func(*RPCResponse, error) bool) {
+		for index, serverTime := range serverTimes {
+			var result RPCPayload
+			if err := result.FromPingResponse(PingResponse{ServerTime: serverTime}); err != nil {
+				t.Fatalf("FromPingResponse() error = %v", err)
+			}
+			if !yield(&RPCResponse{V: RPCVersionV1, Id: ids[index], Result: &result}, nil) {
+				return
+			}
+		}
+	})
+	if err != nil {
+		t.Fatalf("WriteResponsesForMethod() error = %v", err)
+	}
+
+	var got []int64
+	for resp, err := range ReadResponsesForMethod(&buf, RPCMethodAllPing) {
+		if err != nil {
+			t.Fatalf("ReadResponsesForMethod() error = %v", err)
+		}
+		if resp.Result == nil {
+			t.Fatalf("ReadResponsesForMethod() response missing result: %+v", resp)
+		}
+		result, err := resp.Result.AsPingResponse()
+		if err != nil {
+			t.Fatalf("AsPingResponse() error = %v", err)
+		}
+		got = append(got, result.ServerTime)
+	}
+	if len(got) != len(serverTimes) || got[0] != 11 || got[1] != 22 {
+		t.Fatalf("ReadResponsesForMethod() server times = %v", got)
+	}
+}
+
 func TestWriteResponsesPropagatesSequenceError(t *testing.T) {
 	seqErr := errors.New("response failed")
 	var buf bytes.Buffer
@@ -450,13 +840,13 @@ func TestWriteResponsesPropagatesSequenceError(t *testing.T) {
 	}
 }
 
-func TestReadResponsesRejectsNonJSONFrame(t *testing.T) {
+func TestReadResponsesRejectsInvalidProtobufFrame(t *testing.T) {
 	var buf bytes.Buffer
 	if err := WriteFrame(&buf, Frame{Type: FrameTypeBinary, Payload: []byte("{}")}); err != nil {
 		t.Fatalf("WriteFrame() error = %v", err)
 	}
 	for _, err := range ReadResponses(&buf) {
-		if err == nil || err.Error() != "rpc: unmarshal response: rpc: expected JSON frame, got type 2" {
+		if err == nil {
 			t.Fatalf("ReadResponses() err = %v", err)
 		}
 		return
@@ -522,7 +912,7 @@ func TestWriteFrameRejectsUnknownType(t *testing.T) {
 }
 
 func TestWriteFramePropagatesShortWrite(t *testing.T) {
-	err := WriteFrame(shortWriter{}, Frame{Type: FrameTypeJSON, Payload: []byte("payload")})
+	err := WriteFrame(shortWriter{}, Frame{Type: FrameTypeBinary, Payload: []byte("payload")})
 	if !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("WriteFrame() err = %v, want %v", err, io.ErrShortWrite)
 	}

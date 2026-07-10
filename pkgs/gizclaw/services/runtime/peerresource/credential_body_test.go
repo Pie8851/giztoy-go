@@ -1,8 +1,9 @@
 package peerresource
 
 import (
-	"encoding/json"
+	"testing"
 
+	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcapi"
 )
 
@@ -17,13 +18,39 @@ func testRPCOpenAICredentialBody(apiKey string) rpcapi.CredentialBody {
 }
 
 func testRPCCredentialBodyString(body rpcapi.CredentialBody, key string) string {
-	data, err := body.MarshalJSON()
+	openAI, err := body.AsOpenAICredentialBody()
+	if err != nil || key != "api_key" || openAI.ApiKey == nil {
+		return ""
+	}
+	return *openAI.ApiKey
+}
+
+func TestAPICredentialToRPCUsesProviderForBodyUnion(t *testing.T) {
+	var body apitypes.CredentialBody
+	if err := body.FromVolcCredentialBody(apitypes.VolcCredentialBody{
+		AppId:              testStringPtr("volc-app"),
+		OpenapiAccessKeyId: testStringPtr("ak-id"),
+		OpenapiAccessKey:   testStringPtr("ak-secret"),
+	}); err != nil {
+		t.Fatalf("FromVolcCredentialBody() error = %v", err)
+	}
+
+	got, err := apiCredentialToRPC(apitypes.Credential{
+		Name:     "volc-credential",
+		Provider: "volc",
+		Body:     body,
+	})
 	if err != nil {
-		return ""
+		t.Fatalf("apiCredentialToRPC() error = %v", err)
 	}
-	var values map[string]string
-	if err := json.Unmarshal(data, &values); err != nil {
-		return ""
+	volc, err := got.Body.AsVolcCredentialBody()
+	if err != nil {
+		t.Fatalf("AsVolcCredentialBody() error = %v", err)
 	}
-	return values[key]
+	if volc.AppId == nil || *volc.AppId != "volc-app" || volc.OpenapiAccessKeyId == nil || *volc.OpenapiAccessKeyId != "ak-id" {
+		t.Fatalf("volc credential body = %#v", volc)
+	}
+	if _, err := got.Body.AsOpenAICredentialBody(); err == nil {
+		t.Fatal("apiCredentialToRPC() encoded volc credential as OpenAI body")
+	}
 }

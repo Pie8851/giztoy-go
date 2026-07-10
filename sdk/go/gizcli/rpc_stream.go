@@ -3,7 +3,6 @@ package gizcli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcapi"
 )
+
+const rpcMaxEnvelopeSize = rpcapi.MaxFrameSize * 16
 
 type rpcStream struct {
 	ctx  context.Context
@@ -160,11 +161,7 @@ func (s *rpcStream) ReadRequest() (*rpcapi.RPCRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	var req rpcapi.RPCRequest
-	if err := rpcapi.DecodeJSONFrame(frame, &req); err != nil {
-		return nil, err
-	}
-	return &req, nil
+	return rpcapi.DecodeRequestFrame(frame)
 }
 
 func (s *rpcStream) ReadRequestEnvelope() (*rpcapi.RPCRequest, bool, error) {
@@ -172,16 +169,15 @@ func (s *rpcStream) ReadRequestEnvelope() (*rpcapi.RPCRequest, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	var req rpcapi.RPCRequest
-	consumedEOS, err := s.decodeJSONEnvelope(frame, &req)
+	req, consumedEOS, err := s.decodeRequestEnvelope(frame)
 	if err != nil {
 		return nil, consumedEOS, err
 	}
-	return &req, consumedEOS, nil
+	return req, consumedEOS, nil
 }
 
 func (s *rpcStream) WriteRequest(req *rpcapi.RPCRequest) error {
-	frame, err := rpcapi.NewJSONFrame(req)
+	frame, err := rpcapi.NewRequestFrame(req)
 	if err != nil {
 		return err
 	}
@@ -189,7 +185,12 @@ func (s *rpcStream) WriteRequest(req *rpcapi.RPCRequest) error {
 }
 
 func (s *rpcStream) WriteRequestEnvelope(req *rpcapi.RPCRequest) error {
-	return s.writeJSONEnvelope(req)
+	frame, err := rpcapi.NewRequestFrame(req)
+	if err != nil {
+		return err
+	}
+	_, err = s.writeProtobufEnvelope(frame.Payload)
+	return err
 }
 
 func (s *rpcStream) ReadResponse() (*rpcapi.RPCResponse, error) {
@@ -197,11 +198,15 @@ func (s *rpcStream) ReadResponse() (*rpcapi.RPCResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	var resp rpcapi.RPCResponse
-	if err := rpcapi.DecodeJSONFrame(frame, &resp); err != nil {
+	return rpcapi.DecodeResponseFrame(frame)
+}
+
+func (s *rpcStream) ReadResponseForMethod(method rpcapi.RPCMethod) (*rpcapi.RPCResponse, error) {
+	frame, err := s.ReadFrame()
+	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return rpcapi.DecodeResponseFrameForMethod(method, frame)
 }
 
 func (s *rpcStream) ReadResponseEnvelope() (*rpcapi.RPCResponse, bool, error) {
@@ -209,24 +214,55 @@ func (s *rpcStream) ReadResponseEnvelope() (*rpcapi.RPCResponse, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	var resp rpcapi.RPCResponse
-	consumedEOS, err := s.decodeJSONEnvelope(frame, &resp)
+	resp, consumedEOS, err := s.decodeResponseEnvelope(frame)
 	if err != nil {
 		return nil, consumedEOS, err
 	}
-	return &resp, consumedEOS, nil
+	return resp, consumedEOS, nil
+}
+
+func (s *rpcStream) ReadResponseEnvelopeForMethod(method rpcapi.RPCMethod) (*rpcapi.RPCResponse, bool, error) {
+	frame, err := s.ReadFrame()
+	if err != nil {
+		return nil, false, err
+	}
+	resp, consumedEOS, err := s.decodeResponseEnvelopeForMethod(method, frame)
+	if err != nil {
+		return nil, consumedEOS, err
+	}
+	return resp, consumedEOS, nil
 }
 
 func (s *rpcStream) WriteResponse(resp *rpcapi.RPCResponse) error {
-	frame, err := rpcapi.NewJSONFrame(resp)
+	frame, err := rpcapi.NewResponseFrame(resp)
 	if err != nil {
 		return err
 	}
 	return s.WriteFrame(frame)
 }
 
-func (s *rpcStream) WriteResponseEnvelope(resp *rpcapi.RPCResponse) error {
-	return s.writeJSONEnvelope(resp)
+func (s *rpcStream) WriteResponseForMethod(method rpcapi.RPCMethod, resp *rpcapi.RPCResponse) error {
+	frame, err := rpcapi.NewResponseFrameForMethod(method, resp)
+	if err != nil {
+		return err
+	}
+	return s.WriteFrame(frame)
+}
+
+func (s *rpcStream) WriteResponseEnvelope(resp *rpcapi.RPCResponse) (bool, error) {
+	frame, err := rpcapi.NewResponseFrame(resp)
+	if err != nil {
+		return false, err
+	}
+	return s.writeProtobufEnvelope(frame.Payload)
+}
+
+func (s *rpcStream) WriteResponseEnvelopeForMethod(method rpcapi.RPCMethod, resp *rpcapi.RPCResponse) (bool, error) {
+	frame, err := rpcapi.NewResponseFrameForMethod(method, resp)
+	if err != nil {
+		return false, err
+	}
+	return s.writeProtobufEnvelope(frame.Payload)
 }
 
 func (s *rpcStream) Responses() iter.Seq2[*rpcapi.RPCResponse, error] {
@@ -236,61 +272,104 @@ func (s *rpcStream) Responses() iter.Seq2[*rpcapi.RPCResponse, error] {
 				yield(nil, err)
 				return
 			}
-			var resp rpcapi.RPCResponse
-			if err := rpcapi.DecodeJSONFrame(frame, &resp); err != nil {
+			resp, err := rpcapi.DecodeResponseFrame(frame)
+			if err != nil {
 				yield(nil, err)
 				return
 			}
-			if !yield(&resp, nil) {
+			if !yield(resp, nil) {
 				return
 			}
 		}
 	}
 }
 
-func (s *rpcStream) writeJSONEnvelope(v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
+func (s *rpcStream) writeProtobufEnvelope(data []byte) (bool, error) {
 	if len(data) <= rpcapi.MaxFrameSize {
-		return s.WriteFrame(rpcapi.Frame{Type: rpcapi.FrameTypeJSON, Payload: data})
+		return false, s.WriteFrame(rpcapi.Frame{Type: rpcapi.FrameTypeBinary, Payload: data})
 	}
 	for len(data) > 0 {
 		n := min(len(data), rpcapi.MaxFrameSize)
 		if err := s.WriteFrame(rpcapi.Frame{Type: rpcapi.FrameTypeText, Payload: data[:n]}); err != nil {
-			return err
+			return false, err
 		}
 		data = data[n:]
 	}
-	return nil
+	return true, nil
 }
 
-func (s *rpcStream) decodeJSONEnvelope(first rpcapi.Frame, v any) (bool, error) {
+func (s *rpcStream) decodeRequestEnvelope(first rpcapi.Frame) (*rpcapi.RPCRequest, bool, error) {
 	switch first.Type {
-	case rpcapi.FrameTypeJSON:
-		return false, json.Unmarshal(first.Payload, v)
+	case rpcapi.FrameTypeBinary:
+		req, err := rpcapi.DecodeRequestFrame(first)
+		return req, false, err
 	case rpcapi.FrameTypeText:
-		var buf bytes.Buffer
-		buf.Write(first.Payload)
-		for {
-			frame, err := s.ReadFrame()
-			if err != nil {
-				return false, err
-			}
-			if frame.Type == rpcapi.FrameTypeEOS {
-				if err := json.Unmarshal(buf.Bytes(), v); err != nil {
-					return true, err
-				}
-				return true, nil
-			}
-			if frame.Type != rpcapi.FrameTypeText {
-				return false, fmt.Errorf("rpc: expected JSON continuation frame, got type %d", frame.Type)
-			}
-			buf.Write(frame.Payload)
+		payload, err := s.readProtobufEnvelopeContinuation(first)
+		if err != nil {
+			return nil, false, err
 		}
+		req, err := rpcapi.DecodeRequestFrame(rpcapi.Frame{Type: rpcapi.FrameTypeBinary, Payload: payload})
+		return req, true, err
 	default:
-		return false, fmt.Errorf("rpc: expected JSON frame, got type %d", first.Type)
+		return nil, false, fmt.Errorf("rpc: expected protobuf binary frame, got type %d", first.Type)
+	}
+}
+
+func (s *rpcStream) decodeResponseEnvelope(first rpcapi.Frame) (*rpcapi.RPCResponse, bool, error) {
+	switch first.Type {
+	case rpcapi.FrameTypeBinary:
+		resp, err := rpcapi.DecodeResponseFrame(first)
+		return resp, false, err
+	case rpcapi.FrameTypeText:
+		payload, err := s.readProtobufEnvelopeContinuation(first)
+		if err != nil {
+			return nil, false, err
+		}
+		resp, err := rpcapi.DecodeResponseFrame(rpcapi.Frame{Type: rpcapi.FrameTypeBinary, Payload: payload})
+		return resp, true, err
+	default:
+		return nil, false, fmt.Errorf("rpc: expected protobuf binary frame, got type %d", first.Type)
+	}
+}
+
+func (s *rpcStream) decodeResponseEnvelopeForMethod(method rpcapi.RPCMethod, first rpcapi.Frame) (*rpcapi.RPCResponse, bool, error) {
+	switch first.Type {
+	case rpcapi.FrameTypeBinary:
+		resp, err := rpcapi.DecodeResponseFrameForMethod(method, first)
+		return resp, false, err
+	case rpcapi.FrameTypeText:
+		payload, err := s.readProtobufEnvelopeContinuation(first)
+		if err != nil {
+			return nil, false, err
+		}
+		resp, err := rpcapi.DecodeResponseFrameForMethod(method, rpcapi.Frame{Type: rpcapi.FrameTypeBinary, Payload: payload})
+		return resp, true, err
+	default:
+		return nil, false, fmt.Errorf("rpc: expected protobuf binary frame, got type %d", first.Type)
+	}
+}
+
+func (s *rpcStream) readProtobufEnvelopeContinuation(first rpcapi.Frame) ([]byte, error) {
+	if len(first.Payload) > rpcMaxEnvelopeSize {
+		return nil, fmt.Errorf("rpc: protobuf envelope too large: %d", len(first.Payload))
+	}
+	var buf bytes.Buffer
+	buf.Write(first.Payload)
+	for {
+		frame, err := s.ReadFrame()
+		if err != nil {
+			return nil, err
+		}
+		if frame.Type == rpcapi.FrameTypeEOS {
+			return buf.Bytes(), nil
+		}
+		if frame.Type != rpcapi.FrameTypeText {
+			return nil, fmt.Errorf("rpc: expected protobuf continuation frame, got type %d", frame.Type)
+		}
+		if buf.Len()+len(frame.Payload) > rpcMaxEnvelopeSize {
+			return nil, fmt.Errorf("rpc: protobuf envelope too large: %d", buf.Len()+len(frame.Payload))
+		}
+		buf.Write(frame.Payload)
 	}
 }
 

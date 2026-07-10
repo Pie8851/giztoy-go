@@ -130,12 +130,12 @@ func TestCallRPCSpeedTestRoundTrip(t *testing.T) {
 		resp, err := newRPCResultResponse(req.Id, rpcapi.SpeedTestResponse{
 			UpContentLength:   params.UpContentLength,
 			DownContentLength: params.DownContentLength,
-		}, (*rpcapi.RPCResponse_Result).FromSpeedTestResponse)
+		}, (*rpcapi.RPCPayload).FromSpeedTestResponse)
 		if err != nil {
 			serverErrCh <- err
 			return
 		}
-		if err := stream.WriteResponse(resp); err != nil {
+		if err := stream.WriteResponseForMethod(req.Method, resp); err != nil {
 			serverErrCh <- err
 			return
 		}

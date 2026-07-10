@@ -6,13 +6,17 @@ interfaces, and shared API types under `pkgs/gizclaw/api/`.
 
 ## Layout
 
-- `admin_http.json`, `peer_http.json`, `desktop_service.json`, and
-  `rpc.json` define GizClaw API surfaces or shared protocol documents.
+- `admin_http.json`, `peer_http.json`, and `desktop_service.json` define
+  GizClaw HTTP API surfaces.
+- `rpc/common.proto` defines shared Peer RPC envelopes, errors, and stream frames.
+- `rpc/peer.proto` defines the Peer RPC request envelope and method registry.
+- `rpc/payload.proto` defines method-specific Peer RPC payload messages.
 - `openai-compat/v1/service.json` defines the OpenAI-compatible HTTP surface.
 - `types.json` collects shared schemas and exposes them through
   `#/components/schemas`.
 - `type/*.json` contains reusable shared schema definitions.
-- `rpc/*.json` contains reusable RPC method schema definitions.
+- `type/server.json` contains peer-owned DTO schemas still referenced by Admin
+  HTTP generation.
 - `resource/*.json` contains declarative admin resource schemas used by
   `admin apply`, `admin show`, and related resource APIs.
 
@@ -24,7 +28,17 @@ Generated Go code lives outside this directory:
 - `pkgs/gizclaw/api/apitypes/generated.go`
 - `pkgs/gizclaw/api/openaihttp/generated.go`
 - `pkgs/gizclaw/api/rpcapi/generated.go`
+- `pkgs/gizclaw/api/rpcapi/payload_codec.go`
+- `pkgs/gizclaw/api/rpcproto/common.pb.go`
+- `pkgs/gizclaw/api/rpcproto/peer.pb.go`
+- `pkgs/gizclaw/api/rpcproto/payload.pb.go`
 - `pkgs/gizclaw/api/peerhttp/generated.go`
+
+`rpcproto` is generated directly from `api/rpc/*.proto`. The `rpcapi` package is
+the committed Go wrapper surface on top of those protobuf payload descriptors;
+when changing Peer RPC methods or payload messages, update `rpcapi/generated.go`
+and `rpcapi/payload_codec.go` in the same change and verify them with
+`go test ./pkgs/gizclaw/api/rpcapi`.
 
 Current generated TypeScript SDK code lives under `sdk/js/gizclaw/`:
 
@@ -46,8 +60,9 @@ Common commands:
 go generate ./pkgs/gizclaw/api/adminhttp
 go generate ./pkgs/gizclaw/api/apitypes
 go generate ./pkgs/gizclaw/api/openaihttp
-go generate ./pkgs/gizclaw/api/rpcapi
+go generate ./pkgs/gizclaw/api/rpcproto
 go generate ./pkgs/gizclaw/api/peerhttp
+go test ./pkgs/gizclaw/api/rpcapi
 ```
 
 Regenerate TypeScript SDK packages with:

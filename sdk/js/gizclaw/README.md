@@ -51,8 +51,12 @@ uint16 frame_type little-endian
 payload bytes
 ```
 
-The request is a JSON frame followed by an EOS frame. The response is a JSON
-frame followed by an EOS frame.
+Unary Peer RPC requests and responses are protobuf binary envelope frames
+followed by an EOS frame. Binary and download responses send the response
+envelope first, then body frames, and a single EOS frame terminates the whole
+response stream. If a response envelope is split across `Text` continuation
+frames, an EOS terminates that metadata envelope before body frames begin, and a
+second EOS terminates the body stream.
 
 ## HTTP Over Data Channel
 

@@ -45,7 +45,7 @@ func callRPCSpeedTest(ctx context.Context, conn net.Conn, id string, request rpc
 	if err := validateSpeedTestRequest(request); err != nil {
 		return SpeedTestResult{}, err
 	}
-	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromSpeedTestRequest)
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCPayload).FromSpeedTestRequest)
 	if err != nil {
 		return SpeedTestResult{}, err
 	}
@@ -76,7 +76,7 @@ func callRPCSpeedTest(ctx context.Context, conn net.Conn, id string, request rpc
 			}
 			return err
 		}
-		resp, err := stream.ReadResponse()
+		resp, err := stream.ReadResponseForMethod(rpcapi.RPCMethodAllSpeedTestRun)
 		if err != nil {
 			return stopUpload(err)
 		}
@@ -130,12 +130,18 @@ func (s *rpcServer) handleSpeedTest(ctx context.Context, stream *rpcStream, req 
 	result, err := newRPCResultResponse(req.Id, rpcapi.SpeedTestResponse{
 		UpContentLength:   params.UpContentLength,
 		DownContentLength: params.DownContentLength,
-	}, (*rpcapi.RPCResponse_Result).FromSpeedTestResponse)
+	}, (*rpcapi.RPCPayload).FromSpeedTestResponse)
 	if err != nil {
 		return err
 	}
-	if err := stream.WriteResponse(result); err != nil {
+	metadataEOS, err := stream.WriteResponseEnvelopeForMethod(req.Method, result)
+	if err != nil {
 		return err
+	}
+	if metadataEOS {
+		if err := stream.WriteEOS(); err != nil {
+			return err
+		}
 	}
 
 	var g errgroup.Group
@@ -188,7 +194,7 @@ func validateSpeedTestRequest(request rpcapi.SpeedTestRequest) error {
 }
 
 func writeRPCErrorResponse(stream *rpcStream, id string, code rpcapi.RPCErrorCode, message string) error {
-	if err := stream.WriteResponse(rpcapi.Error{RequestID: id, Code: code, Message: message}.RPCResponse()); err != nil {
+	if _, err := stream.WriteResponseEnvelope(rpcapi.Error{RequestID: id, Code: code, Message: message}.RPCResponse()); err != nil {
 		return err
 	}
 	return stream.WriteEOS()

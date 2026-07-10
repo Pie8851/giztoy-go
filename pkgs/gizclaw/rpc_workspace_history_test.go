@@ -40,7 +40,7 @@ func TestRPCServerWorkspaceHistoryAudioGetStreamsBinary(t *testing.T) {
 	params, err := newRPCRequestParams(rpcapi.WorkspaceHistoryAudioGetRequest{
 		WorkspaceName: "main",
 		HistoryId:     "h1",
-	}, (*rpcapi.RPCRequest_Params).FromWorkspaceHistoryAudioGetRequest)
+	}, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetRequest)
 	if err != nil {
 		t.Fatalf("newRPCRequestParams() error = %v", err)
 	}
@@ -51,7 +51,7 @@ func TestRPCServerWorkspaceHistoryAudioGetStreamsBinary(t *testing.T) {
 		t.Fatalf("WriteEOS() error = %v", err)
 	}
 
-	resp, err := stream.ReadResponse()
+	resp, err := stream.ReadResponseForMethod(rpcapi.RPCMethodServerWorkspaceHistoryAudioGet)
 	if err != nil {
 		t.Fatalf("ReadResponse() error = %v", err)
 	}

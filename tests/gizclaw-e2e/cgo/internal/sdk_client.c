@@ -2,7 +2,6 @@
 
 #include "../../../../sdk/c/gizclaw/cgobackend/gzc_cgo_backend.h"
 #include "gzc.h"
-#include "gzc_rpc_generated.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,42 +127,42 @@ void gzc_cgo_session_close(gzc_cgo_session_t *session) {
   free(session);
 }
 
-int gzc_cgo_session_call_json(
+int gzc_cgo_session_call_rpc_payload(
     gzc_cgo_session_t *session,
-    const char *method,
-    const char *params_json,
-    char **out_result_json,
-    unsigned long *out_result_json_len,
+    unsigned method_id,
+    const unsigned char *params_payload,
+    unsigned long params_payload_len,
+    unsigned char **out_result_payload,
+    unsigned long *out_result_payload_len,
     char *errbuf,
     unsigned long errbuf_len) {
-  if (session == NULL || method == NULL || params_json == NULL || out_result_json == NULL || out_result_json_len == NULL) {
-    return fail(errbuf, errbuf_len, "call json", GZC_ERR_INVALID_ARGUMENT);
+  if (session == NULL || method_id == 0 || (params_payload == NULL && params_payload_len != 0) || out_result_payload == NULL || out_result_payload_len == NULL) {
+    return fail(errbuf, errbuf_len, "call rpc payload", GZC_ERR_INVALID_ARGUMENT);
   }
-  *out_result_json = NULL;
-  *out_result_json_len = 0;
+  *out_result_payload = NULL;
+  *out_result_payload_len = 0;
 
   gzc_rpc_response_t response;
   memset(&response, 0, sizeof(response));
-  int rc = gzc_rpc_call_json(
+  int rc = gzc_rpc_call(
       session->client,
-      gzc_str_from_cstr(method),
-      gzc_str_from_cstr(params_json),
+      (gizclaw_rpc_v1_RpcMethod)method_id,
+      gzc_str_from_parts((const char *)params_payload, (size_t)params_payload_len),
       &response);
   if (rc != GZC_OK) {
-    return fail(errbuf, errbuf_len, "call json", rc);
+    return fail(errbuf, errbuf_len, "call rpc payload", rc);
   }
   if (response.has_error) {
     return fail(errbuf, errbuf_len, "rpc error", GZC_ERR_RPC);
   }
 
-  char *result = (char *)malloc(response.result_json.len + 1);
+  unsigned char *result = (unsigned char *)malloc(response.result_payload.len == 0 ? 1 : response.result_payload.len);
   if (result == NULL) {
     return fail(errbuf, errbuf_len, "copy result", GZC_ERR_NO_MEMORY);
   }
-  memcpy(result, response.result_json.data, response.result_json.len);
-  result[response.result_json.len] = '\0';
-  *out_result_json = result;
-  *out_result_json_len = (unsigned long)response.result_json.len;
+  memcpy(result, response.result_payload.data, response.result_payload.len);
+  *out_result_payload = result;
+  *out_result_payload_len = (unsigned long)response.result_payload.len;
   if (errbuf != NULL && errbuf_len > 0) {
     errbuf[0] = 0;
   }
@@ -172,13 +171,14 @@ int gzc_cgo_session_call_json(
 
 int gzc_cgo_session_call_stream_collect(
     gzc_cgo_session_t *session,
-    const char *method,
-    const char *params_json,
+    unsigned method_id,
+    const unsigned char *params_payload,
+    unsigned long params_payload_len,
     gzc_cgo_stream_frame_t **out_frames,
     unsigned long *out_frame_count,
     char *errbuf,
     unsigned long errbuf_len) {
-  if (session == NULL || method == NULL || params_json == NULL || out_frames == NULL || out_frame_count == NULL) {
+  if (session == NULL || method_id == 0 || (params_payload == NULL && params_payload_len != 0) || out_frames == NULL || out_frame_count == NULL) {
     return fail(errbuf, errbuf_len, "call stream", GZC_ERR_INVALID_ARGUMENT);
   }
   *out_frames = NULL;
@@ -187,8 +187,8 @@ int gzc_cgo_session_call_stream_collect(
   memset(&state, 0, sizeof(state));
   int rc = gzc_rpc_call_stream(
       session->client,
-      gzc_str_from_cstr(method),
-      gzc_str_from_cstr(params_json),
+      (gizclaw_rpc_v1_RpcMethod)method_id,
+      gzc_str_from_parts((const char *)params_payload, (size_t)params_payload_len),
       append_stream_frame,
       &state);
   if (rc != GZC_OK) {

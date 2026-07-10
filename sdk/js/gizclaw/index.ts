@@ -1,4 +1,6 @@
 import type { CreateGiznetWebRtcOfferData } from "./generated/peerhttp/types.gen";
+import { RPC_METHOD_IDS } from "./generated/rpc/method-map.ts";
+import { decodeRPCResponsePayload, encodeRPCRequestPayload, encodeRPCResponsePayload } from "./generated/rpc/payload-codec.ts";
 import { base58Decode, prepareEncryptedGiznetWebRTCOffer } from "./signaling.ts";
 import { encodeTelemetryPacket, type TelemetryFrame } from "./telemetry.ts";
 export * from "./telemetry.ts";
@@ -20,6 +22,8 @@ export const RPC_FRAME_TYPE_EOS = 0;
 export const RPC_FRAME_TYPE_JSON = 1;
 export const RPC_FRAME_TYPE_BINARY = 2;
 export const RPC_FRAME_TYPE_TEXT = 3;
+const RPC_MAX_FRAME_PAYLOAD_SIZE = 0xffff;
+const RPC_MAX_ENVELOPE_SIZE = RPC_MAX_FRAME_PAYLOAD_SIZE * 16;
 const DATA_CHANNEL_SEND_RETRY_DELAY_MS = 5;
 const DATA_CHANNEL_SEND_RETRY_LIMIT = 20;
 const PACKET_DATA_CHANNEL_OPEN_TIMEOUT_MS = 30000;
@@ -181,6 +185,17 @@ export class WebRTCRPCClient {
   async request<TResult = unknown, TParams = unknown>(request: RPCRequest<TParams>, options: RPCCallOptions = {}): Promise<RPCResponse<TResult>> {
     const channel = this.pc.createDataChannel(this.channelLabel, { ordered: true });
     channel.binaryType = "arraybuffer";
+    let encodedRequest: ArrayBuffer;
+    try {
+      encodedRequest = encodeRPCRequest(request);
+    } catch (err) {
+      try {
+        channel.close();
+      } catch {
+        // Ignore close races from browsers that already closed the channel.
+      }
+      throw err;
+    }
 
     const timeoutMs = options.timeoutMs ?? this.requestTimeoutMs;
     const abortSignal = options.signal;
@@ -220,7 +235,7 @@ export class WebRTCRPCClient {
         settle(() => reject(abortError()));
       };
       const onOpen = (): void => {
-        sendDataChannelMessage(channel, encodeRPCRequest(request), (err) => settle(() => reject(err)));
+        sendDataChannelMessage(channel, encodedRequest, (err) => settle(() => reject(err)));
       };
       const onMessage = (event: MessageEvent): void => {
         messageQueue = messageQueue.then(async () => {
@@ -230,7 +245,7 @@ export class WebRTCRPCClient {
           try {
             const chunk = await messageDataBytes(event.data);
             buffer = appendBytes(buffer, chunk);
-            const parsed = tryReadRPCResponse<TResult>(buffer);
+            const parsed = tryReadRPCResponse<TResult>(buffer, request.method);
             if (parsed == null) {
               return;
             }
@@ -285,6 +300,17 @@ export class WebRTCRPCClient {
   ): Promise<{ body: Uint8Array; response: RPCResponse<TResult> }> {
     const channel = this.pc.createDataChannel(this.channelLabel, { ordered: true });
     channel.binaryType = "arraybuffer";
+    let encodedRequest: ArrayBuffer;
+    try {
+      encodedRequest = encodeRPCRequest(request);
+    } catch (err) {
+      try {
+        channel.close();
+      } catch {
+        // Ignore close races from browsers that already closed the channel.
+      }
+      throw err;
+    }
 
     const timeoutMs = options.timeoutMs ?? this.requestTimeoutMs;
     const abortSignal = options.signal;
@@ -324,7 +350,7 @@ export class WebRTCRPCClient {
         settle(() => reject(abortError()));
       };
       const onOpen = (): void => {
-        sendDataChannelMessage(channel, encodeRPCRequest(request), (err) => settle(() => reject(err)));
+        sendDataChannelMessage(channel, encodedRequest, (err) => settle(() => reject(err)));
       };
       const onMessage = (event: MessageEvent): void => {
         messageQueue = messageQueue.then(async () => {
@@ -334,7 +360,7 @@ export class WebRTCRPCClient {
           try {
             const chunk = await messageDataBytes(event.data);
             buffer = appendBytes(buffer, chunk);
-            const parsed = tryReadRPCBinaryResponse<TResult>(buffer);
+            const parsed = tryReadRPCBinaryResponse<TResult>(buffer, request.method);
             if (parsed == null) {
               return;
             }
@@ -600,16 +626,16 @@ export async function sendGiznetWebRTCOffer(
   return response.blob();
 }
 
-export function parseRPCResponse<TResult = unknown>(data: unknown): RPCResponse<TResult> {
-  const text = typeof data === "string" ? data : data instanceof ArrayBuffer ? new TextDecoder().decode(data) : "";
-  if (text === "") {
-    throw new Error("empty WebRTC RPC response");
+export function parseRPCResponse<TResult = unknown>(data: ArrayBuffer | Uint8Array, method: string): RPCResponse<TResult> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const parsed = tryReadRPCResponse<TResult>(bytes, method);
+  if (parsed == null) {
+    throw new Error("incomplete WebRTC RPC response");
   }
-  const parsed = JSON.parse(text) as RPCResponse<TResult>;
-  if (parsed.error == null && !("result" in parsed)) {
-    throw new Error("invalid WebRTC RPC response: missing result or error");
+  if (parsed.rest.length !== 0) {
+    throw new Error("WebRTC RPC response contains trailing bytes");
   }
-  return parsed;
+  return parsed.response;
 }
 
 export function giznetServiceDataChannelLabel(service: number): string {
@@ -620,22 +646,111 @@ export function giznetServiceDataChannelLabel(service: number): string {
 }
 
 export function encodeRPCRequest(request: RPCRequest): ArrayBuffer {
-  return concatBytes([encodeJSONFrame(request), encodeFrame(RPC_FRAME_TYPE_EOS)]);
+  return concatBytes([...encodeRPCEnvelopeFrames(encodeRPCRequestEnvelope(request)), encodeFrame(RPC_FRAME_TYPE_EOS)]);
 }
 
-export function encodeRPCResponse(response: RPCResponse): ArrayBuffer {
-  return concatBytes([encodeJSONFrame(response), encodeFrame(RPC_FRAME_TYPE_EOS)]);
+export function encodeRPCResponse(response: RPCResponse, method: string): ArrayBuffer {
+  return concatBytes([...encodeRPCEnvelopeFrames(encodeRPCResponseEnvelope(response, method)), encodeFrame(RPC_FRAME_TYPE_EOS)]);
 }
 
 export function encodeJSONFrame(value: unknown): ArrayBuffer {
   return encodeFrame(RPC_FRAME_TYPE_JSON, new TextEncoder().encode(JSON.stringify(value)));
 }
 
+function encodeRPCRequestEnvelope(request: RPCRequest): Uint8Array {
+  const method = RPC_METHOD_IDS[request.method as keyof typeof RPC_METHOD_IDS];
+  if (method == null) {
+    throw new Error(`unknown RPC method: ${request.method}`);
+  }
+  const writer = new ProtoWriter();
+  writer.string(1, request.id);
+  writer.uint32(2, method);
+  if (request.params !== undefined) {
+    writer.bytes(3, encodeRPCRequestPayload(request.method, request.params));
+  }
+  return writer.finish();
+}
+
+function encodeRPCResponseEnvelope(response: RPCResponse, method: string): Uint8Array {
+  const writer = new ProtoWriter();
+  if (response.id != null) {
+    writer.string(1, response.id);
+  }
+  if (response.error != null) {
+    const error = new ProtoWriter();
+    error.int32(1, response.error.code);
+    error.string(2, response.error.message);
+    writer.bytes(3, error.finish());
+  } else {
+    writer.bytes(2, encodeRPCResponsePayload(method, response.result ?? {}));
+  }
+  return writer.finish();
+}
+
+function encodeRPCEnvelopeFrames(envelope: Uint8Array): ArrayBuffer[] {
+  if (envelope.length <= RPC_MAX_FRAME_PAYLOAD_SIZE) {
+    return [encodeFrame(RPC_FRAME_TYPE_BINARY, envelope)];
+  }
+  const frames: ArrayBuffer[] = [];
+  for (let offset = 0; offset < envelope.length; offset += RPC_MAX_FRAME_PAYLOAD_SIZE) {
+    frames.push(encodeFrame(RPC_FRAME_TYPE_TEXT, envelope.slice(offset, offset + RPC_MAX_FRAME_PAYLOAD_SIZE)));
+  }
+  return frames;
+}
+
+function decodeRPCResponseEnvelope<TResult>(payload: Uint8Array, method: string): RPCResponse<TResult> {
+  const reader = new ProtoReader(payload);
+  const response: RPCResponse<TResult> = { v: RPC_VERSION };
+  while (!reader.done()) {
+    const field = reader.field();
+    switch (field.number) {
+      case 1:
+        response.id = reader.string(field);
+        break;
+      case 2: {
+        const body = reader.bytes(field);
+        response.result = decodeRPCResponsePayload(method, body) as TResult;
+        break;
+      }
+      case 3:
+        response.error = decodeRPCError(reader.bytes(field));
+        break;
+      default:
+        reader.skip(field);
+        break;
+    }
+  }
+  if (response.error == null && !("result" in response)) {
+    throw new Error("invalid WebRTC RPC response: missing result or error");
+  }
+  return response;
+}
+
+function decodeRPCError(payload: Uint8Array): RPCErrorBody {
+  const reader = new ProtoReader(payload);
+  const error: RPCErrorBody = { code: 0, message: "" };
+  while (!reader.done()) {
+    const field = reader.field();
+    switch (field.number) {
+      case 1:
+        error.code = reader.int32(field);
+        break;
+      case 2:
+        error.message = reader.string(field);
+        break;
+      default:
+        reader.skip(field);
+        break;
+    }
+  }
+  return error;
+}
+
 export function encodeFrame(type: number, payload: Uint8Array = new Uint8Array()): ArrayBuffer {
   if (!Number.isInteger(type) || type < 0 || type > 0xffff) {
     throw new Error(`invalid RPC frame type: ${type}`);
   }
-  if (payload.length > 0xffff) {
+  if (payload.length > RPC_MAX_FRAME_PAYLOAD_SIZE) {
     throw new Error(`RPC frame too large: ${payload.length}`);
   }
   if (type === RPC_FRAME_TYPE_EOS && payload.length !== 0) {
@@ -766,9 +881,12 @@ export function tryParseHTTPResponse(buffer: Uint8Array<ArrayBufferLike>, closed
 
 function tryReadRPCResponse<TResult>(
   buffer: Uint8Array<ArrayBufferLike>,
+  method: string,
 ): { response: RPCResponse<TResult>; rest: Uint8Array<ArrayBufferLike> } | null {
   let offset = 0;
   let response: RPCResponse<TResult> | undefined;
+  const envelopeChunks: Uint8Array[] = [];
+  let envelopeLength = 0;
   for (;;) {
     if (buffer.length - offset < 4) {
       return null;
@@ -786,26 +904,43 @@ function tryReadRPCResponse<TResult>(
       if (length !== 0) {
         throw new Error("RPC EOS frame must be empty.");
       }
+      if (response == null && envelopeChunks.length > 0) {
+        response = decodeRPCResponseEnvelope<TResult>(concatByteArrays(envelopeChunks), method);
+      }
       if (response == null) {
-        throw new Error("RPC response EOS before JSON frame.");
+        throw new Error("RPC response EOS before protobuf frame.");
       }
       return { response, rest: buffer.slice(offset) };
     }
-    if (type !== RPC_FRAME_TYPE_JSON) {
-      throw new Error(`rpc: expected JSON frame, got type ${type}`);
+    if (type === RPC_FRAME_TYPE_TEXT) {
+      if (response != null) {
+        throw new Error("RPC response contains continuation after protobuf frame.");
+      }
+      envelopeLength += payload.length;
+      if (envelopeLength > RPC_MAX_ENVELOPE_SIZE) {
+        throw new Error(`RPC protobuf envelope too large: ${envelopeLength}`);
+      }
+      envelopeChunks.push(copyBytes(payload));
+      continue;
     }
-    if (response != null) {
-      throw new Error("RPC response contains multiple JSON frames.");
+    if (type !== RPC_FRAME_TYPE_BINARY) {
+      throw new Error(`rpc: expected protobuf binary frame, got type ${type}`);
     }
-    response = parseRPCResponse<TResult>(new TextDecoder().decode(payload));
+    if (response != null || envelopeChunks.length > 0) {
+      throw new Error("RPC response contains multiple protobuf frames.");
+    }
+    response = decodeRPCResponseEnvelope<TResult>(payload, method);
   }
 }
 
 function tryReadRPCBinaryResponse<TResult>(
   buffer: Uint8Array<ArrayBufferLike>,
+  method: string,
 ): { body: Uint8Array; response: RPCResponse<TResult>; rest: Uint8Array<ArrayBufferLike> } | null {
   let offset = 0;
   let response: RPCResponse<TResult> | undefined;
+  const envelopeChunks: Uint8Array[] = [];
+  let envelopeLength = 0;
   const body: Uint8Array[] = [];
   for (;;) {
     if (buffer.length - offset < 4) {
@@ -824,22 +959,164 @@ function tryReadRPCBinaryResponse<TResult>(
       if (length !== 0) {
         throw new Error("RPC EOS frame must be empty.");
       }
+      if (response == null && envelopeChunks.length > 0) {
+        response = decodeRPCResponseEnvelope<TResult>(concatByteArrays(envelopeChunks), method);
+        if (response.error != null) {
+          return { body: concatByteArrays(body), response, rest: buffer.slice(offset) };
+        }
+        continue;
+      }
       if (response == null) {
-        throw new Error("RPC binary response EOS before JSON frame.");
+        throw new Error("RPC binary response EOS before protobuf frame.");
       }
       return { body: concatByteArrays(body), response, rest: buffer.slice(offset) };
     }
     if (response == null) {
-      if (type !== RPC_FRAME_TYPE_JSON) {
-        throw new Error(`rpc: expected JSON frame, got type ${type}`);
+      if (type === RPC_FRAME_TYPE_TEXT) {
+        envelopeLength += payload.length;
+        if (envelopeLength > RPC_MAX_ENVELOPE_SIZE) {
+          throw new Error(`RPC protobuf envelope too large: ${envelopeLength}`);
+        }
+        envelopeChunks.push(copyBytes(payload));
+        continue;
       }
-      response = parseRPCResponse<TResult>(new TextDecoder().decode(payload));
+      if (type !== RPC_FRAME_TYPE_BINARY) {
+        throw new Error(`rpc: expected protobuf binary frame, got type ${type}`);
+      }
+      if (envelopeChunks.length > 0) {
+        throw new Error("RPC binary response contains multiple protobuf frames.");
+      }
+      response = decodeRPCResponseEnvelope<TResult>(payload, method);
       continue;
     }
     if (type !== RPC_FRAME_TYPE_BINARY) {
       throw new Error(`rpc: expected binary frame, got type ${type}`);
     }
     body.push(copyBytes(payload));
+  }
+}
+
+type ProtoField = {
+  number: number;
+  wireType: number;
+};
+
+class ProtoWriter {
+  private readonly chunks: number[] = [];
+
+  uint32(field: number, value: number): void {
+    this.tag(field, 0);
+    this.varint(BigInt(value >>> 0));
+  }
+
+  int32(field: number, value: number): void {
+    this.tag(field, 0);
+    this.varint(BigInt.asUintN(64, BigInt(value | 0)));
+  }
+
+  string(field: number, value: string): void {
+    this.bytes(field, new TextEncoder().encode(value));
+  }
+
+  bytes(field: number, value: Uint8Array): void {
+    this.tag(field, 2);
+    this.varint(BigInt(value.length));
+    for (const byte of value) {
+      this.chunks.push(byte);
+    }
+  }
+
+  finish(): Uint8Array {
+    return Uint8Array.from(this.chunks);
+  }
+
+  private tag(field: number, wireType: number): void {
+    this.varint(BigInt((field << 3) | wireType));
+  }
+
+  private varint(value: bigint): void {
+    let next = value;
+    while (next > 0x7fn) {
+      this.chunks.push(Number((next & 0x7fn) | 0x80n));
+      next >>= 7n;
+    }
+    this.chunks.push(Number(next));
+  }
+}
+
+class ProtoReader {
+  private readonly data: Uint8Array;
+  private offset = 0;
+
+  constructor(data: Uint8Array) {
+    this.data = data;
+  }
+
+  done(): boolean {
+    return this.offset >= this.data.length;
+  }
+
+  field(): ProtoField {
+    const tag = Number(this.varint());
+    return { number: tag >>> 3, wireType: tag & 0x7 };
+  }
+
+  int32(field: ProtoField): number {
+    this.expect(field, 0);
+    return Number(BigInt.asIntN(32, this.varint()));
+  }
+
+  string(field: ProtoField): string {
+    return new TextDecoder().decode(this.bytes(field));
+  }
+
+  bytes(field: ProtoField): Uint8Array {
+    this.expect(field, 2);
+    const length = Number(this.varint());
+    if (!Number.isSafeInteger(length) || length < 0 || this.data.length - this.offset < length) {
+      throw new Error("invalid protobuf bytes length");
+    }
+    const out = this.data.slice(this.offset, this.offset + length);
+    this.offset += length;
+    return out;
+  }
+
+  skip(field: ProtoField): void {
+    switch (field.wireType) {
+      case 0:
+        this.varint();
+        return;
+      case 2:
+        this.bytes(field);
+        return;
+      default:
+        throw new Error(`unsupported protobuf wire type: ${field.wireType}`);
+    }
+  }
+
+  private expect(field: ProtoField, wireType: number): void {
+    if (field.wireType !== wireType) {
+      throw new Error(`unexpected protobuf wire type ${field.wireType} for field ${field.number}`);
+    }
+  }
+
+  private varint(): bigint {
+    let shift = 0n;
+    let value = 0n;
+    for (;;) {
+      if (this.offset >= this.data.length) {
+        throw new Error("truncated protobuf varint");
+      }
+      const byte = this.data[this.offset++];
+      value |= BigInt(byte & 0x7f) << shift;
+      if ((byte & 0x80) === 0) {
+        return value;
+      }
+      shift += 7n;
+      if (shift > 70n) {
+        throw new Error("protobuf varint too long");
+      }
+    }
   }
 }
 

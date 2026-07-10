@@ -1,28 +1,44 @@
-# GizClaw RPC Protocol
+# GizClaw Peer RPC Protocol
 
-This document describes the stream-level RPC framing protocol.
+This document describes the stream-level Peer RPC framing protocol.
 
 ## Stream Model
 
-One giznet service stream carries one RPC exchange.
+One `ServicePeerRPC` giznet service stream carries one RPC exchange.
 
 ```text
-stream
-├── request frame
+unary stream
+├── request protobuf frame
 ├── EOS frame
-├── response frame
-├── response frame
+├── response protobuf frame
+└── EOS frame
+
+download stream
+├── request protobuf frame
+├── EOS frame
+├── response protobuf frame
+├── zero or more response binary body frames
+└── EOS frame
+
+binary stream
+├── request protobuf frame
+├── zero or more request binary body frames
+├── EOS frame
+├── response protobuf frame
+├── zero or more response binary body frames
 └── EOS frame
 ```
 
 Unary RPC calls use one request frame, one request EOS frame, one response
-frame, and one response EOS frame. Streaming RPC calls use one request frame,
-zero or more request body frames, a request EOS frame, zero or more response
-frames, and a response EOS frame.
+frame, and one response EOS frame. Download RPC calls use the same request
+sequence, then return the protobuf response envelope before method-specific
+binary body frames. Binary streaming RPC calls may send method-specific binary
+body frames after the request envelope and before the request EOS; the peer may
+read that upload while producing the response envelope and response body frames.
 
 EOS is the protocol-level end of one frame sequence. Transport stream EOF means
-the stream was closed. If a peer sees EOF before the expected EOS frame, the RPC
-exchange is truncated.
+the stream was closed. EOF before the expected EOS frame is a truncated RPC
+exchange.
 
 ## Frame Header
 
@@ -35,8 +51,10 @@ payload[size]
 ```
 
 `size` is the payload byte length and does not include the header. The maximum
-single-frame payload size is 65535 bytes. Larger data must be split into
-multiple frames by the caller.
+single-frame payload size is 65535 bytes. Larger method bodies must be split
+into multiple binary body frames by the method implementation. Larger protobuf
+request or response envelopes are split into `Text` continuation frames and
+terminated by EOS before the next logical frame sequence continues.
 
 ## Frame Types
 
@@ -47,95 +65,89 @@ multiple frames by the caller.
 3 Text
 ```
 
-Unknown frame types are protocol errors. EOS frames must have size `0`, so an
-EOS frame is four zero bytes:
+Peer RPC request and response envelopes normally use one `Binary` frame
+containing a protobuf message from `api/rpc/common.proto` and
+`api/rpc/peer.proto`. If the encoded envelope is larger than 65535 bytes, the
+same envelope bytes are split across one or more `Text` frames. The receiver
+reassembles those continuation chunks until the following EOS frame and then
+decodes the protobuf envelope. Method-specific payload messages are generated in
+`api/rpc/payload.proto`.
+
+`JSON` remains reserved for non-RPC stream families that need it. `Text` is only
+valid in Peer RPC as a protobuf envelope continuation frame before the first
+request or response envelope has been decoded.
+
+EOS frames must have size `0`, so an EOS frame is four zero bytes:
 
 ```text
 00 00 00 00
 ```
 
-JSON frames contain compact JSON without indentation. Text frames contain UTF-8
-text. Binary frames contain raw bytes and are not base64 encoded.
+## Protobuf Envelopes
 
-## JSON RPC Frames
+`api/rpc/common.proto` and `api/rpc/peer.proto` are the canonical Peer RPC wire schemas.
 
-RPC request and response envelopes are JSON frames.
+Requests use `gizclaw.rpc.v1.RpcRequest`:
 
-Request:
-
-```json
-{"v":1,"id":"req-1","method":"all.ping","params":{}}
+```proto
+message RpcRequest {
+  string id = 1;
+  RpcMethod method = 2;
+  optional bytes payload = 3;
+}
 ```
 
-Unary response:
+Responses use `gizclaw.rpc.v1.RpcResponse`:
 
-```json
-{"v":1,"id":"req-1","result":{}}
+```proto
+message RpcResponse {
+  string id = 1;
+  oneof body {
+    bytes payload = 2;
+    RpcError error = 3;
+  }
+}
 ```
 
-Error response:
+`RpcMethod` is the stable numeric method registry. Method numbers are
+append-only and must not be reused. SDKs may expose dotted method names for
+developer ergonomics, but the wire envelope uses `RpcMethod`.
 
-```json
-{"v":1,"id":"req-1","error":{"code":404,"message":"not found"}}
-```
+Each dispatchable `RpcMethod` enum value carries an `(rpc_method)` option with
+the dotted debug name and the request/response payload message names. Go,
+JavaScript, and C helper surfaces must derive method-to-payload mappings from
+that protobuf metadata instead of a hand-written descriptor or a separate string
+registry.
+
+`payload` carries the method-specific protobuf request or response message for
+the selected method. RPC errors use protobuf `RpcError` with stable numeric
+error codes and a human-readable message.
 
 ## Streaming Responses
 
-List, log, download, and similar methods may return multiple frames on the same
-stream.
+Streaming and download methods send a protobuf response envelope first. Any
+following body frames are method-specific binary chunks.
 
 ```text
-request JSON frame
+request RpcRequest Binary frame
 EOS frame
-response JSON frame
-response JSON frame
-EOS frame
-```
-
-For list methods, each response frame can carry one item or one page. The method
-schema defines the response payload shape.
-
-For downloads, the stream can return a JSON metadata frame followed by binary
-frames.
-
-```text
-request JSON frame
-EOS frame
-metadata JSON frame
+response RpcResponse Binary frame
 chunk Binary frame
 chunk Binary frame
 EOS frame
 ```
 
-## Uploads
-
-Upload methods can use one JSON request frame followed by binary or text frames.
+An oversized response envelope uses continuation frames before any body frames:
 
 ```text
-request JSON frame
-chunk Binary frame
-chunk Binary frame
+request RpcRequest Binary frame
 EOS frame
-response JSON frame
+response RpcResponse Text frame
+response RpcResponse Text frame
+EOS frame
+chunk Binary frame
 EOS frame
 ```
 
-The method schema defines whether upload chunks are allowed and what final
-response is returned.
-
-## Client Behavior
-
-Unary clients write the JSON request frame, write request EOS, read the first
-JSON response frame, read response EOS, and return.
-
-Streaming clients read frames until EOS. EOS after zero or more successful
-response frames means the RPC exchange is complete.
-
-If the transport stream ends before the method-specific minimum response or
-expected EOS is received, the client should report a truncated RPC stream.
-
-## Compatibility
-
-The protocol keeps the existing compact JSON request and response envelope. The
-main extension is allowing more than one frame on the same stream and adding a
-frame type field so JSON, binary, and text payloads can share the same framing.
+Malformed protobuf payloads, unknown method IDs, invalid frame types, duplicate
+response envelopes, and truncated streams are protocol errors.

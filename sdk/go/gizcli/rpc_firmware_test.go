@@ -50,15 +50,15 @@ func TestClientFirmwareMethodsUseRPCConnection(t *testing.T) {
 		serveFirmwareRPCResponse(t, listener, rpcapi.RPCMethodServerFirmwareList, rpcapi.FirmwareListResponse{
 			Items:   []rpcapi.Firmware{{Name: "devkit"}},
 			HasNext: false,
-		}, (*rpcapi.RPCResponse_Result).FromFirmwareListResponse, nil, serverErrCh)
-		serveFirmwareRPCResponse(t, listener, rpcapi.RPCMethodServerFirmwareGet, rpcapi.FirmwareGetResponse{Name: "devkit"}, (*rpcapi.RPCResponse_Result).FromFirmwareGetResponse, nil, serverErrCh)
+		}, (*rpcapi.RPCPayload).FromFirmwareListResponse, nil, serverErrCh)
+		serveFirmwareRPCResponse(t, listener, rpcapi.RPCMethodServerFirmwareGet, rpcapi.FirmwareGetResponse{Name: "devkit"}, (*rpcapi.RPCPayload).FromFirmwareGetResponse, nil, serverErrCh)
 		serveFirmwareRPCResponse(t, listener, rpcapi.RPCMethodServerFirmwareFilesDownload, rpcapi.FirmwareFilesDownloadResponse{
 			FirmwareId: "devkit",
 			Channel:    rpcapi.FirmwareChannelNameStable,
 			Path:       "firmware.bin",
 			Artifact:   rpcapi.FirmwareArtifact{TarPath: "devkit/stable/artifact/artifact.tar", Size: 1024, ContentType: "application/x-tar"},
 			File:       rpcapi.FirmwareArtifactEntry{Path: "firmware.bin", Type: rpcapi.FirmwareArtifactEntryTypeFile, Size: int64(len("firmware-payload"))},
-		}, (*rpcapi.RPCResponse_Result).FromFirmwareFilesDownloadResponse, []byte("firmware-payload"), serverErrCh)
+		}, (*rpcapi.RPCPayload).FromFirmwareFilesDownloadResponse, []byte("firmware-payload"), serverErrCh)
 	}()
 	list, err := client.ListFirmwares(context.Background(), "firmware-list", rpcapi.FirmwareListRequest{})
 	if err != nil {
@@ -114,7 +114,7 @@ func TestDownloadFirmwareReturnsRPCError(t *testing.T) {
 			Code:      rpcapi.RPCErrorCodeNotFound,
 			Message:   "firmware artifact not found",
 		}.RPCResponse()
-		serverErrCh <- writeRPCResponseWithEOS(serverSide, resp)
+		serverErrCh <- writeRPCResponseWithEOS(serverSide, req.Method, resp)
 	}()
 
 	client := &rpcClient{}
@@ -126,6 +126,78 @@ func TestDownloadFirmwareReturnsRPCError(t *testing.T) {
 	}, &out)
 	if err == nil || !strings.Contains(err.Error(), "firmware artifact not found") {
 		t.Fatalf("DownloadFirmware RPC error = %v", err)
+	}
+	if err := <-serverErrCh; err != nil {
+		t.Fatalf("server error = %v", err)
+	}
+}
+
+func TestDownloadFirmwareReadsContinuationMetadata(t *testing.T) {
+	serverSide, clientSide := net.Pipe()
+	defer serverSide.Close()
+	defer clientSide.Close()
+
+	largePath := strings.Repeat("firmware/", 9000)
+	payload := []byte("firmware-payload")
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverStream, err := newRPCStream(context.Background(), serverSide)
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer serverStream.Close()
+		req, requestEOS, err := serverStream.ReadRequestEnvelope()
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		if !requestEOS {
+			if err := serverStream.ReadEOS(); err != nil {
+				serverErrCh <- err
+				return
+			}
+		}
+		resp := resourceResponse(req.Id, rpcapi.FirmwareFilesDownloadResponse{
+			FirmwareId: "devkit",
+			Channel:    rpcapi.FirmwareChannelNameStable,
+			Path:       largePath,
+			Artifact:   rpcapi.FirmwareArtifact{TarPath: "devkit/stable/artifact/artifact.tar", Size: 1024, ContentType: "application/x-tar"},
+			File:       rpcapi.FirmwareArtifactEntry{Path: largePath, Type: rpcapi.FirmwareArtifactEntryTypeFile, Size: int64(len(payload))},
+		}, (*rpcapi.RPCPayload).FromFirmwareFilesDownloadResponse)
+		metadataEOS, err := serverStream.WriteResponseEnvelopeForMethod(req.Method, resp)
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		if metadataEOS {
+			if err := serverStream.WriteEOS(); err != nil {
+				serverErrCh <- err
+				return
+			}
+		}
+		if err := serverStream.WriteFrame(rpcapi.Frame{Type: rpcapi.FrameTypeBinary, Payload: payload}); err != nil {
+			serverErrCh <- err
+			return
+		}
+		serverErrCh <- serverStream.WriteEOS()
+	}()
+
+	client := &rpcClient{}
+	var out bytes.Buffer
+	download, err := client.DownloadFirmware(context.Background(), clientSide, "firmware-download", rpcapi.FirmwareFilesDownloadRequest{
+		FirmwareId: "devkit",
+		Channel:    rpcapi.FirmwareChannelNameStable,
+		Path:       "firmware.bin",
+	}, &out)
+	if err != nil {
+		t.Fatalf("DownloadFirmware continuation metadata error = %v", err)
+	}
+	if download.Metadata.Path != largePath || download.Metadata.File.Path != largePath {
+		t.Fatalf("DownloadFirmware metadata path len=%d file path len=%d", len(download.Metadata.Path), len(download.Metadata.File.Path))
+	}
+	if download.Bytes != int64(len(payload)) || out.String() != string(payload) {
+		t.Fatalf("DownloadFirmware = %#v payload=%q", download, out.String())
 	}
 	if err := <-serverErrCh; err != nil {
 		t.Fatalf("server error = %v", err)
@@ -183,7 +255,7 @@ func serveFirmwareRPCResponse[T any](
 	listener giznet.ServiceListener,
 	wantMethod rpcapi.RPCMethod,
 	response T,
-	encode func(*rpcapi.RPCResponse_Result, T) error,
+	encode func(*rpcapi.RPCPayload, T) error,
 	payload []byte,
 	errCh chan<- error,
 ) {
@@ -203,7 +275,7 @@ func serveFirmwareRPCResponse[T any](
 		return
 	}
 	resp := resourceResponse(req.Id, response, encode)
-	if err := rpcapi.WriteResponse(stream, resp); err != nil {
+	if err := rpcapi.WriteResponseForMethod(stream, wantMethod, resp); err != nil {
 		errCh <- err
 		return
 	}
@@ -223,7 +295,7 @@ func TestCopyBinaryFramesRejectsUnexpectedFrame(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- rpcapi.WriteFrame(serverSide, rpcapi.Frame{Type: rpcapi.FrameTypeJSON, Payload: []byte(`{}`)})
+		errCh <- rpcapi.WriteFrame(serverSide, rpcapi.Frame{Type: rpcapi.FrameTypeText, Payload: []byte(`{}`)})
 	}()
 
 	stream, err := newRPCStream(context.Background(), clientSide)

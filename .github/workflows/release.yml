@@ -34,6 +34,9 @@ jobs:
       - name: Ensure Git LFS assets are available
         run: git lfs pull
 
+      - name: Initialize nanopb submodule
+        run: git submodule update --init --depth=1 third_party/nanopb/upstream
+
       - name: Build gizclaw Linux ${{ matrix.arch }} binary
         env:
           PLATFORM: linux/${{ matrix.arch }}
@@ -68,6 +71,9 @@ jobs:
 
       - name: Ensure Git LFS assets are available
         run: git lfs pull
+
+      - name: Initialize nanopb submodule
+        run: git submodule update --init --depth=1 third_party/nanopb/upstream
 
       - name: Verify arm64 macOS runner
         run: test "$(uname -m)" = "arm64"

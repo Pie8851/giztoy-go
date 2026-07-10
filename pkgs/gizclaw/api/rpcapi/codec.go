@@ -2,11 +2,13 @@ package rpcapi
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"iter"
 	"net"
+
+	rpcpb "github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcproto"
+	"google.golang.org/protobuf/proto"
 )
 
 // MaxFrameSize is the largest RPC frame payload accepted by ReadFrame.
@@ -146,71 +148,147 @@ func WriteFrames(w io.Writer, frames iter.Seq2[Frame, error]) error {
 	return nil
 }
 
-// NewJSONFrame marshals a value into one compact JSON frame.
-func NewJSONFrame(v any) (Frame, error) {
-	data, err := json.Marshal(v)
+// NewProtobufFrame marshals a protobuf message into one binary frame.
+func NewProtobufFrame(m proto.Message) (Frame, error) {
+	data, err := proto.Marshal(m)
 	if err != nil {
 		return Frame{}, err
 	}
-	return Frame{Type: FrameTypeJSON, Payload: data}, nil
+	return Frame{Type: FrameTypeBinary, Payload: data}, nil
 }
 
-// DecodeJSONFrame unmarshals one JSON frame into v.
-func DecodeJSONFrame(frame Frame, v any) error {
-	if frame.Type != FrameTypeJSON {
-		return fmt.Errorf("rpc: expected JSON frame, got type %d", frame.Type)
+// DecodeProtobufFrame unmarshals one binary protobuf frame into m.
+func DecodeProtobufFrame(frame Frame, m proto.Message) error {
+	if frame.Type != FrameTypeBinary {
+		return fmt.Errorf("rpc: expected protobuf binary frame, got type %d", frame.Type)
 	}
-	if err := json.Unmarshal(frame.Payload, v); err != nil {
+	if err := proto.Unmarshal(frame.Payload, m); err != nil {
 		return err
 	}
 	return nil
 }
 
-// WriteRequest writes an RPC request as one JSON frame.
+// NewRequestFrame marshals an RPC request into one protobuf binary frame.
+func NewRequestFrame(req *RPCRequest) (Frame, error) {
+	msg, err := EncodeRPCRequest(req)
+	if err != nil {
+		return Frame{}, err
+	}
+	return NewProtobufFrame(msg)
+}
+
+// DecodeRequestFrame unmarshals one protobuf binary frame into an RPC request.
+func DecodeRequestFrame(frame Frame) (*RPCRequest, error) {
+	var msg rpcpb.RpcRequest
+	if err := DecodeProtobufFrame(frame, &msg); err != nil {
+		return nil, err
+	}
+	return DecodeRPCRequest(&msg)
+}
+
+// NewResponseFrame marshals an RPC response into one protobuf binary frame.
+func NewResponseFrame(resp *RPCResponse) (Frame, error) {
+	msg, err := EncodeRPCResponse(resp)
+	if err != nil {
+		return Frame{}, err
+	}
+	return NewProtobufFrame(msg)
+}
+
+// NewResponseFrameForMethod marshals a response with a method-specific protobuf payload.
+func NewResponseFrameForMethod(method RPCMethod, resp *RPCResponse) (Frame, error) {
+	msg, err := EncodeRPCResponseForMethod(method, resp)
+	if err != nil {
+		return Frame{}, err
+	}
+	return NewProtobufFrame(msg)
+}
+
+// DecodeResponseFrame unmarshals one protobuf binary frame into an RPC response.
+func DecodeResponseFrame(frame Frame) (*RPCResponse, error) {
+	var msg rpcpb.RpcResponse
+	if err := DecodeProtobufFrame(frame, &msg); err != nil {
+		return nil, err
+	}
+	return DecodeRPCResponse(&msg)
+}
+
+// DecodeResponseFrameForMethod unmarshals one protobuf binary frame using a method-specific payload schema.
+func DecodeResponseFrameForMethod(method RPCMethod, frame Frame) (*RPCResponse, error) {
+	var msg rpcpb.RpcResponse
+	if err := DecodeProtobufFrame(frame, &msg); err != nil {
+		return nil, err
+	}
+	return DecodeRPCResponseForMethod(method, &msg)
+}
+
+// WriteRequest writes an RPC request as one protobuf binary frame.
 func WriteRequest(w io.Writer, req *RPCRequest) error {
-	frame, err := NewJSONFrame(req)
+	frame, err := NewRequestFrame(req)
 	if err != nil {
 		return err
 	}
 	return WriteFrame(w, frame)
 }
 
-// ReadRequest reads an RPC request from one JSON frame.
+// ReadRequest reads an RPC request from one protobuf binary frame.
 func ReadRequest(r io.Reader) (*RPCRequest, error) {
 	frame, err := ReadFrame(r)
 	if err != nil {
 		return nil, err
 	}
-	var req RPCRequest
-	if err := DecodeJSONFrame(frame, &req); err != nil {
+	req, err := DecodeRequestFrame(frame)
+	if err != nil {
 		return nil, fmt.Errorf("rpc: unmarshal request: %w", err)
 	}
-	return &req, nil
+	return req, nil
 }
 
-// ReadResponse reads an RPC response from one JSON frame.
+// ReadResponse reads an RPC response from one protobuf binary frame.
 func ReadResponse(r io.Reader) (*RPCResponse, error) {
 	frame, err := ReadFrame(r)
 	if err != nil {
 		return nil, err
 	}
-	var resp RPCResponse
-	if err := DecodeJSONFrame(frame, &resp); err != nil {
+	resp, err := DecodeResponseFrame(frame)
+	if err != nil {
 		return nil, fmt.Errorf("rpc: unmarshal response: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
-// WriteResponse writes an RPC response as one JSON frame.
+// ReadResponseForMethod reads an RPC response and decodes its method-specific protobuf payload.
+func ReadResponseForMethod(r io.Reader, method RPCMethod) (*RPCResponse, error) {
+	frame, err := ReadFrame(r)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := DecodeResponseFrameForMethod(method, frame)
+	if err != nil {
+		return nil, fmt.Errorf("rpc: unmarshal response: %w", err)
+	}
+	return resp, nil
+}
+
+// WriteResponse writes an RPC response as one protobuf binary frame.
 func WriteResponse(w io.Writer, resp *RPCResponse) error {
-	frame, err := NewJSONFrame(resp)
+	frame, err := NewResponseFrame(resp)
 	if err != nil {
 		return err
 	}
 	return WriteFrame(w, frame)
 }
 
-// ReadResponses reads JSON RPC response frames until EOF.
+// WriteResponseForMethod writes an RPC response with a method-specific protobuf payload.
+func WriteResponseForMethod(w io.Writer, method RPCMethod, resp *RPCResponse) error {
+	frame, err := NewResponseFrameForMethod(method, resp)
+	if err != nil {
+		return err
+	}
+	return WriteFrame(w, frame)
+}
+
+// ReadResponses reads protobuf RPC response frames until EOS.
 func ReadResponses(r io.Reader) iter.Seq2[*RPCResponse, error] {
 	return func(yield func(*RPCResponse, error) bool) {
 		for frame, err := range ReadFrames(r) {
@@ -218,19 +296,39 @@ func ReadResponses(r io.Reader) iter.Seq2[*RPCResponse, error] {
 				yield(nil, err)
 				return
 			}
-			var resp RPCResponse
-			if err := DecodeJSONFrame(frame, &resp); err != nil {
+			resp, err := DecodeResponseFrame(frame)
+			if err != nil {
 				yield(nil, fmt.Errorf("rpc: unmarshal response: %w", err))
 				return
 			}
-			if !yield(&resp, nil) {
+			if !yield(resp, nil) {
 				return
 			}
 		}
 	}
 }
 
-// WriteResponses writes each RPC response as a JSON frame.
+// ReadResponsesForMethod reads protobuf RPC response frames and decodes method-specific payloads until EOS.
+func ReadResponsesForMethod(r io.Reader, method RPCMethod) iter.Seq2[*RPCResponse, error] {
+	return func(yield func(*RPCResponse, error) bool) {
+		for frame, err := range ReadFrames(r) {
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			resp, err := DecodeResponseFrameForMethod(method, frame)
+			if err != nil {
+				yield(nil, fmt.Errorf("rpc: unmarshal response: %w", err))
+				return
+			}
+			if !yield(resp, nil) {
+				return
+			}
+		}
+	}
+}
+
+// WriteResponses writes each RPC response as a protobuf binary frame.
 func WriteResponses(w io.Writer, responses iter.Seq2[*RPCResponse, error]) error {
 	for resp, err := range responses {
 		if err != nil {
@@ -241,6 +339,168 @@ func WriteResponses(w io.Writer, responses iter.Seq2[*RPCResponse, error]) error
 		}
 	}
 	return WriteEOS(w)
+}
+
+// WriteResponsesForMethod writes each RPC response with a method-specific protobuf payload.
+func WriteResponsesForMethod(w io.Writer, method RPCMethod, responses iter.Seq2[*RPCResponse, error]) error {
+	for resp, err := range responses {
+		if err != nil {
+			return err
+		}
+		if err := WriteResponseForMethod(w, method, resp); err != nil {
+			return err
+		}
+	}
+	return WriteEOS(w)
+}
+
+// EncodeRPCRequest converts the public typed RPC request into the protobuf wire envelope.
+func EncodeRPCRequest(req *RPCRequest) (*rpcpb.RpcRequest, error) {
+	if req == nil {
+		return nil, fmt.Errorf("rpc: nil request")
+	}
+	method, err := ProtoMethod(req.Method)
+	if err != nil {
+		return nil, err
+	}
+	var payload []byte
+	if req.Params != nil {
+		payload, err = encodeRPCRequestPayload(req.Method, req.Params)
+		if err != nil {
+			return nil, err
+		}
+		if payload == nil {
+			payload = []byte{}
+		}
+	}
+	return &rpcpb.RpcRequest{
+		Id:      req.Id,
+		Method:  method,
+		Payload: payload,
+	}, nil
+}
+
+// DecodeRPCRequest converts the protobuf wire envelope into the public typed RPC request.
+func DecodeRPCRequest(msg *rpcpb.RpcRequest) (*RPCRequest, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("rpc: nil protobuf request")
+	}
+	method, err := MethodFromProto(msg.GetMethod())
+	if err != nil {
+		return nil, err
+	}
+	var params *RPCPayload
+	if rpcRequestPayloadPresent(msg) {
+		var err error
+		params, err = decodeRPCRequestPayload(method, msg.GetPayload())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &RPCRequest{
+		V:      RPCVersionV1,
+		Id:     msg.GetId(),
+		Method: method,
+		Params: params,
+	}, nil
+}
+
+// EncodeRPCResponse converts the public typed RPC response into the protobuf wire envelope.
+func EncodeRPCResponse(resp *RPCResponse) (*rpcpb.RpcResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("rpc: nil response")
+	}
+	msg := &rpcpb.RpcResponse{Id: resp.Id}
+	switch {
+	case resp.Error != nil:
+		msg.Body = &rpcpb.RpcResponse_Error{Error: &rpcpb.RpcError{
+			Code:    rpcpb.RpcErrorCode(resp.Error.Code),
+			Message: resp.Error.Message,
+		}}
+	case resp.Result != nil:
+		return nil, fmt.Errorf("rpc: response result requires method-specific encoding")
+	}
+	return msg, nil
+}
+
+// EncodeRPCResponseForMethod converts a typed RPC response into the protobuf wire envelope
+// using the method-specific protobuf payload schema.
+func EncodeRPCResponseForMethod(method RPCMethod, resp *RPCResponse) (*rpcpb.RpcResponse, error) {
+	if resp == nil {
+		return nil, fmt.Errorf("rpc: nil response")
+	}
+	msg := &rpcpb.RpcResponse{Id: resp.Id}
+	switch {
+	case resp.Error != nil:
+		msg.Body = &rpcpb.RpcResponse_Error{Error: &rpcpb.RpcError{
+			Code:    rpcpb.RpcErrorCode(resp.Error.Code),
+			Message: resp.Error.Message,
+		}}
+	case resp.Result != nil:
+		payload, err := encodeRPCResponsePayload(method, resp.Result)
+		if err != nil {
+			return nil, err
+		}
+		msg.Body = &rpcpb.RpcResponse_Payload{Payload: payload}
+	}
+	return msg, nil
+}
+
+// DecodeRPCResponse converts the protobuf wire envelope into the public typed RPC response.
+func DecodeRPCResponse(msg *rpcpb.RpcResponse) (*RPCResponse, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("rpc: nil protobuf response")
+	}
+	resp := &RPCResponse{
+		V:  RPCVersionV1,
+		Id: msg.GetId(),
+	}
+	if rpcErr := msg.GetError(); rpcErr != nil {
+		resp.Error = &RPCError{
+			Code:    RPCErrorCode(rpcErr.GetCode()),
+			Message: rpcErr.GetMessage(),
+		}
+		return resp, nil
+	}
+	if _, ok := msg.GetBody().(*rpcpb.RpcResponse_Payload); ok {
+		return nil, fmt.Errorf("rpc: response payload requires method-specific decoding")
+	}
+	return resp, nil
+}
+
+func rpcRequestPayloadPresent(msg *rpcpb.RpcRequest) bool {
+	if msg == nil {
+		return false
+	}
+	field := msg.ProtoReflect().Descriptor().Fields().ByName("payload")
+	return field != nil && msg.ProtoReflect().Has(field)
+}
+
+// DecodeRPCResponseForMethod converts a protobuf wire envelope into a typed RPC response
+// using the method-specific protobuf payload schema.
+func DecodeRPCResponseForMethod(method RPCMethod, msg *rpcpb.RpcResponse) (*RPCResponse, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("rpc: nil protobuf response")
+	}
+	resp := &RPCResponse{
+		V:  RPCVersionV1,
+		Id: msg.GetId(),
+	}
+	if rpcErr := msg.GetError(); rpcErr != nil {
+		resp.Error = &RPCError{
+			Code:    RPCErrorCode(rpcErr.GetCode()),
+			Message: rpcErr.GetMessage(),
+		}
+		return resp, nil
+	}
+	if _, ok := msg.GetBody().(*rpcpb.RpcResponse_Payload); ok {
+		result, err := decodeRPCResponsePayload(method, msg.GetPayload())
+		if err != nil {
+			return nil, err
+		}
+		resp.Result = result
+	}
+	return resp, nil
 }
 
 func writeFull(w io.Writer, data []byte) error {

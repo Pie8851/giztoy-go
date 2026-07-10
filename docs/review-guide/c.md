@@ -44,7 +44,8 @@ as the source of truth.
 - Keep headers and sources synchronized, including declarations, includes,
   ownership comments, and error return semantics.
 - Verify generated C RPC methods, request/response structs, encode/decode
-  helpers, and method maps match `api/rpc.json` and generator behavior.
+  helpers, and method maps match `api/rpc/*.proto` and the protoc/nanopb
+  generator behavior.
 - Check that platform vtables remain coherent: required callbacks are checked,
   userdata is threaded correctly, and default platform fallbacks are explicit.
 
@@ -107,7 +108,7 @@ as the source of truth.
 
 Choose validation that proves the touched C surface:
 
-- generator tests or regeneration checks for `tools/gzc-rpcgen` changes
+- protoc/nanopb regeneration checks for generated C protobuf changes
 - focused Go tests for packages that compile or exercise C/cgo bridge code
 - a C smoke test or compile check for changed translation units when available
 - `git diff --check` for documentation-only or workflow-only changes

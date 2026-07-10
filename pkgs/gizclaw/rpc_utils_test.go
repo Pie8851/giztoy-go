@@ -1,6 +1,7 @@
 package gizclaw
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -31,7 +32,7 @@ func TestRPCClientPingSingleRequestResponse(t *testing.T) {
 			serverErrCh <- err
 			return
 		}
-		if err := writeRPCResponseWithEOS(serverSide, resp); err != nil {
+		if err := writeRPCResponseWithEOS(serverSide, req.Method, resp); err != nil {
 			serverErrCh <- err
 			return
 		}
@@ -90,6 +91,85 @@ func TestRPCServerHandleReusesStreamByDefault(t *testing.T) {
 	}
 	if err := <-serverErrCh; err != nil {
 		t.Fatalf("server Handle error = %v", err)
+	}
+}
+
+func TestRPCServerStreamDispatchUsesConsumedContinuationEOS(t *testing.T) {
+	serverSide, clientSide := net.Pipe()
+	defer serverSide.Close()
+	defer clientSide.Close()
+
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- handleRPCWithStream(
+			serverSide,
+			func(context.Context, *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
+				t.Error("non-stream dispatch should not be called")
+				return nil, nil
+			},
+			func(_ context.Context, stream *rpcStream, req *rpcapi.RPCRequest) (bool, error) {
+				if err := stream.ReadEOS(); err != nil {
+					return false, err
+				}
+				resp, err := newRPCPingResponse(req.Id, rpcapi.PingResponse{ServerTime: 123})
+				if err != nil {
+					return false, err
+				}
+				if _, err := stream.WriteResponseEnvelopeForMethod(req.Method, resp); err != nil {
+					return false, err
+				}
+				if err := stream.WriteEOS(); err != nil {
+					return false, err
+				}
+				return true, nil
+			},
+		)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	clientStream, err := newRPCStream(ctx, clientSide)
+	if err != nil {
+		t.Fatalf("newRPCStream(client) error = %v", err)
+	}
+	defer clientStream.Close()
+
+	req := &rpcapi.RPCRequest{
+		V:      rpcapi.RPCVersionV1,
+		Id:     string(bytes.Repeat([]byte("r"), rpcapi.MaxFrameSize+1024)),
+		Method: rpcapi.RPCMethodAllPing,
+	}
+	if err := clientStream.WriteRequestEnvelope(req); err != nil {
+		t.Fatalf("WriteRequestEnvelope() error = %v", err)
+	}
+	if err := clientStream.WriteEOS(); err != nil {
+		t.Fatalf("WriteEOS() error = %v", err)
+	}
+
+	resp, responseEOS, err := clientStream.ReadResponseEnvelopeForMethod(rpcapi.RPCMethodAllPing)
+	if err != nil {
+		t.Fatalf("ReadResponseEnvelopeForMethod() error = %v", err)
+	}
+	if !responseEOS {
+		if err := clientStream.ReadEOS(); err != nil {
+			t.Fatalf("ReadEOS() error = %v", err)
+		}
+	}
+	if resp.Id != req.Id {
+		t.Fatalf("response id = %q, want %q", resp.Id, req.Id)
+	}
+	got, err := resp.Result.AsPingResponse()
+	if err != nil {
+		t.Fatalf("AsPingResponse() error = %v", err)
+	}
+	if got.ServerTime != 123 {
+		t.Fatalf("server_time = %d, want 123", got.ServerTime)
+	}
+	if err := clientSide.Close(); err != nil {
+		t.Fatalf("client close error = %v", err)
+	}
+	if err := <-serverErrCh; err != nil {
+		t.Fatalf("server error = %v", err)
 	}
 }
 
@@ -187,7 +267,7 @@ func TestRPCClientPingErrorPaths(t *testing.T) {
 
 		go func() {
 			req, _ := readRPCRequestWithEOS(serverSide)
-			_ = writeRPCResponseWithEOS(serverSide, rpcapi.Error{RequestID: req.Id, Code: -1, Message: "boom"}.RPCResponse())
+			_ = writeRPCResponseWithEOS(serverSide, req.Method, rpcapi.Error{RequestID: req.Id, Code: -1, Message: "boom"}.RPCResponse())
 		}()
 
 		_, err := callRPCPing(context.Background(), clientSide, "ping-error")
@@ -210,7 +290,7 @@ func TestRPCClientPingErrorPaths(t *testing.T) {
 
 		go func() {
 			req, _ := readRPCRequestWithEOS(serverSide)
-			_ = writeRPCResponseWithEOS(serverSide, &rpcapi.RPCResponse{V: rpcapi.RPCVersionV1, Id: req.Id})
+			_ = writeRPCResponseWithEOS(serverSide, req.Method, &rpcapi.RPCResponse{V: rpcapi.RPCVersionV1, Id: req.Id})
 		}()
 
 		_, err := callRPCPing(context.Background(), clientSide, "ping-missing")
@@ -238,8 +318,8 @@ func readRPCRequestWithEOS(conn net.Conn) (*rpcapi.RPCRequest, error) {
 	return req, nil
 }
 
-func writeRPCResponseWithEOS(conn net.Conn, resp *rpcapi.RPCResponse) error {
-	if err := rpcapi.WriteResponse(conn, resp); err != nil {
+func writeRPCResponseWithEOS(conn net.Conn, method rpcapi.RPCMethod, resp *rpcapi.RPCResponse) error {
+	if err := rpcapi.WriteResponseForMethod(conn, method, resp); err != nil {
 		return err
 	}
 	return rpcapi.WriteEOS(conn)

@@ -18,7 +18,7 @@ func (c *rpcClient) GetWorkspaceHistoryAudio(ctx context.Context, conn net.Conn,
 	if out == nil {
 		return WorkspaceHistoryAudioGetResult{}, fmt.Errorf("workspace history audio output is required")
 	}
-	params, err := newRPCRequestParams(request, (*rpcapi.RPCRequest_Params).FromWorkspaceHistoryAudioGetRequest)
+	params, err := newRPCRequestParams(request, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetRequest)
 	if err != nil {
 		return WorkspaceHistoryAudioGetResult{}, err
 	}
@@ -33,12 +33,14 @@ func (c *rpcClient) GetWorkspaceHistoryAudio(ctx context.Context, conn net.Conn,
 	if err := stream.WriteEOS(); err != nil {
 		return WorkspaceHistoryAudioGetResult{}, err
 	}
-	resp, err := stream.ReadResponse()
+	resp, responseEOS, err := stream.ReadResponseEnvelopeForMethod(rpcapi.RPCMethodServerWorkspaceHistoryAudioGet)
 	if err != nil {
 		return WorkspaceHistoryAudioGetResult{}, err
 	}
 	if resp.Error != nil {
-		_ = stream.ReadEOS()
+		if !responseEOS {
+			_ = stream.ReadEOS()
+		}
 		return WorkspaceHistoryAudioGetResult{}, fmt.Errorf("rpc: %w", rpcapi.Error{RequestID: resp.Id, Code: resp.Error.Code, Message: resp.Error.Message})
 	}
 	if resp.Result == nil {

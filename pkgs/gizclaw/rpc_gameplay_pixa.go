@@ -37,12 +37,18 @@ func (s *rpcServer) handlePetDefPixaDownload(ctx context.Context, stream *rpcStr
 	}
 	defer reader.Close()
 
-	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCResponse_Result).FromPetDefPixaDownloadResponse)
+	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCPayload).FromPetDefPixaDownloadResponse)
 	if err != nil {
 		return err
 	}
-	if err := stream.WriteResponse(resp); err != nil {
+	metadataEOS, err := stream.WriteResponseEnvelopeForMethod(req.Method, resp)
+	if err != nil {
 		return err
+	}
+	if metadataEOS {
+		if err := stream.WriteEOS(); err != nil {
+			return err
+		}
 	}
 	if err := writeReaderBinaryFrames(stream, reader); err != nil {
 		if errors.Is(err, io.EOF) {
@@ -77,12 +83,18 @@ func (s *rpcServer) handleBadgeDefPixaDownload(ctx context.Context, stream *rpcS
 	}
 	defer reader.Close()
 
-	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCResponse_Result).FromBadgeDefPixaDownloadResponse)
+	resp, err := newRPCResultResponse(req.Id, metadata, (*rpcapi.RPCPayload).FromBadgeDefPixaDownloadResponse)
 	if err != nil {
 		return err
 	}
-	if err := stream.WriteResponse(resp); err != nil {
+	metadataEOS, err := stream.WriteResponseEnvelopeForMethod(req.Method, resp)
+	if err != nil {
 		return err
+	}
+	if metadataEOS {
+		if err := stream.WriteEOS(); err != nil {
+			return err
+		}
 	}
 	if err := writeReaderBinaryFrames(stream, reader); err != nil {
 		if errors.Is(err, io.EOF) {
