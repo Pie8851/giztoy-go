@@ -51,15 +51,29 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Endpoint != "0.0.0.0:9820" {
 		t.Fatalf("Endpoint = %q", cfg.Endpoint)
 	}
-	if cfg.ServingPublic {
-		t.Fatal("ServingPublic should default to false")
+	if cfg.ServeToClients {
+		t.Fatal("ServeToClients should default to false")
 	}
 	if cfg.Log.Level != "info" {
 		t.Fatalf("Log.Level = %q, want info", cfg.Log.Level)
 	}
 }
 
-func TestParseConfigServingPublic(t *testing.T) {
+func TestParseConfigServeToClients(t *testing.T) {
+	cfg, err := parseConfigData([]byte(`
+serve-to-clients: true
+listen: 127.0.0.1:9820
+endpoint: 127.0.0.1:9820
+`))
+	if err != nil {
+		t.Fatalf("parseConfigData error = %v", err)
+	}
+	if !cfg.ServeToClients {
+		t.Fatal("ServeToClients = false, want true")
+	}
+}
+
+func TestParseConfigServingPublicAlias(t *testing.T) {
 	cfg, err := parseConfigData([]byte(`
 serving-public: true
 listen: 127.0.0.1:9820
@@ -68,8 +82,21 @@ endpoint: 127.0.0.1:9820
 	if err != nil {
 		t.Fatalf("parseConfigData error = %v", err)
 	}
-	if !cfg.ServingPublic {
-		t.Fatal("ServingPublic = false, want true")
+	if !cfg.ServeToClients {
+		t.Fatal("ServeToClients = false, want true from serving-public alias")
+	}
+
+	cfg, err = parseConfigData([]byte(`
+serve-to-clients: false
+serving-public: true
+listen: 127.0.0.1:9820
+endpoint: 127.0.0.1:9820
+`))
+	if err != nil {
+		t.Fatalf("parseConfigData override error = %v", err)
+	}
+	if cfg.ServeToClients {
+		t.Fatal("ServeToClients = true, want serve-to-clients to override serving-public alias")
 	}
 }
 
@@ -299,6 +326,41 @@ func TestLoadConfigReadsAdminPublicKey(t *testing.T) {
 	}
 	if cfg.Identity.PrivateKey != serverKP.Private {
 		t.Fatalf("Identity.PrivateKey = %v, want %v", cfg.Identity.PrivateKey, serverKP.Private)
+	}
+}
+
+func TestLoadConfigReadsEdgeNodes(t *testing.T) {
+	edgeOne := testPublicKey(0x20)
+	edgeTwo := testPublicKey(0x21)
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data := "edge-nodes:\n  - \"" + edgeOne.String() + "\"\n  - \"" + edgeTwo.String() + "\"\n"
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig error = %v", err)
+	}
+	if len(cfg.EdgeNodes) != 2 || cfg.EdgeNodes[0] != edgeOne || cfg.EdgeNodes[1] != edgeTwo {
+		t.Fatalf("EdgeNodes = %+v", cfg.EdgeNodes)
+	}
+}
+
+func TestNewWiresEdgeNodes(t *testing.T) {
+	edge := testPublicKey(0x22)
+	srv, err := New(Config{
+		Listen:    "127.0.0.1:1234",
+		Endpoint:  "127.0.0.1:1234",
+		EdgeNodes: []giznet.PublicKey{edge},
+		Stores:    map[string]stores.Config{"peers": {Kind: stores.KindKeyValue, Backend: "memory"}},
+	})
+	if err != nil {
+		t.Fatalf("New error = %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	if len(srv.EdgeNodes) != 1 || srv.EdgeNodes[0] != edge {
+		t.Fatalf("Server.EdgeNodes = %+v", srv.EdgeNodes)
 	}
 }
 
@@ -557,6 +619,11 @@ func TestValidateReportsSpecificMissingFields(t *testing.T) {
 			name: "empty endpoint port",
 			cfg:  Config{Listen: "127.0.0.1:9820", Endpoint: "127.0.0.1:"},
 			want: "server: endpoint port is empty",
+		},
+		{
+			name: "zero edge node",
+			cfg:  Config{Listen: "127.0.0.1:9820", Endpoint: "127.0.0.1:9820", EdgeNodes: []giznet.PublicKey{{}}},
+			want: "server: invalid edge-nodes: zero public key",
 		},
 	}
 

@@ -18,7 +18,8 @@ type Config struct {
 	KeyPair        *giznet.KeyPair
 	Listen         string
 	Endpoint       string
-	ServingPublic  bool
+	ServeToClients bool
+	EdgeNodes      []giznet.PublicKey
 	AdminPublicKey giznet.PublicKey
 	Storage        map[string]storage.Config
 	Stores         map[string]stores.Config
@@ -44,7 +45,8 @@ type ConfigFile struct {
 	Identity       IdentityConfig            `yaml:"identity"`
 	Listen         string                    `yaml:"listen"`
 	Endpoint       string                    `yaml:"endpoint"`
-	ServingPublic  bool                      `yaml:"serving-public"`
+	ServeToClients bool                      `yaml:"serve-to-clients"`
+	EdgeNodes      []giznet.PublicKey        `yaml:"edge-nodes"`
 	AdminPublicKey giznet.PublicKey          `yaml:"admin-public-key"`
 	Storage        map[string]storage.Config `yaml:"storage"`
 	Stores         map[string]stores.Config  `yaml:"stores"`
@@ -95,7 +97,9 @@ func parseConfigData(data []byte) (ConfigFile, error) {
 		Identity       *IdentityConfig           `yaml:"identity"`
 		Listen         string                    `yaml:"listen"`
 		Endpoint       string                    `yaml:"endpoint"`
-		ServingPublic  bool                      `yaml:"serving-public"`
+		ServeToClients *bool                     `yaml:"serve-to-clients"`
+		ServingPublic  *bool                     `yaml:"serving-public"`
+		EdgeNodes      []giznet.PublicKey        `yaml:"edge-nodes"`
 		AdminPublicKey *giznet.PublicKey         `yaml:"admin-public-key"`
 		Storage        map[string]storage.Config `yaml:"storage"`
 		Stores         map[string]stores.Config  `yaml:"stores"`
@@ -126,11 +130,19 @@ func parseConfigData(data []byte) (ConfigFile, error) {
 		identity = *raw.Identity
 		identity.PrivateKey = keyPair.Private
 	}
+	serveToClients := false
+	switch {
+	case raw.ServeToClients != nil:
+		serveToClients = *raw.ServeToClients
+	case raw.ServingPublic != nil:
+		serveToClients = *raw.ServingPublic
+	}
 	cfg := ConfigFile{
 		Identity:       identity,
 		Listen:         raw.Listen,
 		Endpoint:       raw.Endpoint,
-		ServingPublic:  raw.ServingPublic,
+		ServeToClients: serveToClients,
+		EdgeNodes:      raw.EdgeNodes,
 		AdminPublicKey: adminPublicKey,
 		Storage:        raw.Storage,
 		Stores:         raw.Stores,
@@ -166,8 +178,11 @@ func mergeFileConfig(cfg Config, fileCfg ConfigFile) (Config, error) {
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = fileCfg.Endpoint
 	}
-	if !cfg.ServingPublic {
-		cfg.ServingPublic = fileCfg.ServingPublic
+	if !cfg.ServeToClients {
+		cfg.ServeToClients = fileCfg.ServeToClients
+	}
+	if len(cfg.EdgeNodes) == 0 {
+		cfg.EdgeNodes = fileCfg.EdgeNodes
 	}
 	if cfg.AdminPublicKey.IsZero() {
 		cfg.AdminPublicKey = fileCfg.AdminPublicKey
@@ -260,6 +275,11 @@ func (cfg Config) validate() error {
 	}
 	if cfg.FriendGroups.MessageMaxAudioBytes < 0 {
 		return fmt.Errorf("server: friend_groups.message_max_audio_bytes must be >= 0")
+	}
+	for _, publicKey := range cfg.EdgeNodes {
+		if publicKey.IsZero() {
+			return fmt.Errorf("server: invalid edge-nodes: zero public key")
+		}
 	}
 	return nil
 }

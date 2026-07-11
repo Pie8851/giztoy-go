@@ -105,6 +105,14 @@ enum FriendGroupMemberRole {
   FRIEND_GROUP_MEMBER_ROLE_MEMBER = 3;
 }
 
+enum PeerRole {
+  PEER_ROLE_UNSPECIFIED = 0;
+  PEER_ROLE_ADMIN = 1;
+  PEER_ROLE_SERVER = 2;
+  PEER_ROLE_EDGE_NODE = 3;
+  PEER_ROLE_CLIENT = 4;
+}
+
 enum ModelKind {
   MODEL_KIND_UNSPECIFIED = 0;
   MODEL_KIND_LLM = 1;
@@ -466,6 +474,40 @@ message DeviceInfo {
   optional HardwareInfo hardware = 1;
   optional string name = 2;
   optional string sn = 3;
+}
+
+message EdgePeerAssignment {
+  string peer_public_key = 1;
+  string server_public_key = 2;
+  string server_endpoint = 3;
+  PeerRole role = 4;
+  int64 version = 5;
+  string updated_at = 6;
+}
+
+message EdgePeerLookupRequest {
+  string peer_public_key = 1;
+}
+
+message EdgePeerLookupResponse {
+  EdgePeerAssignment assignment = 1;
+}
+
+message EdgePeerAssignRequest {
+  string peer_public_key = 1;
+  optional int64 expected_version = 2;
+}
+
+message EdgePeerAssignResponse {
+  EdgePeerAssignment assignment = 1;
+}
+
+message EdgeRouteResolveRequest {
+  string target_peer_public_key = 1;
+}
+
+message EdgeRouteResolveResponse {
+  EdgePeerAssignment assignment = 1;
 }
 
 message DoubaoRealtimeAIGCMetadata {
