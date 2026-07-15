@@ -243,6 +243,7 @@ export default withMermaid(
   defineConfig({
     title: "GizClaw Project Guide",
     description: "GizClaw development and usage documentation",
+    srcExclude: ["zh/reviewing/examples/**"],
     base: process.env.VITEPRESS_BASE ?? "/",
     cleanUrls: true,
     lastUpdated: true,
@@ -294,10 +295,12 @@ export default withMermaid(
             text: "审核指引",
             items: [
               { text: "总览", link: "/zh/reviewing/" },
+              { text: "Issue 格式", link: "/zh/reviewing/issue-format" },
+              { text: "Issue 审查", link: "/zh/reviewing/issue_review" },
+              { text: "PR 与 Commit 格式", link: "/zh/reviewing/pr-commit-format" },
               { text: "审查项目", link: "/zh/reviewing/review_items" },
               { text: "开发后自我审查", link: "/zh/reviewing/self_review" },
               { text: "PR Agent 审查", link: "/zh/reviewing/pr_agent_review" },
-              { text: "Issue 审查", link: "/zh/reviewing/issue_review" },
             ],
           },
         ],

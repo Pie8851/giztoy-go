@@ -156,6 +156,7 @@
 
 ## Git 内容
 
+- PR title 和 review-ready commit history 是否符合 [PR 与 Commit 格式](./pr-commit-format)。
 - diff 中没有无关修改、merge residue、broken symlink 或意外权限变化。
 - LFS、submodule、lockfile 和生成文件变化均有明确来源。
 - `git diff --check` 通过，提交边界与模块 ownership 一致。
