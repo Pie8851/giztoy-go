@@ -426,16 +426,20 @@ func (s *Server) getWorkspaceForList(ctx context.Context, requestID, name string
 }
 
 // ValidateWorkspaceSelection confirms the workspace exists and the caller may use it.
-func (s *Server) ValidateWorkspaceSelection(ctx context.Context, requestID, name string) *rpcapi.RPCResponse {
+func (s *Server) ValidateWorkspaceSelection(ctx context.Context, requestID, name string) (apitypes.Workspace, *rpcapi.RPCResponse) {
 	if s == nil || s.Workspaces == nil {
-		return internalError(requestID, "workspace service not configured")
+		return apitypes.Workspace{}, internalError(requestID, "workspace service not configured")
 	}
-	if _, resp, err := s.getWorkspaceForList(ctx, requestID, name); err != nil {
-		return internalError(requestID, err.Error())
+	workspace, resp, err := s.getWorkspaceForList(ctx, requestID, name)
+	if err != nil {
+		return apitypes.Workspace{}, internalError(requestID, err.Error())
 	} else if resp != nil {
-		return resp
+		return apitypes.Workspace{}, resp
 	}
-	return s.authorizeResponse(ctx, requestID, acl.WorkspaceResource(name), apitypes.ACLPermissionUse)
+	if resp := s.authorizeResponse(ctx, requestID, acl.WorkspaceResource(workspace.Name), apitypes.ACLPermissionUse); resp != nil {
+		return apitypes.Workspace{}, resp
+	}
+	return workspace, nil
 }
 
 func (s *Server) handleWorkspaceGet(ctx context.Context, req *rpcapi.RPCRequest) *rpcapi.RPCResponse {
@@ -656,6 +660,9 @@ func historyRPCError(err error) *rpcapi.RPCError {
 func (s *Server) workspaceHistoryService(requestID string) (WorkspaceHistoryService, *rpcapi.RPCResponse) {
 	if s.Workspaces == nil {
 		return nil, internalError(requestID, "workspace service not configured")
+	}
+	if s.ACL == nil {
+		return nil, internalError(requestID, "acl service not configured")
 	}
 	history, ok := s.Workspaces.(WorkspaceHistoryService)
 	if !ok {

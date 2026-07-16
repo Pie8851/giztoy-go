@@ -420,7 +420,7 @@ func TestValidateWorkspaceSelectionUsesWorkspaceUsePermission(t *testing.T) {
 	useOnly := newRuleAuthorizer()
 	useOnly.allow(acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionUse)
 	srv.ACL = useOnly
-	if resp := srv.ValidateWorkspaceSelection(ctx, "workspace-selection-use", "workspace-selection"); resp != nil {
+	if _, resp := srv.ValidateWorkspaceSelection(ctx, "workspace-selection-use", "workspace-selection"); resp != nil {
 		t.Fatalf("ValidateWorkspaceSelection(use only) = %+v", resp)
 	}
 	if got := useOnly.count(ctx, acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionUse); got != 1 {
@@ -429,11 +429,18 @@ func TestValidateWorkspaceSelectionUsesWorkspaceUsePermission(t *testing.T) {
 	if got := useOnly.count(ctx, acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionRead); got != 0 {
 		t.Fatalf("workspace read checks = %d, want 0", got)
 	}
+	workspace, resp := srv.ValidateWorkspaceSelection(ctx, "workspace-selection-encoded", "workspace%2Dselection")
+	if resp != nil || workspace.Name != "workspace-selection" {
+		t.Fatalf("ValidateWorkspaceSelection(encoded) = %+v, %+v", workspace, resp)
+	}
+	if got := useOnly.count(ctx, acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionUse); got != 2 {
+		t.Fatalf("workspace use checks = %d, want 2", got)
+	}
 
 	readOnly := newRuleAuthorizer()
 	readOnly.allow(acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionRead)
 	srv.ACL = readOnly
-	if resp := srv.ValidateWorkspaceSelection(ctx, "workspace-selection-read", "workspace-selection"); resp == nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeBadRequest {
+	if _, resp := srv.ValidateWorkspaceSelection(ctx, "workspace-selection-read", "workspace-selection"); resp == nil || resp.Error == nil || resp.Error.Code != rpcapi.RPCErrorCodeBadRequest {
 		t.Fatalf("ValidateWorkspaceSelection(read only) = %+v, want use denied", resp)
 	}
 	if got := readOnly.count(ctx, acl.ResourceKindWorkspace, "workspace-selection", apitypes.ACLPermissionUse); got != 1 {
@@ -679,6 +686,19 @@ func TestServerWorkspaceHistoryRPC(t *testing.T) {
 	if err != nil || rpcErr == nil || rpcErr.Code != rpcapi.RPCErrorCodeNotFound || reader != nil {
 		t.Fatalf("PrepareWorkspaceHistoryAudioGet(missing asset) err = %v rpcErr = %+v reader = %v", err, rpcErr, reader)
 	}
+
+	srv.ACL = nil
+	requireRPCError(t, callRPC(t, srv, "workspace-history-list-no-acl", rpcapi.RPCMethodServerWorkspaceHistoryList, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryListRequest, rpcapi.WorkspaceHistoryListRequest{
+		WorkspaceName: "workspace-history",
+	})), rpcapi.RPCErrorCodeInternalError)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-get-no-acl", rpcapi.RPCMethodServerWorkspaceHistoryGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryGetRequest, rpcapi.WorkspaceHistoryGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     entry.ID,
+	})), rpcapi.RPCErrorCodeInternalError)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-audio-get-no-acl", rpcapi.RPCMethodServerWorkspaceHistoryAudioGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetRequest, rpcapi.WorkspaceHistoryAudioGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     entry.ID,
+	})), rpcapi.RPCErrorCodeInternalError)
 }
 
 func TestServerListVoicesFiltersByACL(t *testing.T) {
