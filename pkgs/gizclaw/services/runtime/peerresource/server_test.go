@@ -687,6 +687,32 @@ func TestServerWorkspaceHistoryRPC(t *testing.T) {
 		t.Fatalf("PrepareWorkspaceHistoryAudioGet(missing asset) err = %v rpcErr = %+v reader = %v", err, rpcErr, reader)
 	}
 
+	srv.ACL = newRuleAuthorizer()
+	requireRPCError(t, callRPC(t, srv, "workspace-history-list-denied", rpcapi.RPCMethodServerWorkspaceHistoryList, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryListRequest, rpcapi.WorkspaceHistoryListRequest{
+		WorkspaceName: "workspace-history",
+	})), rpcapi.RPCErrorCodeForbidden)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-get-denied", rpcapi.RPCMethodServerWorkspaceHistoryGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryGetRequest, rpcapi.WorkspaceHistoryGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     entry.ID,
+	})), rpcapi.RPCErrorCodeForbidden)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-audio-get-denied", rpcapi.RPCMethodServerWorkspaceHistoryAudioGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetRequest, rpcapi.WorkspaceHistoryAudioGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     entry.ID,
+	})), rpcapi.RPCErrorCodeForbidden)
+
+	srv.ACL = allowAllAuthorizer{}
+	requireRPCError(t, callRPC(t, srv, "workspace-history-list-missing", rpcapi.RPCMethodServerWorkspaceHistoryList, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryListRequest, rpcapi.WorkspaceHistoryListRequest{
+		WorkspaceName: "workspace-missing",
+	})), rpcapi.RPCErrorCodeNotFound)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-get-missing", rpcapi.RPCMethodServerWorkspaceHistoryGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryGetRequest, rpcapi.WorkspaceHistoryGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     "history-missing",
+	})), rpcapi.RPCErrorCodeNotFound)
+	requireRPCError(t, callRPC(t, srv, "workspace-history-audio-get-missing", rpcapi.RPCMethodServerWorkspaceHistoryAudioGet, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryAudioGetRequest, rpcapi.WorkspaceHistoryAudioGetRequest{
+		WorkspaceName: "workspace-history",
+		HistoryId:     "history-missing",
+	})), rpcapi.RPCErrorCodeNotFound)
+
 	srv.ACL = nil
 	requireRPCError(t, callRPC(t, srv, "workspace-history-list-no-acl", rpcapi.RPCMethodServerWorkspaceHistoryList, rpcParams(t, (*rpcapi.RPCPayload).FromWorkspaceHistoryListRequest, rpcapi.WorkspaceHistoryListRequest{
 		WorkspaceName: "workspace-history",

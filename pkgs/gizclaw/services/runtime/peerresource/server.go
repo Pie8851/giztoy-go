@@ -571,7 +571,7 @@ func (s *Server) handleWorkspaceHistoryList(ctx context.Context, req *rpcapi.RPC
 		Order:  order,
 	})
 	if err != nil {
-		return authOrBadRequest(req.Id, err)
+		return historyRPCResponse(req.Id, err)
 	}
 	return resultResponse(req.Id, list, (*rpcapi.RPCPayload).FromWorkspaceHistoryListResponse)
 }
@@ -587,7 +587,7 @@ func (s *Server) handleWorkspaceHistoryGet(ctx context.Context, req *rpcapi.RPCR
 	}
 	entry, err := history.GetWorkspaceHistoryWithAuthorizer(ctx, s.ACL, acl.PublicKeySubject(s.Caller.String()), params.WorkspaceName, params.HistoryId)
 	if err != nil {
-		return authOrBadRequest(req.Id, err)
+		return historyRPCResponse(req.Id, err)
 	}
 	return resultResponse(req.Id, entry.Public(), (*rpcapi.RPCPayload).FromWorkspaceHistoryGetResponse)
 }
@@ -655,6 +655,11 @@ func historyRPCError(err error) *rpcapi.RPCError {
 	default:
 		return &rpcapi.RPCError{Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}
 	}
+}
+
+func historyRPCResponse(requestID string, err error) *rpcapi.RPCResponse {
+	rpcErr := historyRPCError(err)
+	return rpcapi.Error{RequestID: requestID, Code: rpcErr.Code, Message: rpcErr.Message}.RPCResponse()
 }
 
 func (s *Server) workspaceHistoryService(requestID string) (WorkspaceHistoryService, *rpcapi.RPCResponse) {
@@ -1542,13 +1547,6 @@ func authError(id string, err error) *rpcapi.RPCResponse {
 		code = rpcapi.RPCErrorCodeInternalError
 	}
 	return rpcapi.Error{RequestID: id, Code: code, Message: err.Error()}.RPCResponse()
-}
-
-func authOrBadRequest(id string, err error) *rpcapi.RPCResponse {
-	if errors.Is(err, acl.ErrDenied) {
-		return authError(id, err)
-	}
-	return rpcapi.Error{RequestID: id, Code: rpcapi.RPCErrorCodeBadRequest, Message: err.Error()}.RPCResponse()
 }
 
 func statusError(id string, statusCode int, message string) *rpcapi.RPCResponse {
