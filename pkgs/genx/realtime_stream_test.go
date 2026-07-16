@@ -129,46 +129,50 @@ func TestRealtimeStreamUntimestampedEOSFollowsFutureAudio(t *testing.T) {
 }
 
 func TestRealtimeStreamNewBOSDropsPendingAudioFromPreviousStream(t *testing.T) {
-	stream := NewRealtimeStream(WithRealtimeStreamDelay(0))
-	if err := stream.Push(context.Background(), &MessageChunk{
-		Part: &Blob{MIMEType: "audio/opus", Data: []byte{0x01}},
-		Ctrl: &StreamCtrl{StreamID: "audio-1", Label: "mic", Timestamp: 1_000},
-	}); err != nil {
-		t.Fatalf("Push(audio-1) error = %v", err)
-	}
-	if err := stream.Push(context.Background(), &MessageChunk{
-		Part: &Blob{MIMEType: "audio/opus"},
-		Ctrl: &StreamCtrl{StreamID: "audio-1", Label: "mic", Timestamp: 1_020, EndOfStream: true},
-	}); err != nil {
-		t.Fatalf("Push(audio-1 EOS) error = %v", err)
-	}
-	if err := stream.Push(context.Background(), &MessageChunk{
-		Ctrl: &StreamCtrl{StreamID: "audio-2", Label: "mic", Timestamp: 1_010, BeginOfStream: true},
-	}); err != nil {
-		t.Fatalf("Push(audio-2 BOS) error = %v", err)
-	}
-	chunk, err := stream.Next()
-	if err != nil {
-		t.Fatalf("Next() error = %v", err)
-	}
-	if chunk.Ctrl == nil || chunk.Ctrl.StreamID != "audio-2" || !chunk.Ctrl.BeginOfStream {
-		t.Fatalf("Next() = %#v, want audio-2 BOS", chunk)
-	}
-	stream.mu.Lock()
-	heapLen := stream.heap.Len()
-	stream.mu.Unlock()
-	if heapLen != 0 {
-		t.Fatalf("superseded audio stayed in heap, len=%d", heapLen)
+	for _, mimeType := range []string{"audio/opus", "application/ogg; codecs=opus"} {
+		t.Run(mimeType, func(t *testing.T) {
+			stream := NewRealtimeStream(WithRealtimeStreamDelay(0))
+			if err := stream.Push(context.Background(), &MessageChunk{
+				Part: &Blob{MIMEType: mimeType, Data: []byte{0x01}},
+				Ctrl: &StreamCtrl{StreamID: "audio-1", Label: "mic", Timestamp: 1_000},
+			}); err != nil {
+				t.Fatalf("Push(audio-1) error = %v", err)
+			}
+			if err := stream.Push(context.Background(), &MessageChunk{
+				Part: &Blob{MIMEType: mimeType},
+				Ctrl: &StreamCtrl{StreamID: "audio-1", Label: "mic", Timestamp: 1_020, EndOfStream: true},
+			}); err != nil {
+				t.Fatalf("Push(audio-1 EOS) error = %v", err)
+			}
+			if err := stream.Push(context.Background(), &MessageChunk{
+				Ctrl: &StreamCtrl{StreamID: "audio-2", Label: "mic", Timestamp: 1_010, BeginOfStream: true},
+			}); err != nil {
+				t.Fatalf("Push(audio-2 BOS) error = %v", err)
+			}
+			chunk, err := stream.Next()
+			if err != nil {
+				t.Fatalf("Next() error = %v", err)
+			}
+			if chunk.Ctrl == nil || chunk.Ctrl.StreamID != "audio-2" || !chunk.Ctrl.BeginOfStream {
+				t.Fatalf("Next() = %#v, want audio-2 BOS", chunk)
+			}
+			stream.mu.Lock()
+			heapLen := stream.heap.Len()
+			stream.mu.Unlock()
+			if heapLen != 0 {
+				t.Fatalf("superseded audio stayed in heap, len=%d", heapLen)
+			}
+		})
 	}
 }
 
 func TestRealtimeStreamNewBOSKeepsDifferentRouteAndNonAudio(t *testing.T) {
 	stream := NewRealtimeStream(WithRealtimeStreamDelay(0))
 	if err := stream.Push(context.Background(), &MessageChunk{
-		Part: Text("keep"),
-		Ctrl: &StreamCtrl{StreamID: "text-1", Label: "text", Timestamp: 1_000},
+		Part: Text(""),
+		Ctrl: &StreamCtrl{StreamID: "audio-1", Label: "mic", Timestamp: 1_000, EndOfStream: true},
 	}); err != nil {
-		t.Fatalf("Push(text) error = %v", err)
+		t.Fatalf("Push(text EOS) error = %v", err)
 	}
 	if err := stream.Push(context.Background(), &MessageChunk{
 		Part: &Blob{MIMEType: "audio/opus", Data: []byte{0x01}},
@@ -181,9 +185,31 @@ func TestRealtimeStreamNewBOSKeepsDifferentRouteAndNonAudio(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Push(BOS) error = %v", err)
 	}
-	assertRealtimeNextTimestamp(t, stream, 1_000, false)
+	assertRealtimeNextTimestamp(t, stream, 1_000, true)
 	assertRealtimeNextTimestamp(t, stream, 1_001, false)
 	assertRealtimeNextTimestamp(t, stream, 1_002, false)
+}
+
+func TestRealtimeAudioChunkClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		chunk *MessageChunk
+		want  bool
+	}{
+		{name: "audio data", chunk: &MessageChunk{Part: &Blob{MIMEType: "audio/opus"}}, want: true},
+		{name: "parameterized audio eos", chunk: &MessageChunk{Part: &Blob{MIMEType: "audio/ogg; codecs=opus"}, Ctrl: &StreamCtrl{EndOfStream: true}}, want: true},
+		{name: "application ogg", chunk: &MessageChunk{Part: &Blob{MIMEType: "application/ogg; codecs=opus"}}, want: true},
+		{name: "text eos", chunk: NewTextEndOfStream()},
+		{name: "non-audio blob eos", chunk: &MessageChunk{Part: &Blob{MIMEType: "application/json"}, Ctrl: &StreamCtrl{EndOfStream: true}}},
+		{name: "control eos", chunk: &MessageChunk{Ctrl: &StreamCtrl{EndOfStream: true}}, want: true},
+		{name: "control data", chunk: &MessageChunk{Ctrl: &StreamCtrl{BeginOfStream: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isRealtimeAudioChunk(tc.chunk); got != tc.want {
+				t.Fatalf("isRealtimeAudioChunk() = %t, want %t", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestRealtimeStreamNewStreamClampsExplicitLateTimestamps(t *testing.T) {
