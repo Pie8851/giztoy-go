@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gizclaw/gizclaw.dart';
 import 'package:gizclaw_app/main.dart';
+import 'package:gizclaw_app/app/app_locale_controller.dart';
 import 'package:gizclaw_app/app/global_conversation_control.dart';
 import 'package:gizclaw_app/connection/gizclaw_connection_controller.dart';
 import 'package:gizclaw_app/data/database/app_database.dart';
@@ -16,6 +17,8 @@ import 'package:gizclaw_app/identity/app_identity_store.dart';
 import 'package:gizclaw_app/prototype/prototype_data.dart';
 
 AppDatabase _testDatabase() => AppDatabase.forTesting(NativeDatabase.memory());
+
+const _testServerEndpoint = 'test.gizclaw.local:9820';
 
 void main() {
   final dataControllers = <MobileDataController>[];
@@ -72,11 +75,17 @@ void main() {
   Future<void> pumpApp(
     WidgetTester tester, {
     MobileDataController? controller,
+    AppLocaleController? localeController,
   }) async {
     final dataController =
         controller ?? MobileDataController.demo(database: _testDatabase());
     dataControllers.add(dataController);
-    await tester.pumpWidget(GizClawApp(dataController: dataController));
+    await tester.pumpWidget(
+      GizClawApp(
+        dataController: dataController,
+        localeController: localeController,
+      ),
+    );
     await tester.pump(const Duration(milliseconds: 700));
   }
 
@@ -117,6 +126,28 @@ void main() {
     expect(find.byKey(const ValueKey('global-audio-field')), findsNothing);
   });
 
+  appTestWidgets('switches language before server setup', (tester) async {
+    final localeController = AppLocaleController(
+      platformLocales: const [Locale('en')],
+    );
+    await pumpApp(
+      tester,
+      controller: _OnboardingServerController(),
+      localeController: localeController,
+    );
+
+    await tester.tap(find.text('System (Default)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('简体中文'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('你的智能体，随处相伴。'), findsOneWidget);
+    expect(
+      localeController.preference,
+      AppLanguagePreference.simplifiedChinese,
+    );
+  });
+
   appTestWidgets('opens server choices from onboarding', (tester) async {
     await pumpApp(tester, controller: _OnboardingServerController());
 
@@ -124,8 +155,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ServerListPage), findsOneWidget);
-    expect(find.text('Development'), findsOneWidget);
-    expect(find.text('Production'), findsOneWidget);
+    expect(find.text('Development'), findsNothing);
+    expect(find.text('Production'), findsNothing);
+    expect(
+      find.text('No servers added yet. Use Add server to continue.'),
+      findsOneWidget,
+    );
     expect(find.bySemanticsLabel('Add server'), findsOneWidget);
   });
 
@@ -170,16 +205,26 @@ void main() {
     );
   });
 
-  appTestWidgets('leaves onboarding after selecting a server', (tester) async {
+  appTestWidgets('leaves onboarding after adding a server', (tester) async {
     final controller = _OnboardingServerController();
     await pumpApp(tester, controller: controller);
 
     await tester.tap(find.byKey(const ValueKey('server-onboarding-cta')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Development'));
+    await tester.tap(find.bySemanticsLabel('Add server'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('server-name-field')),
+      'Office',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('server-access-point-field')),
+      'office.local:9820',
+    );
+    await tester.tap(find.byKey(const ValueKey('add-server')));
     await tester.pumpAndSettle();
 
-    expect(controller.activeServer?.name, 'Development');
+    expect(controller.activeServer?.name, 'Office');
     expect(find.byType(MePage), findsOneWidget);
     expect(find.byType(ServerOnboardingPage), findsNothing);
   });
@@ -553,15 +598,13 @@ void main() {
     expect(find.text('Public identity'), findsOneWidget);
     expect(find.text('Private key'), findsOneWidget);
     expect(find.text('Server'), findsOneWidget);
-    expect(find.text('Development · ap.dev.gizclaw.com:9820'), findsOneWidget);
+    expect(find.text('Office · $_testServerEndpoint'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('server-settings-row')));
     await tester.pumpAndSettle();
     expect(find.text('Servers'), findsOneWidget);
-    expect(find.text('Development'), findsOneWidget);
-    expect(find.text('Production'), findsOneWidget);
-    expect(find.text('ap.dev.gizclaw.com:9820'), findsOneWidget);
-    expect(find.text('ap.gizclaw.com:9820'), findsOneWidget);
+    expect(find.text('Office'), findsOneWidget);
+    expect(find.text(_testServerEndpoint), findsOneWidget);
     expect(find.byKey(const ValueKey('selected-server')), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('Add server'));
@@ -580,6 +623,23 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('add-server')));
     await tester.pump();
     expect(find.byKey(const ValueKey('add-server-error')), findsOneWidget);
+    expect(
+      find.text(
+        'Use a domain or IP address with a port, for example gizclaw.local:9820.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('server-access-point-field')),
+      _testServerEndpoint,
+    );
+    await tester.tap(find.byKey(const ValueKey('add-server')));
+    await tester.pump();
+    expect(
+      find.text('This access point is already in the list.'),
+      findsOneWidget,
+    );
 
     Navigator.of(
       tester.element(find.byKey(const ValueKey('server-name-field'))),
@@ -587,15 +647,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.runAsync(
       () => controller.addServer(
-        name: 'Office',
+        name: 'Branch',
         accessPoint: 'office.local:9820',
       ),
     );
     await tester.pumpAndSettle();
-    expect(controller.servers.last.name, 'Office');
+    expect(controller.servers.last.name, 'Branch');
     expect(controller.serverEndpoint, 'office.local:9820');
     expect(find.byType(ServerListPage), findsOneWidget);
-    expect(find.text('Office'), findsOneWidget);
+    expect(find.text('Branch'), findsOneWidget);
     expect(find.text('office.local:9820'), findsOneWidget);
     expect(find.byKey(const ValueKey('selected-server')), findsOneWidget);
   });
@@ -724,7 +784,7 @@ class _ModeSwitchController extends MobileDataController {
     : super(
         database: _testDatabase(),
         profile: const GizClawConnectionProfile(
-          endpoint: gizClawDevelopmentServerEndpoint,
+          endpoint: _testServerEndpoint,
           clientPrivateKey: 'test-key',
         ),
       ) {
@@ -766,9 +826,12 @@ class _ServerListTestController extends MobileDataController {
     : super(
         database: AppDatabase.forTesting(NativeDatabase.memory()),
         profile: const GizClawConnectionProfile(
-          endpoint: gizClawDevelopmentServerEndpoint,
+          endpoint: _testServerEndpoint,
           clientPrivateKey: 'test-key',
         ),
+        servers: const [
+          GizClawServer(name: 'Office', accessPoint: _testServerEndpoint),
+        ],
       ) {
     workflows = allWorkflows;
     workspaces = workflowWorkspaces;
@@ -804,8 +867,11 @@ class _OnboardingServerController extends MobileDataController {
   }
 
   @override
-  Future<void> selectServer(GizClawServer server) async {
-    _selectedServer = server;
+  Future<void> addServer({
+    required String name,
+    required String accessPoint,
+  }) async {
+    _selectedServer = GizClawServer(name: name, accessPoint: accessPoint);
     notifyListeners();
   }
 }
@@ -850,7 +916,7 @@ class _ActiveDestinationController extends MobileDataController {
     : super(
         database: _testDatabase(),
         profile: const GizClawConnectionProfile(
-          endpoint: gizClawDevelopmentServerEndpoint,
+          endpoint: _testServerEndpoint,
           clientPrivateKey: 'test-key',
         ),
       );

@@ -5,6 +5,7 @@ import 'package:gizclaw/gizclaw.dart';
 
 import '../connection/gizclaw_connection_controller.dart';
 import '../identity/app_identity_store.dart';
+import '../l10n/locale_resolution.dart';
 import '../prototype/prototype_data.dart';
 import '../prototype/prototype_models.dart';
 import 'database/app_database.dart';
@@ -16,6 +17,8 @@ import 'workspace_chat_controller.dart';
 enum MobileConnectionState { unconfigured, connecting, connected, offline }
 
 enum MobileWorkspaceSurface { raid, friend, group, pet }
+
+const _demoServerEndpoint = 'demo.gizclaw.local:9820';
 
 Future<T> _workspaceActivationStep<T>(
   String step,
@@ -79,7 +82,7 @@ class MobileDataController extends ChangeNotifier {
            ),
        _servers = List.unmodifiable(
          _mergeServers(
-           servers ?? gizClawPresetServers,
+           servers ?? const [],
            profile?.endpoint ?? connectionController?.profile.endpoint ?? '',
          ),
        ) {
@@ -123,6 +126,9 @@ class MobileDataController extends ChangeNotifier {
   GizClawClient? _pendingRefreshClient;
   String? _pendingRefreshEndpoint;
   String? _pendingRefreshServerId;
+  int _pendingRefreshLocaleGeneration = 0;
+  int _localeGeneration = 0;
+  Locale _effectiveLocale = appEnglishLocale;
   int _serverWatchGeneration = 0;
   int _startGeneration = 0;
   Future<void>? _workspaceSwitch;
@@ -153,6 +159,20 @@ class MobileDataController extends ChangeNotifier {
 
   bool get hasActiveServer => activeServer != null;
   String? get clientPublicKey => connection.clientPublicKey;
+  Locale get effectiveLocale => _effectiveLocale;
+
+  void setEffectiveLocale(Locale locale) {
+    final normalized = locale.languageCode == 'zh'
+        ? appSimplifiedChineseLocale
+        : appEnglishLocale;
+    if (_effectiveLocale == normalized) return;
+    _effectiveLocale = normalized;
+    _localeGeneration += 1;
+    final serverId = activeServerId;
+    if (serverId != null) unawaited(_watchServer(serverId));
+    if (connection.isConnected) unawaited(refresh());
+    notifyListeners();
+  }
 
   WorkspaceInputMode get activeInputMode =>
       _workspaceInputMode(activeWorkspaceDocument);
@@ -233,7 +253,7 @@ class MobileDataController extends ChangeNotifier {
         ..._servers,
         GizClawServer(name: normalized, accessPoint: normalized),
       ]);
-      await identityStore?.saveCustomServers(_customServers(nextServers));
+      await identityStore?.saveCustomServers(nextServers);
       _servers = nextServers;
       notifyListeners();
     }
@@ -257,7 +277,7 @@ class MobileDataController extends ChangeNotifier {
       accessPoint: normalizedEndpoint,
     );
     final nextServers = List<GizClawServer>.unmodifiable([..._servers, server]);
-    await identityStore?.saveCustomServers(_customServers(nextServers));
+    await identityStore?.saveCustomServers(nextServers);
     _servers = nextServers;
     notifyListeners();
     await _activateServerEndpoint(normalizedEndpoint);
@@ -349,10 +369,12 @@ class MobileDataController extends ChangeNotifier {
     await _friendChatSubscription?.cancel();
     await _friendGroupChatSubscription?.cancel();
     if (generation != _serverWatchGeneration) return;
-    _workflowSubscription = repository.watchWorkflows(serverId).listen((value) {
-      workflows = value;
-      notifyListeners();
-    });
+    _workflowSubscription = repository
+        .watchWorkflows(serverId, locale: appLocaleTag(_effectiveLocale))
+        .listen((value) {
+          workflows = value;
+          notifyListeners();
+        });
     _workspaceSubscription = repository.watchWorkspaces(serverId).listen((
       value,
     ) {
@@ -400,6 +422,7 @@ class MobileDataController extends ChangeNotifier {
     _pendingRefreshClient = activeClient;
     _pendingRefreshEndpoint = connection.profile.endpoint;
     _pendingRefreshServerId = resolvedServerId;
+    _pendingRefreshLocaleGeneration = _localeGeneration;
     _refreshAgain = true;
     final inFlight = _refreshInFlight;
     if (inFlight != null) return inFlight;
@@ -418,14 +441,23 @@ class MobileDataController extends ChangeNotifier {
         final client = _pendingRefreshClient!;
         final endpoint = _pendingRefreshEndpoint!;
         final serverId = _pendingRefreshServerId!;
+        final localeGeneration = _pendingRefreshLocaleGeneration;
+        final effectiveLocale = _effectiveLocale;
         lastError = null;
         try {
           final warnings = await repository.refresh(
             client: client,
             endpoint: endpoint,
+            isCurrent: () =>
+                localeGeneration == _localeGeneration &&
+                connection.profile.endpoint == endpoint &&
+                identical(connection.client, client),
+            locale: appLocaleTag(effectiveLocale),
             serverId: serverId,
+            workflowLocale: workflowLocaleForAppLocale(effectiveLocale),
           );
-          if (connection.profile.endpoint != endpoint ||
+          if (localeGeneration != _localeGeneration ||
+              connection.profile.endpoint != endpoint ||
               !identical(connection.client, client)) {
             continue;
           }
@@ -441,7 +473,8 @@ class MobileDataController extends ChangeNotifier {
             }());
           }
         } catch (error) {
-          if (connection.profile.endpoint != endpoint ||
+          if (localeGeneration != _localeGeneration ||
+              connection.profile.endpoint != endpoint ||
               !identical(connection.client, client)) {
             continue;
           }
@@ -518,10 +551,8 @@ class MobileDataController extends ChangeNotifier {
       lastError = null;
       if (serverId != activeServerId) {
         await _watchServer(serverId);
-        await refresh(client: client, serverId: serverId);
-      } else {
-        await _syncRunWorkspace(client);
       }
+      await refresh(client: client, serverId: serverId);
       connectionState = MobileConnectionState.connected;
       notifyListeners();
       return client;
@@ -820,6 +851,7 @@ class MobileDataController extends ChangeNotifier {
     return (await repository.workflowCard(
           serverId,
           workspace.workflowName,
+          locale: appLocaleTag(_effectiveLocale),
         ))?.driver ??
         cached;
   }
@@ -1126,7 +1158,7 @@ List<GizClawServer> _mergeServers(
 ) {
   final merged = <GizClawServer>[];
   final endpoints = <String>{};
-  for (final server in [...gizClawPresetServers, ...servers]) {
+  for (final server in servers) {
     final endpoint = normalizeGizClawEndpoint(server.accessPoint);
     if (endpoint.isEmpty || !endpoints.add(endpoint)) continue;
     merged.add(GizClawServer(name: server.name.trim(), accessPoint: endpoint));
@@ -1149,24 +1181,16 @@ String _normalizeRequiredServerEndpoint(String endpoint) {
   return normalized;
 }
 
-List<GizClawServer> _customServers(List<GizClawServer> servers) {
-  final presetEndpoints = {
-    for (final server in gizClawPresetServers) server.accessPoint,
-  };
-  return [
-    for (final server in servers)
-      if (!presetEndpoints.contains(server.accessPoint)) server,
-  ];
-}
-
 class _DemoMobileDataController extends MobileDataController {
   _DemoMobileDataController({super.database})
     : super(
         profile: const GizClawConnectionProfile(
-          endpoint: gizClawDevelopmentServerEndpoint,
+          endpoint: _demoServerEndpoint,
           clientPrivateKey: 'demo-private-key',
         ),
-        servers: gizClawPresetServers,
+        servers: const [
+          GizClawServer(name: 'Demo', accessPoint: _demoServerEndpoint),
+        ],
       );
 
   @override

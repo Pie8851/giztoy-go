@@ -239,10 +239,39 @@ const zhDevelopingSidebar = [
   },
 ];
 
+type SidebarEntry = {
+  text?: string;
+  link?: string;
+  collapsed?: boolean;
+  items?: SidebarEntry[];
+};
+
+const englishSidebarLabels: Record<string, string> = {
+  "开发指引": "Development Guide",
+  "总览": "Overview",
+  "Shared 与 Resources": "Shared and Resources",
+  "依赖规则": "Dependency Rules",
+};
+
+function englishSidebar(items: SidebarEntry[]): SidebarEntry[] {
+  return items.map((item) => ({
+    ...item,
+    text: item.text ? englishSidebarLabels[item.text] ?? item.text : item.text,
+    link: item.link?.replace(/^\/zh\//, "/en/"),
+    items: item.items ? englishSidebar(item.items) : undefined,
+  }));
+}
+
+const enDevelopingSidebar = englishSidebar(zhDevelopingSidebar);
+
 export default withMermaid(
   defineConfig({
     title: "GizClaw Project Guide",
     description: "GizClaw development and usage documentation",
+    srcExclude: [
+      "zh/reviewing/examples/**",
+      "en/reviewing/examples/**",
+    ],
     base: process.env.VITEPRESS_BASE ?? "/",
     cleanUrls: true,
     lastUpdated: true,
@@ -256,6 +285,22 @@ export default withMermaid(
         label: "English",
         lang: "en-US",
         link: "/en/",
+        themeConfig: {
+          nav: [
+            { text: "Development", link: "/en/developing/" },
+            { text: "Review", link: "/en/reviewing/" },
+            { text: "Coding Conventions", link: "/en/coding-styles/" },
+            { text: "Usage", link: "/en/using/" },
+            { text: "Reference", link: "/references/" },
+          ],
+          outline: { label: "On this page", level: [2, 4] },
+          docFooter: { prev: "Previous page", next: "Next page" },
+          lastUpdated: { text: "Last updated" },
+          darkModeSwitchLabel: "Appearance",
+          langMenuLabel: "Change language",
+          returnToTopLabel: "Return to top",
+          sidebarMenuLabel: "Menu",
+        },
       },
     },
     mermaid: {
@@ -273,12 +318,22 @@ export default withMermaid(
       },
     },
     themeConfig: {
-      // English pages are intentionally not mirrored yet. Until they are,
-      // language switching must land on a locale home instead of constructing
-      // a non-existent corresponding page.
-      i18nRouting: (_data, hash, targetLocale) => {
+      // VitePress 2.0.0-alpha.18 passes hash.value as the second argument.
+      i18nRouting: ({ page }, hash: string, targetLocale) => {
+        const relativePath = page.value.relativePath;
+        if (relativePath.startsWith("references/")) {
+          const referencePath = relativePath
+            .replace(/(^|\/)index\.md$/, "$1")
+            .replace(/\.md$/, "");
+          return `/${referencePath}${hash}`;
+        }
+
+        const localizedPath = relativePath
+          .replace(/^(zh|en)\//, "")
+          .replace(/(^|\/)index\.md$/, "$1")
+          .replace(/\.md$/, "");
         const localeRoot = targetLocale === "root" ? "/" : `/${targetLocale}/`;
-        return `${localeRoot}${hash}`;
+        return `${localeRoot}${localizedPath}${hash}`;
       },
       nav: [
         { text: "开发指引", link: "/zh/developing/" },
@@ -289,15 +344,32 @@ export default withMermaid(
       ],
       sidebar: {
         "/zh/developing/": zhDevelopingSidebar,
+        "/en/developing/": enDevelopingSidebar,
         "/zh/reviewing/": [
           {
             text: "审核指引",
             items: [
               { text: "总览", link: "/zh/reviewing/" },
+              { text: "Issue 格式", link: "/zh/reviewing/issue-format" },
+              { text: "Issue 审查", link: "/zh/reviewing/issue_review" },
+              { text: "PR 与 Commit 格式", link: "/zh/reviewing/pr-commit-format" },
               { text: "审查项目", link: "/zh/reviewing/review_items" },
               { text: "开发后自我审查", link: "/zh/reviewing/self_review" },
               { text: "PR Agent 审查", link: "/zh/reviewing/pr_agent_review" },
-              { text: "Issue 审查", link: "/zh/reviewing/issue_review" },
+            ],
+          },
+        ],
+        "/en/reviewing/": [
+          {
+            text: "Review Guide",
+            items: [
+              { text: "Overview", link: "/en/reviewing/" },
+              { text: "Issue Format", link: "/en/reviewing/issue-format" },
+              { text: "Issue Review", link: "/en/reviewing/issue_review" },
+              { text: "PR and Commit Format", link: "/en/reviewing/pr-commit-format" },
+              { text: "Review Items", link: "/en/reviewing/review_items" },
+              { text: "Post-development Self-review", link: "/en/reviewing/self_review" },
+              { text: "PR Agent Review", link: "/en/reviewing/pr_agent_review" },
             ],
           },
         ],
@@ -311,6 +383,19 @@ export default withMermaid(
               { text: "Dart 与 Flutter", link: "/zh/coding-styles/dart-flutter" },
               { text: "C 与 cgo", link: "/zh/coding-styles/c" },
               { text: "文档", link: "/zh/coding-styles/docs" },
+            ],
+          },
+        ],
+        "/en/coding-styles/": [
+          {
+            text: "Coding Conventions",
+            items: [
+              { text: "Overview", link: "/en/coding-styles/" },
+              { text: "Go", link: "/en/coding-styles/go" },
+              { text: "JavaScript and TypeScript", link: "/en/coding-styles/js" },
+              { text: "Dart and Flutter", link: "/en/coding-styles/dart-flutter" },
+              { text: "C and cgo", link: "/en/coding-styles/c" },
+              { text: "Documentation", link: "/en/coding-styles/docs" },
             ],
           },
         ],
@@ -334,7 +419,30 @@ export default withMermaid(
             ],
           },
         ],
+        "/en/using/": [
+          {
+            text: "Usage Guide",
+            items: [
+              { text: "Overview", link: "/en/using/" },
+              { text: "CLI", link: "/en/using/cli" },
+              { text: "Wails App", link: "/en/using/wails-app" },
+              { text: "Flutter App", link: "/en/using/flutter-app" },
+              {
+                text: "SDK",
+                collapsed: false,
+                items: [
+                  { text: "Go", link: "/en/using/sdk/go" },
+                  { text: "TypeScript", link: "/en/using/sdk/typescript" },
+                  { text: "Flutter", link: "/en/using/sdk/flutter" },
+                ],
+              },
+            ],
+          },
+        ],
       },
+      socialLinks: [
+        { icon: "github", link: "https://github.com/GizClaw/gizclaw" },
+      ],
       outline: {
         label: "本页目录",
         level: [2, 4],
@@ -346,17 +454,58 @@ export default withMermaid(
       lastUpdated: {
         text: "最后更新",
       },
-      locales: {
-        zh: {
-          label: "简体中文",
-        },
-        en: {
-          label: "English",
-          nav: [{ text: "Home", link: "/en/" }],
-        },
-      },
       search: {
         provider: "local",
+        options: {
+          locales: {
+            zh: {
+              translations: {
+                button: {
+                  buttonText: "搜索",
+                  buttonAriaLabel: "搜索文档",
+                },
+                modal: {
+                  displayDetails: "显示详细列表",
+                  resetButtonTitle: "清除查询条件",
+                  backButtonTitle: "关闭搜索",
+                  noResultsText: "没有找到相关结果",
+                  footer: {
+                    selectText: "选择",
+                    selectKeyAriaLabel: "回车键",
+                    navigateText: "切换",
+                    navigateUpKeyAriaLabel: "向上箭头",
+                    navigateDownKeyAriaLabel: "向下箭头",
+                    closeText: "关闭",
+                    closeKeyAriaLabel: "Escape 键",
+                  },
+                },
+              },
+            },
+            en: {
+              translations: {
+                button: {
+                  buttonText: "Search",
+                  buttonAriaLabel: "Search documentation",
+                },
+                modal: {
+                  displayDetails: "Display detailed results",
+                  resetButtonTitle: "Reset search",
+                  backButtonTitle: "Close search",
+                  noResultsText: "No results found",
+                  footer: {
+                    selectText: "Select",
+                    selectKeyAriaLabel: "Enter key",
+                    navigateText: "Navigate",
+                    navigateUpKeyAriaLabel: "Up arrow",
+                    navigateDownKeyAriaLabel: "Down arrow",
+                    closeText: "Close",
+                    closeKeyAriaLabel: "Escape key",
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   }),

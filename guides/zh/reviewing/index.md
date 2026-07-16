@@ -2,6 +2,10 @@
 
 审核用于确认需求、实现、Contract、测试和文档共同形成一个完整且可验证的结果。审核不是单纯寻找代码风格问题，也不能用测试通过代替对行为和边界的判断。
 
+Issue 在进入审查前，应先符合 [Issue 格式](./issue-format) 中的标题、Issue Type、正文结构和关系字段要求。
+
+PR 进入 review-ready 前，其标题和 commit history 应符合 [PR 与 Commit 格式](./pr-commit-format)。
+
 ## 审核类型
 
 | 类型 | 执行者 | 目标 | 是否修改代码 |
