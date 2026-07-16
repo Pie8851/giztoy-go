@@ -489,16 +489,92 @@ func TestDoubaoASTTranslatePTTOutputLimitKeepsTransformerUsable(t *testing.T) {
 	}
 }
 
+func TestDoubaoASTTranslatePTTOutputGateCommitWaitsForProviderFailure(t *testing.T) {
+	providerErr := &doubaospeech.Error{Code: 500, Message: "provider failed concurrently with input EOS"}
+	output := &recordingASTTranslateOutput{}
+	gate := newASTTranslatePTTOutputGate(output, func() bool { return true }, "turn-provider-error")
+	if err := gate.Push(&genx.MessageChunk{
+		Role: genx.RoleModel,
+		Part: genx.Text("must stay buffered"),
+		Ctrl: &genx.StreamCtrl{StreamID: "turn-provider-error", Label: doubaoASTTranslateAssistantLabel},
+	}); err != nil {
+		t.Fatalf("Push(buffered): %v", err)
+	}
+
+	eventDelivered := make(chan struct{})
+	allowFailure := make(chan struct{})
+	receiverDone := make(chan struct{})
+	events := gate.providerEventSequence(func(yield func(*doubaospeech.ASTTranslateEvent, error) bool) {
+		yield(&doubaospeech.ASTTranslateEvent{Type: doubaospeech.ASTEventSessionFailed, Error: providerErr}, nil)
+	})
+	go func() {
+		defer close(receiverDone)
+		for event, err := range events {
+			close(eventDelivered)
+			<-allowFailure
+			if err != nil {
+				gate.Fail(err)
+				return
+			}
+			gate.Fail(event.Error)
+			return
+		}
+	}()
+
+	select {
+	case <-eventDelivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for provider event delivery")
+	}
+	commitDone := make(chan error, 1)
+	go func() {
+		commitDone <- gate.Commit()
+	}()
+	select {
+	case err := <-commitDone:
+		t.Fatalf("Commit() returned before provider failure arbitration: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(allowFailure)
+	select {
+	case err := <-commitDone:
+		if !errors.Is(err, providerErr) {
+			t.Fatalf("Commit() error = %v, want provider error", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Commit()")
+	}
+	select {
+	case <-receiverDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for provider receiver")
+	}
+	if chunks := output.snapshot(); len(chunks) != 0 {
+		t.Fatalf("published chunks = %#v, want none", chunks)
+	}
+}
+
 func TestDoubaoASTTranslatePTTProviderErrorBeforeEOSDoesNotLeak(t *testing.T) {
 	providerErr := &doubaospeech.Error{Code: 500, Message: "provider failed before input EOS"}
+	terminalHandled := make(chan struct{})
+	allowRecvReturn := make(chan struct{})
 	providerDone := make(chan struct{})
+	var releaseRecv sync.Once
+	release := func() {
+		releaseRecv.Do(func() {
+			close(allowRecvReturn)
+		})
+	}
+	defer release()
 	input := newBufferStream(4)
 	tr := NewDoubaoASTTranslate(doubaospeech.NewClient("app-id"),
 		WithDoubaoASTTranslateMode(doubaospeech.ASTTranslateModeS2S),
 		WithDoubaoASTTranslateInputMode(DoubaoASTTranslateInputModePushToTalk),
 	)
 	fake := &fakeASTTranslateSession{
-		doneCh: providerDone,
+		yieldReturnedCh: terminalHandled,
+		allowRecvReturn: allowRecvReturn,
+		doneCh:          providerDone,
 		events: []*doubaospeech.ASTTranslateEvent{
 			{Type: doubaospeech.ASTEventTranslationSubtitleStart},
 			{Type: doubaospeech.ASTEventTranslationSubtitleResponse, Text: "must stay buffered"},
@@ -522,9 +598,9 @@ func TestDoubaoASTTranslatePTTProviderErrorBeforeEOSDoesNotLeak(t *testing.T) {
 		t.Fatalf("Push(audio): %v", err)
 	}
 	select {
-	case <-providerDone:
+	case <-terminalHandled:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for provider error")
+		t.Fatal("timed out waiting for provider terminal event handling")
 	}
 	if err := input.Push(&genx.MessageChunk{
 		Part: &genx.Blob{MIMEType: "audio/pcm"},
@@ -538,6 +614,18 @@ func TestDoubaoASTTranslatePTTProviderErrorBeforeEOSDoesNotLeak(t *testing.T) {
 	chunk, err := nextASTTranslateChunk(t, out)
 	if chunk != nil || !errors.Is(err, providerErr) {
 		t.Fatalf("Next() = chunk=%#v err=%v, want provider error without buffered output", chunk, err)
+	}
+	release()
+	select {
+	case <-providerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for provider receive cleanup")
+	}
+	fake.mu.Lock()
+	closed := fake.closed
+	fake.mu.Unlock()
+	if !closed {
+		t.Fatal("provider session was not closed after terminal failure")
 	}
 }
 
@@ -990,9 +1078,12 @@ func (o *recordingASTTranslateOutput) snapshot() []*genx.MessageChunk {
 }
 
 type fakeASTTranslateSession struct {
-	events            []*doubaospeech.ASTTranslateEvent
-	beforeRecv        chan struct{}
-	sentAudioNotify   chan struct{}
+	events          []*doubaospeech.ASTTranslateEvent
+	beforeRecv      chan struct{}
+	yieldReturnedCh chan struct{}
+	allowRecvReturn chan struct{}
+	sentAudioNotify chan struct{}
+
 	notifySentAudioAt int
 	closeCh           chan struct{}
 	doneCh            chan struct{}
@@ -1051,6 +1142,12 @@ func (s *fakeASTTranslateSession) Recv() iter.Seq2[*doubaospeech.ASTTranslateEve
 		}
 		for _, event := range s.events {
 			if !yield(event, nil) {
+				if s.yieldReturnedCh != nil {
+					close(s.yieldReturnedCh)
+				}
+				if s.allowRecvReturn != nil {
+					<-s.allowRecvReturn
+				}
 				return
 			}
 		}
