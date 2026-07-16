@@ -9,6 +9,8 @@ import 'rpc_client.dart';
 import 'service_http.dart';
 import 'transport.dart';
 
+const int _maxIconDownloadBytes = 2 * 1024 * 1024;
+
 /// Copies caller-controlled fields from a Workspace response into its write
 /// payload without carrying output-only lifecycle metadata.
 payload.WorkspaceUpsert workspaceUpsertFromWorkspace(
@@ -37,6 +39,13 @@ class PixaDownloadResult<T> {
   final T metadata;
   final Uint8List bytes;
   final PixaAsset asset;
+}
+
+class IconDownloadResult<T> {
+  const IconDownloadResult({required this.metadata, required this.bytes});
+
+  final T metadata;
+  final Uint8List bytes;
 }
 
 class GizClawClient {
@@ -348,6 +357,65 @@ class GizClawClient {
       metadata: metadata,
       bytes: bytes,
       asset: validatePixa(bytes, mode: PixaValidationMode.badgedef),
+    );
+  }
+
+  Future<IconDownloadResult<payload.WorkflowIconDownloadResponse>>
+  downloadWorkflowIcon(String name, enums.IconFormat format) async {
+    final response = await rpc.callBinary(
+      'server.workflow.icon.download',
+      payload.WorkflowIconDownloadRequest(name: name, format: format),
+      maxBodyBytes: _maxIconDownloadBytes,
+    );
+    return IconDownloadResult(
+      metadata: response.response as payload.WorkflowIconDownloadResponse,
+      bytes: Uint8List.fromList(response.body),
+    );
+  }
+
+  Future<IconDownloadResult<payload.WorkspaceIconDownloadResponse>>
+  downloadWorkspaceIcon(String name, enums.IconFormat format) async {
+    final response = await rpc.callBinary(
+      'server.workspace.icon.download',
+      payload.WorkspaceIconDownloadRequest(name: name, format: format),
+      maxBodyBytes: _maxIconDownloadBytes,
+    );
+    return IconDownloadResult(
+      metadata: response.response as payload.WorkspaceIconDownloadResponse,
+      bytes: Uint8List.fromList(response.body),
+    );
+  }
+
+  Future<IconDownloadResult<payload.ServerInfoIconDownloadResponse>>
+  downloadPeerIcon(enums.IconFormat format) async {
+    final response = await rpc.callBinary(
+      'server.info.icon.download',
+      payload.ServerInfoIconDownloadRequest(format: format),
+      maxBodyBytes: _maxIconDownloadBytes,
+    );
+    return IconDownloadResult(
+      metadata: response.response as payload.ServerInfoIconDownloadResponse,
+      bytes: Uint8List.fromList(response.body),
+    );
+  }
+
+  Future<payload.ServerInfoIconUploadResponse> uploadPeerIcon(
+    enums.IconFormat format,
+    Uint8List bytes,
+  ) {
+    return rpc.callUpload<payload.ServerInfoIconUploadResponse>(
+      'server.info.icon.upload',
+      payload.ServerInfoIconUploadRequest(format: format),
+      bytes,
+    );
+  }
+
+  Future<payload.ServerInfoIconDeleteResponse> deletePeerIcon(
+    enums.IconFormat format,
+  ) {
+    return rpc.call<payload.ServerInfoIconDeleteResponse>(
+      'server.info.icon.delete',
+      payload.ServerInfoIconDeleteRequest(format: format),
     );
   }
 }

@@ -80,6 +80,9 @@ type Server struct {
 	BadgeDefStore                kv.Store
 	GameDefStore                 kv.Store
 	GameplayAssets               objectstore.ObjectStore
+	PeerAssets                   objectstore.ObjectStore
+	WorkspaceAssets              objectstore.ObjectStore
+	WorkflowAssets               objectstore.ObjectStore
 	GameplayDB                   *sqlx.DB
 	MetricsStore                 metrics.Store
 	ServerLogQuery               ServerLogQueryService
@@ -302,18 +305,21 @@ func (s *Server) startCleanup() {
 	}()
 }
 
-func (s *Server) init() error {
-	if s == nil {
-		return errors.New("gizclaw: nil server")
+// EffectivePeerStore returns the peer KV layout used by the server runtime.
+// Legacy single-KV configurations keep peer records under the peers prefix;
+// peer, workspace, and workflow icon stores do not change that layout.
+func (s *Server) EffectivePeerStore() kv.Store {
+	if s == nil || s.PeerStore == nil {
+		return nil
 	}
-	switch {
-	case s.LocalStatic.Private.IsZero():
-		return errors.New("gizclaw: empty local static private key")
-	case s.PeerStore == nil:
-		return errors.New("gizclaw: nil peer store")
+	if s.usesLegacySharedStore() {
+		return kv.Prefixed(s.PeerStore, kv.Key{"peers"})
 	}
+	return s.PeerStore
+}
 
-	legacySharedStore := s.CredentialStore == nil &&
+func (s *Server) usesLegacySharedStore() bool {
+	return s.CredentialStore == nil &&
 		s.FirmwareStore == nil &&
 		s.AgentHostStore == nil &&
 		s.MiniMaxTenantStore == nil &&
@@ -345,10 +351,20 @@ func (s *Server) init() error {
 		s.FriendGroupMessageMaxTTL == 0 &&
 		s.FriendGroupMessageCleanup == 0 &&
 		s.FriendGroupMessageMaxBytes == 0
-	peerStore := s.PeerStore
-	if legacySharedStore {
-		peerStore = kv.Prefixed(s.PeerStore, kv.Key{"peers"})
+}
+
+func (s *Server) init() error {
+	if s == nil {
+		return errors.New("gizclaw: nil server")
 	}
+	switch {
+	case s.LocalStatic.Private.IsZero():
+		return errors.New("gizclaw: empty local static private key")
+	case s.PeerStore == nil:
+		return errors.New("gizclaw: nil peer store")
+	}
+
+	peerStore := s.EffectivePeerStore()
 	credentialStore := moduleStore(s.CredentialStore, s.PeerStore, "credentials")
 	firmwareStore := moduleStore(s.FirmwareStore, s.PeerStore, "firmwares")
 	miniMaxCredentialStore := moduleStore(s.MiniMaxCredentialStore, credentialStore, "")
@@ -387,6 +403,7 @@ func (s *Server) init() error {
 		ICETCP:          s.PublicICETCP,
 		ICEServers:      s.ICEServers,
 		DefaultPeerView: s.DefaultPeerView,
+		Assets:          s.PeerAssets,
 	}
 	manager := NewManager(peersServer)
 	manager.PetWorkflow = s.PetWorkflow
@@ -403,8 +420,8 @@ func (s *Server) init() error {
 		return err
 	}
 
-	workflowServer := &workflow.Server{Store: workflowStore}
-	workspaceServer := &workspace.Server{Store: workspaceStore, WorkflowStore: workflowStore}
+	workflowServer := &workflow.Server{Store: workflowStore, Assets: s.WorkflowAssets}
+	workspaceServer := &workspace.Server{Store: workspaceStore, WorkflowStore: workflowStore, Assets: s.WorkspaceAssets}
 	if s.AgentHostStore != nil {
 		workspaceServer.RuntimeStore = workspace.NewObjectRuntimeStore(s.AgentHostStore)
 	}
@@ -520,15 +537,19 @@ func (s *Server) init() error {
 			CredentialAdminService:      credentialServer,
 			FirmwareAdminService:        firmwareServer,
 			PeerAdminService:            peersServer,
+			PeerIconAdminService:        peersServer,
 			ModelAdminService:           modelServer,
 			VoiceAdminService:           voiceServer,
 			ProviderTenantsAdminService: providerTenantsServer,
 			WorkspaceAdminService:       workspaceServer,
+			WorkspaceIconAdminService:   workspaceServer,
 			WorkflowAdminService:        workflowServer,
+			WorkflowIconAdminService:    workflowServer,
 			Contacts:                    contactServer,
 			Friends:                     friendServer,
 			FriendGroups:                friendGroupServer,
 			CatalogAdminService:         gameplayCatalog,
+			GameDefIconAdminService:     gameplayCatalog,
 			Gameplay:                    gameplayRuntime,
 			ACL:                         aclServer,
 			ResourceManager:             resourceManager,

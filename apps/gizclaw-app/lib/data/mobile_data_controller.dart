@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data' as typed_data;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -157,6 +158,7 @@ class MobileDataController extends ChangeNotifier {
       {};
   PeerRunWorkspaceState? runWorkspaceState;
   Workspace? activeWorkspaceDocument;
+  typed_data.Uint8List? peerIconPng;
 
   WorkspaceChatController? get activeWorkspaceChat => _activeWorkspaceChat;
   String? get activeWorkspaceName {
@@ -470,6 +472,7 @@ class MobileDataController extends ChangeNotifier {
     _friendGroupChats = const [];
     runWorkspaceState = null;
     activeWorkspaceDocument = null;
+    peerIconPng = null;
     lastError = null;
     unawaited(start());
   }
@@ -608,6 +611,7 @@ class MobileDataController extends ChangeNotifier {
             continue;
           }
           await _syncRunWorkspace(client);
+          await _refreshPeerIcon(client);
           connectionState = MobileConnectionState.connected;
           if (warnings.isNotEmpty) {
             lastError = warnings.first;
@@ -655,6 +659,36 @@ class MobileDataController extends ChangeNotifier {
       reconnect: _reconnect,
       retryOnTransportError: retryOnTransportError,
     );
+  }
+
+  Future<void> uploadPeerIconPng(typed_data.Uint8List bytes) async {
+    await runRpc(
+      (client) => client.uploadPeerIcon(IconFormat.ICON_FORMAT_PNG, bytes),
+    );
+    peerIconPng = typed_data.Uint8List.fromList(bytes);
+    notifyListeners();
+  }
+
+  Future<void> deletePeerIconPng() async {
+    await runRpc((client) => client.deletePeerIcon(IconFormat.ICON_FORMAT_PNG));
+    peerIconPng = null;
+    notifyListeners();
+  }
+
+  Future<void> _refreshPeerIcon(GizClawClient client) async {
+    try {
+      final result = await client.downloadPeerIcon(IconFormat.ICON_FORMAT_PNG);
+      peerIconPng = result.bytes;
+    } catch (error) {
+      if (error is RpcError && error.code == 404) {
+        peerIconPng = null;
+        return;
+      }
+      assert(() {
+        debugPrint('Peer icon refresh failed: $error');
+        return true;
+      }());
+    }
   }
 
   Future<void> recoverTransport() async {
@@ -751,6 +785,7 @@ class MobileDataController extends ChangeNotifier {
       }
       lastError = null;
       if (serverId != activeServerId) {
+        peerIconPng = null;
         await _watchServer(serverId);
       }
       await refresh(client: client, serverId: serverId);

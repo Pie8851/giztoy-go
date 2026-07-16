@@ -136,6 +136,7 @@ func resourceFromWorkflow(_ string, item apitypes.Workflow) (apitypes.Resource, 
 		Kind:       apitypes.WorkflowResourceKind(apitypes.ResourceKindWorkflow),
 		Metadata:   apitypes.ResourceMetadata{Name: item.Name},
 		I18n:       item.I18n,
+		Icon:       item.Icon,
 		Spec:       item.Spec,
 	})
 }

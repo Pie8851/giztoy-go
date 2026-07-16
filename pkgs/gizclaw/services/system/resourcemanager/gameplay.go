@@ -124,7 +124,14 @@ func (m *Manager) applyGameDef(ctx context.Context, resource apitypes.Resource) 
 		return apitypes.ApplyResult{}, err
 	}
 	if exists {
-		same, err := semanticEqual(existing.Spec, item.Spec)
+		same, err := semanticEqual(
+			struct {
+				Spec apitypes.GameDefSpec `json:"spec"`
+			}{Spec: existing.Spec},
+			struct {
+				Spec apitypes.GameDefSpec `json:"spec"`
+			}{Spec: item.Spec},
+		)
 		if err != nil {
 			return apitypes.ApplyResult{}, applyError(500, "RESOURCE_COMPARE_FAILED", err.Error())
 		}
@@ -410,6 +417,7 @@ func resourceFromGameDef(item apitypes.GameDef) (apitypes.Resource, error) {
 		ApiVersion: apitypes.ResourceAPIVersionGizclawAdminv1alpha1,
 		Kind:       apitypes.GameDefResourceKind(apitypes.ResourceKindGameDef),
 		Metadata:   apitypes.ResourceMetadata{Name: item.Id},
+		Icon:       item.Icon,
 		Spec:       item.Spec,
 	})
 }
