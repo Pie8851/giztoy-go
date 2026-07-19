@@ -6,5 +6,9 @@ generate:
   models: true
 import-mapping:
   ./shared.json: github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/apitypes
+  ./shared/server.json: github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcapi
 output-options:
   skip-prune: true
+  user-templates:
+    client.tmpl: ./templates/client.tmpl
+    client-with-responses.tmpl: ./templates/client-with-responses.tmpl
