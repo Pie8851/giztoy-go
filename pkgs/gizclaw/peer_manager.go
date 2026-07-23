@@ -38,13 +38,17 @@ import (
 )
 
 var (
-	ErrDeviceOffline = errors.New("gizclaw: device offline")
-	errNoRefreshData = errors.New("gizclaw: no refresh data")
+	ErrDeviceOffline      = errors.New("gizclaw: device offline")
+	ErrPeerConnNotActive  = errors.New("gizclaw: peer connection is not active")
+	errPeerConnActivating = errors.New("gizclaw: peer connection activation is in progress")
+	errNoRefreshData      = errors.New("gizclaw: no refresh data")
 )
 
 type activePeer struct {
 	conn         giznet.Conn
+	activating   giznet.Conn
 	registration *runtimeprofile.Registration
+	deleting     bool
 }
 
 type telemetryStatusLock struct {
@@ -167,6 +171,10 @@ func (m *Manager) allowActivePeerRole(ctx context.Context, publicKey giznet.Publ
 func (m *Manager) SetPeerUp(publicKey giznet.PublicKey, conn giznet.Conn) giznet.Conn {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.setPeerUpLocked(publicKey, conn)
+}
+
+func (m *Manager) setPeerUpLocked(publicKey giznet.PublicKey, conn giznet.Conn) giznet.Conn {
 	if m.peers == nil {
 		m.peers = make(map[giznet.PublicKey]*activePeer)
 	}
@@ -180,24 +188,139 @@ func (m *Manager) SetPeerUp(publicKey giznet.PublicKey, conn giznet.Conn) giznet
 		state.registration = nil
 	}
 	state.conn = conn
+	state.activating = nil
 	if oldConn == conn {
 		return nil
 	}
 	return oldConn
 }
 
-func (m *Manager) SetPeerRegistration(publicKey giznet.PublicKey, conn giznet.Conn, registration runtimeprofile.Registration) bool {
+func (m *Manager) activatePeer(ctx context.Context, conn giznet.Conn) (giznet.Conn, error) {
+	if m == nil || m.Peers == nil {
+		return nil, errors.New("gizclaw: peers service not configured")
+	}
+	if conn == nil {
+		return nil, errors.New("gizclaw: nil conn")
+	}
+	publicKey := conn.PublicKey()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.peers == nil {
 		m.peers = make(map[giznet.PublicKey]*activePeer)
 	}
 	state, ok := m.peers[publicKey]
 	if !ok {
-		state = &activePeer{conn: conn}
+		state = &activePeer{}
 		m.peers[publicKey] = state
 	}
-	if state.conn != conn {
+	if state.deleting {
+		m.mu.Unlock()
+		return nil, ErrPeerConnRetiring
+	}
+	if state.activating != nil {
+		m.mu.Unlock()
+		return nil, errPeerConnActivating
+	}
+	state.activating = conn
+	m.mu.Unlock()
+
+	if err := m.ensureActivatingPeer(ctx, publicKey, state, conn); err != nil {
+		m.mu.Lock()
+		if current, currentOK := m.peers[publicKey]; currentOK && current == state && current.activating == conn {
+			current.activating = nil
+			if current.conn == nil {
+				delete(m.peers, publicKey)
+			}
+		}
+		m.mu.Unlock()
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, currentOK := m.peers[publicKey]
+	if !currentOK || current != state || current.activating != conn {
+		return nil, ErrPeerConnNotActive
+	}
+	current.activating = nil
+	if current.deleting {
+		return nil, ErrPeerConnRetiring
+	}
+	oldConn := current.conn
+	if oldConn != conn {
+		current.registration = nil
+	}
+	current.conn = conn
+	return oldConn, nil
+}
+
+func (m *Manager) ensureActivatingPeer(ctx context.Context, publicKey giznet.PublicKey, state *activePeer, conn giznet.Conn) error {
+	_, err := m.Peers.EnsureConnectedPeerGuarded(ctx, publicKey, func() error {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		current, currentOK := m.peers[publicKey]
+		if !currentOK || current != state || current.activating != conn {
+			return ErrPeerConnNotActive
+		}
+		if current.deleting {
+			return ErrPeerConnRetiring
+		}
+		return nil
+	})
+	return err
+}
+
+func (m *Manager) deleteActivePeer(ctx context.Context, publicKey giznet.PublicKey, conn giznet.Conn, beginRetiring func() func()) error {
+	if m == nil || m.Peers == nil {
+		return errors.New("gizclaw: peers service not configured")
+	}
+	m.mu.Lock()
+	state, ok := m.peers[publicKey]
+	if !ok || state.conn != conn || state.deleting {
+		m.mu.Unlock()
+		return ErrPeerConnNotActive
+	}
+	previousRegistration := state.registration
+	state.registration = nil
+	state.deleting = true
+	var rollbackRetiring func()
+	if beginRetiring != nil {
+		rollbackRetiring = beginRetiring()
+	}
+	m.mu.Unlock()
+
+	if err := m.Peers.DeleteSelf(ctx, publicKey); err != nil {
+		m.mu.Lock()
+		current, currentOK := m.peers[publicKey]
+		if currentOK && current == state && current.deleting {
+			current.deleting = false
+			if current.conn == conn {
+				current.registration = previousRegistration
+				if rollbackRetiring != nil {
+					rollbackRetiring()
+				}
+			} else if current.conn == nil && current.activating == nil {
+				delete(m.peers, publicKey)
+			}
+		}
+		m.mu.Unlock()
+		return err
+	}
+	m.mu.Lock()
+	if current, currentOK := m.peers[publicKey]; currentOK && current == state && current.deleting {
+		delete(m.peers, publicKey)
+	}
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) SetPeerRegistration(publicKey giznet.PublicKey, conn giznet.Conn, registration runtimeprofile.Registration) bool {
+	return m.setPeerRegistrationIfActive(publicKey, conn, registration, nil)
+}
+
+func (m *Manager) setPeerRegistrationIfActive(publicKey giznet.PublicKey, conn giznet.Conn, registration runtimeprofile.Registration, accept func() bool) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state, ok := m.peers[publicKey]
+	if !ok || state.conn != conn || state.deleting || accept != nil && !accept() {
 		return false
 	}
 	copy := registration
@@ -205,11 +328,24 @@ func (m *Manager) SetPeerRegistration(publicKey giznet.PublicKey, conn giznet.Co
 	return true
 }
 
+func (m *Manager) retirePeer(publicKey giznet.PublicKey, conn giznet.Conn, retire func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if retire != nil {
+		retire()
+	}
+	state, ok := m.peers[publicKey]
+	if !ok || state.conn != conn {
+		return
+	}
+	delete(m.peers, publicKey)
+}
+
 func (m *Manager) PeerRegistration(publicKey giznet.PublicKey) (runtimeprofile.Registration, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	state, ok := m.peers[publicKey]
-	if !ok || state.conn == nil || state.registration == nil {
+	if !ok || state.conn == nil || state.deleting || state.registration == nil {
 		return runtimeprofile.Registration{}, false
 	}
 	return *state.registration, true
@@ -241,12 +377,26 @@ func (m *Manager) SetPeerDown(publicKey giznet.PublicKey, conn giznet.Conn) {
 	if !ok || state.conn != conn {
 		return
 	}
+	if state.deleting || state.activating != nil {
+		state.conn = nil
+		state.registration = nil
+		return
+	}
 	delete(m.peers, publicKey)
 }
 
 func (m *Manager) ForcePeerDown(publicKey giznet.PublicKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	state, ok := m.peers[publicKey]
+	if !ok {
+		return
+	}
+	if state.deleting || state.activating != nil {
+		state.conn = nil
+		state.registration = nil
+		return
+	}
 	delete(m.peers, publicKey)
 }
 
@@ -254,7 +404,7 @@ func (m *Manager) Peer(publicKey giznet.PublicKey) (giznet.Conn, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	state, ok := m.peers[publicKey]
-	if !ok || state.conn == nil {
+	if !ok || state.conn == nil || state.deleting {
 		return nil, false
 	}
 	return state.conn, true
@@ -264,21 +414,19 @@ func (m *Manager) PeerRuntime(_ context.Context, publicKey giznet.PublicKey) api
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	state, ok := m.peers[publicKey]
-	if !ok {
+	if !ok || state.conn == nil || state.deleting {
 		return apitypes.Runtime{}
 	}
 	runtime := apitypes.Runtime{
 		Online: true,
 	}
-	if state.conn != nil {
-		if info := state.conn.PeerInfo(); info != nil {
-			runtime.LastSeenAt = info.LastSeen
-			runtime.RxBytes = &info.RxBytes
-			runtime.TxBytes = &info.TxBytes
-			if info.Endpoint != nil {
-				lastAddr := info.Endpoint.String()
-				runtime.LastAddr = &lastAddr
-			}
+	if info := state.conn.PeerInfo(); info != nil {
+		runtime.LastSeenAt = info.LastSeen
+		runtime.RxBytes = &info.RxBytes
+		runtime.TxBytes = &info.TxBytes
+		if info.Endpoint != nil {
+			lastAddr := info.Endpoint.String()
+			runtime.LastAddr = &lastAddr
 		}
 	}
 	return runtime
@@ -337,7 +485,7 @@ func (m *Manager) peerRPCConn(publicKey giznet.PublicKey) (net.Conn, error) {
 	m.mu.RLock()
 	state, ok := m.peers[publicKey]
 	var peerConn giznet.Conn
-	if ok {
+	if ok && !state.deleting {
 		peerConn = state.conn
 	}
 	m.mu.RUnlock()

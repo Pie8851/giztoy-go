@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -24,11 +25,12 @@ func TestPostgresGameplayContract(t *testing.T) {
 	catalog := testCatalog(t, now)
 	profile := seedGameplayCatalog(t, ctx, catalog)
 	ctx = WithRuntimeProfile(ctx, profile)
+	workspaces := &recordingWorkspaceService{}
 	runtime := &Runtime{
 		DB:         db,
 		Catalog:    catalog,
 		Workflows:  petWorkflowService{},
-		Workspaces: &recordingWorkspaceService{},
+		Workspaces: workspaces,
 		Now:        func() time.Time { return now },
 		NewID:      sequentialIDs("pet-postgres", "adopt-txn", "game-result", "reward-grant", "drive-txn", "reward-txn"),
 		PickWeight: func(int64) int64 { return 0 },
@@ -134,6 +136,27 @@ func TestPostgresGameplayContract(t *testing.T) {
 	secondPage, err := runtime.ListPets(ctx, "peer-postgres", apitypes.GameplayListRequest{Limit: &limit, Cursor: firstPage.NextCursor})
 	if err != nil || len(secondPage.Items) != 1 || secondPage.HasNext {
 		t.Fatalf("ListPets(second page) = %#v, %v", secondPage, err)
+	}
+	if _, err := runtime.DeletePet(ctx, "peer-postgres", adopted.Pet.Id); err != nil {
+		t.Fatalf("DeletePet() error = %v", err)
+	}
+	if len(workspaces.deleted) != 0 {
+		t.Fatalf("DeletePet() deleted bound Workspace: %#v", workspaces.deleted)
+	}
+	allowed, err := runtime.OwnerHasPetWorkspace(ctx, "peer-postgres", adopted.Pet.WorkspaceName)
+	if err != nil || !allowed {
+		t.Fatalf("OwnerHasPetWorkspace() after delete = %v, %v", allowed, err)
+	}
+	workspaceNames, err := runtime.ListPetWorkspaceNames(ctx, "peer-postgres")
+	if err != nil || !slices.Contains(workspaceNames, adopted.Pet.WorkspaceName) {
+		t.Fatalf("ListPetWorkspaceNames() after delete = %#v, %v", workspaceNames, err)
+	}
+	var pendingRows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM gameplay_pending_deletions WHERE kind = 'pet' AND owner_public_key = $1 AND resource_id = $2`, "peer-postgres", adopted.Pet.Id).Scan(&pendingRows); err != nil {
+		t.Fatalf("count pending Pet deletions: %v", err)
+	}
+	if pendingRows != 1 {
+		t.Fatalf("pending Pet deletions = %d, want 1", pendingRows)
 	}
 
 	tx, err := db.BeginTxx(ctx, nil)
@@ -448,7 +471,9 @@ func openGameplayPostgresTestDB(t *testing.T) *sqlx.DB {
 func dropGameplayPostgresTables(t *testing.T, ctx context.Context, db *sqlx.DB) {
 	t.Helper()
 	for _, table := range []string{
+		"gameplay_pending_deletions",
 		"gameplay_pet_drive_ticks",
+		"gameplay_pet_workspace_bindings",
 		"gameplay_pet_adoption_reservations",
 		"gameplay_reward_grants",
 		"gameplay_game_results",

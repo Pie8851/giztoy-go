@@ -83,6 +83,10 @@ type PeerService struct {
 var _ peerhttp.StrictServerInterface = (*peerHTTP)(nil)
 
 func (s *PeerService) ServeConn(conn giznet.Conn) error {
+	return s.serveConn(conn, nil)
+}
+
+func (s *PeerService) serveConn(conn giznet.Conn, isRetiring func() bool) error {
 	if s == nil {
 		return errors.New("gizclaw: nil peer service")
 	}
@@ -95,20 +99,23 @@ func (s *PeerService) ServeConn(conn giznet.Conn) error {
 	if err := s.validateServices(); err != nil {
 		return err
 	}
-	if err := s.ensureConnectedPeer(context.Background(), conn); err != nil {
+	oldConn, err := s.activateConn(context.Background(), conn)
+	if err != nil {
 		return err
 	}
 	publicKey := conn.PublicKey()
-	oldConn := s.manager.SetPeerUp(publicKey, conn)
 	defer s.manager.SetPeerDown(publicKey, conn)
 	if oldConn != nil {
 		_ = oldConn.Close()
 	}
+	return s.serveActiveConn(conn, isRetiring)
+}
 
+func (s *PeerService) serveActiveConn(conn giznet.Conn, isRetiring func() bool) error {
 	errCh := make(chan error, 3)
-	go func() { errCh <- s.serveAdmin(conn) }()
-	go func() { errCh <- s.servePublic(conn) }()
-	go func() { errCh <- s.serveEdgePublic(conn) }()
+	go func() { errCh <- s.serveAdminWithRetiring(conn, isRetiring) }()
+	go func() { errCh <- s.servePublicWithRetiring(conn, isRetiring) }()
+	go func() { errCh <- s.serveEdgePublicWithRetiring(conn, isRetiring) }()
 
 	var errs []error
 	for i := 0; i < 3; i++ {
@@ -123,19 +130,18 @@ func (s *PeerService) ServeConn(conn giznet.Conn) error {
 	return errors.Join(errs...)
 }
 
+func (s *PeerService) activateConn(ctx context.Context, conn giznet.Conn) (giznet.Conn, error) {
+	if s == nil || s.manager == nil {
+		return nil, errors.New("gizclaw: nil manager")
+	}
+	return s.manager.activatePeer(ctx, conn)
+}
+
 func isPeerServiceClosed(err error) bool {
 	return errors.Is(err, net.ErrClosed) ||
 		errors.Is(err, giznet.ErrClosed) ||
 		errors.Is(err, giznet.ErrConnClosed) ||
 		errors.Is(err, giznet.ErrServiceMuxClosed)
-}
-
-func (s *PeerService) ensureConnectedPeer(ctx context.Context, conn giznet.Conn) error {
-	if s == nil || s.manager == nil {
-		return nil
-	}
-	_, err := s.manager.EnsurePeer(ctx, conn.PublicKey())
-	return err
 }
 
 func (s *PeerService) validateServices() error {

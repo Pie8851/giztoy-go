@@ -5906,7 +5906,7 @@ export type CreateWorkspaceErrors = {
      */
     400: ErrorResponse;
     /**
-     * Workspace already exists
+     * Workspace already exists or is pending deletion
      */
     409: ErrorResponse;
     /**
@@ -6015,6 +6015,10 @@ export type PutWorkspaceErrors = {
      * Invalid workspace payload
      */
     400: ErrorResponse;
+    /**
+     * Workspace name is pending deletion
+     */
+    409: ErrorResponse;
     /**
      * Internal error
      */
@@ -6377,6 +6381,10 @@ export type DeletePeerErrors = {
      * Peer not found
      */
     404: ErrorResponse;
+    /**
+     * Internal error
+     */
+    500: ErrorResponse;
 };
 
 export type DeletePeerError = DeletePeerErrors[keyof DeletePeerErrors];

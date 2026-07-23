@@ -26,6 +26,8 @@
 | `retainTelemetryStatusLock` / `releaseTelemetryStatusLock` | 按 public key 管理 telemetry status 更新锁的生命周期。 |
 | `applyPeerRefreshInfo` / `applyPeerRefreshIdentifiers` | 将 RPC refresh response 合并到持久化 Peer model。 |
 
+Connection activation 会先在 Manager 锁内为 public key 建立 reservation，再在不持有全局锁的情况下确保 durable Peer generation，并且只在 reservation 仍属于当前 connection 时发布它。durable ensure 会在持有 per-Peer record lock 时再次校验 reservation，因此排在 self-delete 后等待的 activation 不能重建已删除记录。尚未发布 connection 的 reservation 处于离线状态。replacement 正在执行 durable ensure 时，原 generation 继续可用；强制下线会清除原 generation，但不会丢弃 replacement reservation；新 connection 只有发布完成后才会启动 transport service loop。registration 更新只接受准确的 active connection，绝不会重新创建缺失条目。connection-scoped self-delete 会先在 Manager 锁内发布该 Peer 的 deleting 状态，再在不持有全局 Manager 锁的情况下执行 durable store mutation，最后只对同一 connection generation 条件摘除或失败回滚。replacement activation、registration 与 Server 主动发起的 Peer RPC 都会拒绝 deleting generation，其他 Peer 则保持可用。
+
 ## 设备元数据归属
 
 `client.info.get` 只反向刷新 `HardwareInfo`（`hardware_revision`、`manufacturer`、`model`）。`client.identifiers.get` 只反向刷新 `DeviceIdentifiers`（`sn`、`imeis`、`labels`）。由 Server 持有的个人资料字段 `name` 与 `emoji` 通过 `server.info.put` 修改，不会被反向刷新覆盖。`name` 必须是有效 UTF-8 且不超过 256 bytes，`emoji` 必须是有效 UTF-8 且不超过 64 bytes。

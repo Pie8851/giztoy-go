@@ -414,19 +414,14 @@ func (s *Server) domainWorkspaceNames(ctx context.Context) ([]string, error) {
 			return orderedUnique(names, nil), nil
 		}
 		profileCtx := gameplay.WithRuntimeProfile(ctx, *profile)
-		var cursor *string
-		for {
-			page, err := s.Gameplay.ListPets(profileCtx, owner, apitypes.GameplayListRequest{Cursor: cursor, Limit: &limit})
-			if err != nil {
-				return nil, err
+		petWorkspaceNames, err := s.Gameplay.ListPetWorkspaceNames(profileCtx, owner)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range petWorkspaceNames {
+			if name = strings.TrimSpace(name); name != "" {
+				names = append(names, name)
 			}
-			for _, item := range page.Items {
-				names = append(names, strings.TrimSpace(item.WorkspaceName))
-			}
-			if !page.HasNext || page.NextCursor == nil {
-				break
-			}
-			cursor = page.NextCursor
 		}
 	}
 	return orderedUnique(names, nil), nil

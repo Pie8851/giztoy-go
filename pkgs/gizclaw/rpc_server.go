@@ -24,6 +24,7 @@ type rpcPeerService interface {
 	PutSelfInfo(context.Context, giznet.PublicKey, apitypes.DeviceInfo) (apitypes.DeviceInfo, error)
 	GetSelfRuntime(context.Context, giznet.PublicKey) apitypes.Runtime
 	BindFirmware(context.Context, giznet.PublicKey, string) (apitypes.Peer, error)
+	DeleteSelf(context.Context, giznet.PublicKey) error
 }
 
 type rpcPeerRunService interface {
@@ -66,6 +67,10 @@ type rpcServer struct {
 	onRegistration     func(runtimeprofile.Registration)
 	registrationSource string
 	callerPublicKey    giznet.PublicKey
+	deletePeerSelf     func(context.Context) error
+	isPeerRetiring     func() bool
+	onPeerRetiring     func()
+	onPeerDeleted      func()
 }
 
 func (s *rpcServer) Handle(conn net.Conn) error {
@@ -81,6 +86,12 @@ func (s *rpcServer) Handle(conn net.Conn) error {
 func (s *rpcServer) dispatchStream(ctx context.Context, stream *rpcStream, req *rpcapi.RPCRequest) (bool, error) {
 	if req == nil {
 		return false, nil
+	}
+	if s.isPeerRetiring != nil && s.isPeerRetiring() {
+		if err := stream.drainRequest(); err != nil {
+			return true, err
+		}
+		return true, writeRPCErrorResponse(stream, req.Id, rpcapi.RPCErrorCodeConflict, ErrPeerConnRetiring.Error())
 	}
 	switch req.Method {
 	case rpcapi.RPCMethodAllSpeedTestRun:
@@ -99,6 +110,8 @@ func (s *rpcServer) dispatchStream(ctx context.Context, stream *rpcStream, req *
 		return true, s.handleWorkspaceIconDownload(ctx, stream, req)
 	case rpcapi.RPCMethodServerWorkspaceHistoryAudioGet:
 		return true, s.handleWorkspaceHistoryAudioGet(ctx, stream, req)
+	case rpcapi.RPCMethodServerPeerDelete:
+		return true, s.handlePeerDelete(ctx, stream, req)
 	default:
 		return false, nil
 	}
@@ -107,6 +120,9 @@ func (s *rpcServer) dispatchStream(ctx context.Context, stream *rpcStream, req *
 func (s *rpcServer) dispatch(ctx context.Context, req *rpcapi.RPCRequest) (*rpcapi.RPCResponse, error) {
 	if req == nil {
 		return rpcapi.Error{Code: rpcapi.RPCErrorCodeInvalidRequest, Message: "nil request"}.RPCResponse(), nil
+	}
+	if s.isPeerRetiring != nil && s.isPeerRetiring() {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeConflict, Message: ErrPeerConnRetiring.Error()}.RPCResponse(), nil
 	}
 	switch req.Method {
 	case rpcapi.RPCMethodAllPing:
