@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/adminhttp"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/internal/socialutil"
+	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/services/system/ownership"
 	"github.com/GizClaw/gizclaw-go/pkgs/giznet"
 	"github.com/GizClaw/gizclaw-go/pkgs/store/kv"
 )
@@ -25,14 +28,17 @@ type ProfileService interface {
 }
 
 type Server struct {
-	InviteTokens kv.Store
-	Friends      kv.Store
-	Workspaces   WorkspaceService
-	Profiles     ProfileService
+	InviteTokens           kv.Store
+	Friends                kv.Store
+	Workspaces             WorkspaceService
+	Profiles               ProfileService
+	RuntimeProfileForOwner func(context.Context, string) (apitypes.RuntimeProfile, error)
 
 	Now   func() time.Time
 	NewID func() string
 }
+
+var relationMutationMu [64]sync.Mutex
 
 func (s *Server) GetFriendInfo(ctx context.Context, owner string, req rpcapi.FriendInfoGetRequest) (rpcapi.FriendInfoGetResponse, error) {
 	relation, err := s.GetFriendRelation(ctx, owner, req.Id)
@@ -135,12 +141,18 @@ func (s *Server) AddFriend(ctx context.Context, owner string, req rpcapi.FriendA
 		return rpcapi.FriendAddResponse{}, errors.New("social: cannot friend self")
 	}
 	relationID := socialutil.RelationID(owner, to)
+	unlock := s.lockRelation(relationID)
+	defer unlock()
 	if existing, err := s.GetFriendRelation(ctx, owner, relationID); err == nil {
+		workspaceName := socialutil.DirectWorkspaceName(relationID)
+		if socialutil.StringValue(existing.WorkspaceName) != workspaceName {
+			return rpcapi.FriendAddResponse{}, errors.New("social: existing friend has a different Workspace domain binding")
+		}
 		return existing, nil
 	} else if !errors.Is(err, kv.ErrNotFound) {
 		return rpcapi.FriendAddResponse{}, err
 	}
-	workspaceName, rollback, err := s.ensureDirectChatWorkspace(ctx, owner, to)
+	workspaceName, rollback, err := s.ensureDirectChatWorkspace(ctx, owner, to, to)
 	if err != nil {
 		return rpcapi.FriendAddResponse{}, err
 	}
@@ -164,12 +176,18 @@ func (s *Server) AdminCreateFriend(ctx context.Context, owner string, peerPublic
 		return rpcapi.FriendObject{}, errors.New("social: cannot friend self")
 	}
 	relationID := socialutil.RelationID(owner, peerPublicKey)
+	unlock := s.lockRelation(relationID)
+	defer unlock()
 	if existing, err := s.GetFriendRelation(ctx, owner, relationID); err == nil {
+		workspaceName := socialutil.DirectWorkspaceName(relationID)
+		if socialutil.StringValue(existing.WorkspaceName) != workspaceName {
+			return rpcapi.FriendObject{}, errors.New("social: existing friend has a different Workspace domain binding")
+		}
 		return existing, nil
 	} else if !errors.Is(err, kv.ErrNotFound) {
 		return rpcapi.FriendObject{}, err
 	}
-	workspaceName, rollback, err := s.ensureDirectChatWorkspace(ctx, owner, peerPublicKey)
+	workspaceName, rollback, err := s.ensureDirectChatWorkspace(ctx, owner, peerPublicKey, owner)
 	if err != nil {
 		return rpcapi.FriendObject{}, err
 	}
@@ -181,6 +199,14 @@ func (s *Server) AdminCreateFriend(ctx context.Context, owner string, peerPublic
 		return rpcapi.FriendObject{}, err
 	}
 	return friend, nil
+}
+
+func (s *Server) lockRelation(relationID string) func() {
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(relationID))
+	mu := &relationMutationMu[hash.Sum32()%uint32(len(relationMutationMu))]
+	mu.Lock()
+	return mu.Unlock
 }
 
 func (s *Server) AdminListFriends(ctx context.Context, cursor *string, limit *int) (adminhttp.AdminFriendListResponse, error) {
@@ -397,19 +423,26 @@ func (s *Server) createFriendRows(ctx context.Context, from, to, workspaceName s
 	return ownerRow, nil
 }
 
-func (s *Server) ensureDirectChatWorkspace(ctx context.Context, from, to string) (string, func(), error) {
-	if from == "" || to == "" {
+func (s *Server) ensureDirectChatWorkspace(ctx context.Context, from, to, owner string) (string, func(), error) {
+	if from == "" || to == "" || strings.TrimSpace(owner) == "" {
 		return "", nil, errors.New("social: friend peers are required")
 	}
 	workspaceName := socialutil.DirectWorkspaceName(socialutil.RelationID(from, to))
 	created := false
 	if s.Workspaces != nil {
+		if s.RuntimeProfileForOwner == nil {
+			return "", nil, errors.New("social: runtime profile resolver is not configured")
+		}
+		profile, err := s.RuntimeProfileForOwner(ctx, owner)
+		if err != nil {
+			return "", nil, err
+		}
 		body := adminhttp.WorkspaceUpsert{
 			Name:         workspaceName,
-			WorkflowName: socialutil.ChatRoomWorkflowName,
+			WorkflowName: profile.Spec.Workflows.System.FriendChatroom,
 			Parameters:   socialutil.ChatRoomWorkspaceParameters(apitypes.ChatRoomModeDirect),
 		}
-		_, wasCreated, err := s.Workspaces.CreateSystemWorkspace(ctx, body)
+		_, wasCreated, err := s.Workspaces.CreateSystemWorkspace(ownership.WithOwner(ctx, owner), body)
 		if err != nil {
 			return "", nil, err
 		}

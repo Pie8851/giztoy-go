@@ -38,6 +38,7 @@ const (
 var (
 	errInvalidLoginAssertion = errors.New("publiclogin: invalid login assertion")
 	errInvalidSession        = errors.New("publiclogin: invalid session")
+	errOwnerProfileBinding   = errors.New("publiclogin: owner profile binding failed")
 	ErrPublicKeyMismatch     = errors.New("publiclogin: public key mismatch")
 )
 
@@ -66,12 +67,15 @@ type SessionAuthorizer func(context.Context, giznet.PublicKey) error
 
 type RegistrationResolver func(context.Context, string) (runtimeprofile.Registration, error)
 
+type OwnerProfileBinder func(context.Context, string, string, func() error) error
+
 type Server struct {
 	KeyPair *giznet.KeyPair
 	Store   kv.Store
 
 	SessionAuthorizer    SessionAuthorizer
 	RegistrationResolver RegistrationResolver
+	OwnerProfileBinder   OwnerProfileBinder
 
 	mu       sync.Mutex
 	sessions *SessionManager
@@ -138,13 +142,29 @@ func (s *Server) login(ctx context.Context, request peerhttp.LoginRequestObject,
 				registration = &resolved
 			}
 		}
-		result, err = s.SessionManager().loginWithRegistration(ctx, s.KeyPair, publicKey, assertion, authorizer, registration)
+		var commitOwnerProfile func(func() error) error
+		if registration != nil {
+			commitOwnerProfile = func(commit func() error) error {
+				if s.OwnerProfileBinder == nil {
+					return fmt.Errorf("%w: binder is not configured", errOwnerProfileBinding)
+				}
+				if err := s.OwnerProfileBinder(ctx, publicKey.String(), registration.RuntimeProfile.Name, commit); err != nil {
+					return fmt.Errorf("%w: %v", errOwnerProfileBinding, err)
+				}
+				return nil
+			}
+		}
+		result, err = s.SessionManager().loginWithRegistration(ctx, s.KeyPair, publicKey, assertion, authorizer, registration, commitOwnerProfile)
 	case request.Body.GrantType == peerhttp.SideControl && strings.TrimSpace(request.Body.DeviceToken) != "" && request.Params.XRegistrationToken == nil:
 		result, err = s.SessionManager().loginSideControl(ctx, s.KeyPair, publicKey, assertion, request.Body.DeviceToken)
 	default:
 		return peerhttp.Login401JSONResponse(apitypes.NewErrorResponse("INVALID_GRANT", "unsupported login grant")), nil
 	}
 	if err != nil {
+		if errors.Is(err, errOwnerProfileBinding) {
+			slog.ErrorContext(ctx, "public HTTP RuntimeProfile owner binding failed", "peer_public_key", publicKey.String(), "error", err)
+			return nil, err
+		}
 		return peerhttp.Login401JSONResponse(apitypes.NewErrorResponse("INVALID_ASSERTION", err.Error())), nil
 	}
 	if registration != nil {
@@ -213,10 +233,10 @@ func newLoginAssertionAt(keyPair *giznet.KeyPair, serverPublicKey giznet.PublicK
 }
 
 func (m *SessionManager) login(ctx context.Context, serverKeyPair *giznet.KeyPair, publicKey giznet.PublicKey, assertion string, authorizer SessionAuthorizer) (peerhttp.LoginResult, error) {
-	return m.loginWithRegistration(ctx, serverKeyPair, publicKey, assertion, authorizer, nil)
+	return m.loginWithRegistration(ctx, serverKeyPair, publicKey, assertion, authorizer, nil, nil)
 }
 
-func (m *SessionManager) loginWithRegistration(ctx context.Context, serverKeyPair *giznet.KeyPair, publicKey giznet.PublicKey, assertion string, authorizer SessionAuthorizer, registration *runtimeprofile.Registration) (peerhttp.LoginResult, error) {
+func (m *SessionManager) loginWithRegistration(ctx context.Context, serverKeyPair *giznet.KeyPair, publicKey giznet.PublicKey, assertion string, authorizer SessionAuthorizer, registration *runtimeprofile.Registration, commitOwnerProfile func(func() error) error) (peerhttp.LoginResult, error) {
 	if m == nil || m.Store == nil {
 		return peerhttp.LoginResult{}, errInvalidSession
 	}
@@ -242,7 +262,6 @@ func (m *SessionManager) loginWithRegistration(ctx context.Context, serverKeyPai
 	} else if !errors.Is(err, kv.ErrNotFound) {
 		return peerhttp.LoginResult{}, err
 	}
-
 	token, err := randomToken(rand.Reader, 32)
 	if err != nil {
 		return peerhttp.LoginResult{}, err
@@ -258,18 +277,26 @@ func (m *SessionManager) loginWithRegistration(ctx context.Context, serverKeyPai
 	if err != nil {
 		return peerhttp.LoginResult{}, err
 	}
-	if err := m.Store.BatchSet(ctx, []kv.Entry{
-		{
-			Key:      assertionKey(claims),
-			Value:    []byte("used"),
-			Deadline: assertionDeadline,
-		},
-		{
-			Key:      sessionKey(token),
-			Value:    body,
-			Deadline: expiresAt,
-		},
-	}); err != nil {
+	commit := func() error {
+		return m.Store.BatchSet(ctx, []kv.Entry{
+			{
+				Key:      assertionKey(claims),
+				Value:    []byte("used"),
+				Deadline: assertionDeadline,
+			},
+			{
+				Key:      sessionKey(token),
+				Value:    body,
+				Deadline: expiresAt,
+			},
+		})
+	}
+	if commitOwnerProfile != nil {
+		err = commitOwnerProfile(commit)
+	} else {
+		err = commit()
+	}
+	if err != nil {
 		return peerhttp.LoginResult{}, err
 	}
 	return peerhttp.LoginResult{

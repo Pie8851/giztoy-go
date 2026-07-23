@@ -416,6 +416,9 @@ func TestManagerPeerRegistrationFollowsActiveConnection(t *testing.T) {
 	if !manager.SetPeerRegistration(key, oldConn, oldRegistration) {
 		t.Fatal("SetPeerRegistration() rejected active connection")
 	}
+	if err := profiles.BindOwnerProfile(t.Context(), key.String(), oldRegistration.RuntimeProfile.Name); err != nil {
+		t.Fatalf("BindOwnerProfile(old) error = %v", err)
+	}
 	if profile, err := manager.runtimeProfileForOwner(t.Context(), key.String()); err != nil || profile.Name != "profile-old" {
 		t.Fatalf("runtimeProfileForOwner() = %#v, %v", profile, err)
 	}
@@ -440,6 +443,9 @@ func TestManagerPeerRegistrationFollowsActiveConnection(t *testing.T) {
 	if !manager.SetPeerRegistration(key, newConn, newRegistration) {
 		t.Fatal("SetPeerRegistration() rejected replacement connection")
 	}
+	if err := profiles.BindOwnerProfile(t.Context(), key.String(), newRegistration.RuntimeProfile.Name); err != nil {
+		t.Fatalf("BindOwnerProfile(new) error = %v", err)
+	}
 	manager.SetPeerDown(key, oldConn)
 	if registration, ok := manager.PeerRegistration(key); !ok || registration.RuntimeProfile.Name != "profile-new" {
 		t.Fatalf("stale disconnect changed registration = %#v, %v", registration, ok)
@@ -447,6 +453,9 @@ func TestManagerPeerRegistrationFollowsActiveConnection(t *testing.T) {
 	manager.SetPeerDown(key, newConn)
 	if _, ok := manager.PeerRegistration(key); ok {
 		t.Fatal("disconnected peer retained registration")
+	}
+	if profile, err := manager.runtimeProfileForOwner(t.Context(), key.String()); err != nil || profile.Name != "profile-new" {
+		t.Fatalf("runtimeProfileForOwner(disconnected) = %#v, %v", profile, err)
 	}
 	if manager.SetPeerRegistration(key, newConn, newRegistration) {
 		t.Fatal("SetPeerRegistration recreated a disconnected peer")
@@ -528,9 +537,19 @@ func TestPeerResourcesForHTTPSessionDoesNotInheritActiveConnectionRegistration(t
 		},
 	}
 	createRegistrationToken(t, profiles, "profile-session")
+	if err := profiles.BindOwnerProfile(t.Context(), key.String(), sessionRegistration.RuntimeProfile.Name); err != nil {
+		t.Fatalf("BindOwnerProfile(session) error = %v", err)
+	}
 	registered := service.peerResourcesForHTTPSession(key, &sessionRegistration)
 	if profile := registered.RuntimeProfile(); profile == nil || profile.Name != "profile-session" {
 		t.Fatalf("registered HTTP RuntimeProfile = %#v", profile)
+	}
+	createRegistrationToken(t, profiles, "profile-current")
+	if err := profiles.BindOwnerProfile(t.Context(), key.String(), "profile-current"); err != nil {
+		t.Fatalf("BindOwnerProfile(current) error = %v", err)
+	}
+	if profile := registered.RuntimeProfile(); profile == nil || profile.Name != "profile-current" {
+		t.Fatalf("stale HTTP session RuntimeProfile = %#v, want current owner binding", profile)
 	}
 }
 

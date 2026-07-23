@@ -3,6 +3,7 @@ package publiclogin
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -186,6 +187,7 @@ func TestServerLoginStoresRegistrationSnapshot(t *testing.T) {
 	}
 
 	server := NewServer(serverKey, kv.NewMemory(nil))
+	var boundOwner, boundProfile string
 	server.RegistrationResolver = func(_ context.Context, token string) (runtimeprofile.Registration, error) {
 		if token != "registration-secret" {
 			return runtimeprofile.Registration{}, fmt.Errorf("invalid token")
@@ -194,6 +196,11 @@ func TestServerLoginStoresRegistrationSnapshot(t *testing.T) {
 			TokenName:      "app-token",
 			RuntimeProfile: apitypes.RuntimeProfile{Name: "app-profile"},
 		}, nil
+	}
+	server.OwnerProfileBinder = func(_ context.Context, owner, profileName string, commit func() error) error {
+		boundOwner = owner
+		boundProfile = profileName
+		return commit()
 	}
 	token := "registration-secret"
 	resp, err := server.Login(context.Background(), peerhttp.LoginRequestObject{
@@ -216,6 +223,111 @@ func TestServerLoginStoresRegistrationSnapshot(t *testing.T) {
 	}
 	if authenticated.Registration == nil || authenticated.Registration.RuntimeProfile.Name != "app-profile" {
 		t.Fatalf("registration = %#v", authenticated.Registration)
+	}
+	if boundOwner != deviceKey.Public.String() || boundProfile != "app-profile" {
+		t.Fatalf("owner binding = (%q, %q)", boundOwner, boundProfile)
+	}
+}
+
+func TestServerLoginOwnerProfileBindingFailureIsRetryable(t *testing.T) {
+	serverKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(server) error = %v", err)
+	}
+	deviceKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(device) error = %v", err)
+	}
+	assertion, err := NewLoginAssertion(deviceKey, serverKey.Public, time.Minute)
+	if err != nil {
+		t.Fatalf("NewLoginAssertion error = %v", err)
+	}
+
+	server := NewServer(serverKey, kv.NewMemory(nil))
+	server.RegistrationResolver = func(context.Context, string) (runtimeprofile.Registration, error) {
+		return runtimeprofile.Registration{
+			TokenName:      "app-token",
+			RuntimeProfile: apitypes.RuntimeProfile{Name: "app-profile"},
+		}, nil
+	}
+	bindCalls := 0
+	server.OwnerProfileBinder = func(context.Context, string, string, func() error) error {
+		bindCalls++
+		return errors.New("store unavailable")
+	}
+	token := "registration-secret"
+	request := peerhttp.LoginRequestObject{
+		Params: peerhttp.LoginParams{
+			XPublicKey:         deviceKey.Public.String(),
+			Authorization:      "Bearer " + assertion,
+			XRegistrationToken: &token,
+		},
+	}
+
+	resp, err := server.Login(context.Background(), request)
+	if err == nil || resp != nil {
+		t.Fatalf("Login(binding failure) = (%#v, %v), want internal error", resp, err)
+	}
+	server.OwnerProfileBinder = func(_ context.Context, _, _ string, commit func() error) error {
+		bindCalls++
+		return commit()
+	}
+	resp, err = server.Login(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Login(retry) error = %v", err)
+	}
+	if _, ok := resp.(peerhttp.Login200JSONResponse); !ok {
+		t.Fatalf("Login(retry) response = %#v", resp)
+	}
+	if bindCalls != 2 {
+		t.Fatalf("owner profile bind calls = %d, want 2", bindCalls)
+	}
+}
+
+func TestServerLoginSessionCommitFailureRollsBackOwnerProfile(t *testing.T) {
+	serverKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(server) error = %v", err)
+	}
+	deviceKey, err := giznet.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair(device) error = %v", err)
+	}
+	assertion, err := NewLoginAssertion(deviceKey, serverKey.Public, time.Minute)
+	if err != nil {
+		t.Fatalf("NewLoginAssertion error = %v", err)
+	}
+
+	server := NewServer(serverKey, failingBatchSetStore{Store: kv.NewMemory(nil)})
+	server.RegistrationResolver = func(context.Context, string) (runtimeprofile.Registration, error) {
+		return runtimeprofile.Registration{
+			TokenName:      "app-token",
+			RuntimeProfile: apitypes.RuntimeProfile{Name: "app-profile"},
+		}, nil
+	}
+	boundProfile := "previous-profile"
+	server.OwnerProfileBinder = func(_ context.Context, _, profileName string, commit func() error) error {
+		previous := boundProfile
+		boundProfile = profileName
+		if err := commit(); err != nil {
+			boundProfile = previous
+			return err
+		}
+		return nil
+	}
+	token := "registration-secret"
+	resp, err := server.Login(context.Background(), peerhttp.LoginRequestObject{
+		Params: peerhttp.LoginParams{
+			XPublicKey:         deviceKey.Public.String(),
+			Authorization:      "Bearer " + assertion,
+			XRegistrationToken: &token,
+		},
+	})
+	if err == nil || resp != nil {
+		t.Fatalf("Login(session commit failure) = (%#v, %v), want internal error", resp, err)
+	}
+	if boundProfile != "previous-profile" {
+		t.Fatalf("failed session commit left owner profile %q", boundProfile)
 	}
 }
 
@@ -427,6 +539,14 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) {
 	return 0, io.ErrUnexpectedEOF
+}
+
+type failingBatchSetStore struct {
+	kv.Store
+}
+
+func (failingBatchSetStore) BatchSet(context.Context, []kv.Entry) error {
+	return errors.New("batch set unavailable")
 }
 
 func base64Segment(value string) string {

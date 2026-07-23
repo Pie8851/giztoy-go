@@ -5551,6 +5551,16 @@
               }
             }
           },
+          "409": {
+            "description": "System workspace update is forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./shared.json#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Internal error",
             "content": {
@@ -11256,7 +11266,8 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "name"
+          "name",
+          "owner_public_key"
         ],
         "properties": {
           "name": {
@@ -11265,6 +11276,10 @@
           },
           "description": {
             "type": "string"
+          },
+          "owner_public_key": {
+            "type": "string",
+            "minLength": 1
           }
         }
       },
@@ -11407,9 +11422,6 @@
           },
           "spec": {
             "$ref": "./shared.json#/components/schemas/PetDefSpec"
-          },
-          "i18n": {
-            "$ref": "./shared.json#/components/schemas/PetDefI18nSpec"
           }
         }
       },

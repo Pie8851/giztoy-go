@@ -13,6 +13,7 @@ import (
 
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/adminhttp"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/apitypes"
+	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/services/system/ownership"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/services/system/pendingdeletion"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -57,6 +58,21 @@ func TestOwnerHasPetWorkspaceMigratesFreshDatabase(t *testing.T) {
 	}
 	if allowed {
 		t.Fatal("OwnerHasPetWorkspace() = true, want false")
+	}
+}
+
+func TestMigrationCreatesFreshReservationSchemaWithoutVoiceAlias(t *testing.T) {
+	ctx := context.Background()
+	runtime := &Runtime{DB: testDB(t)}
+	if err := runtime.Migration(ctx); err != nil {
+		t.Fatalf("Migration() error = %v", err)
+	}
+	exists, err := sqlColumnExists(ctx, runtime.DB, "gameplay_pet_adoption_reservations", "voice_alias")
+	if err != nil {
+		t.Fatalf("sqlColumnExists() error = %v", err)
+	}
+	if exists {
+		t.Fatal("fresh gameplay_pet_adoption_reservations contains voice_alias")
 	}
 }
 
@@ -254,20 +270,13 @@ func TestRuntimeAdoptDoesNotDeleteExistingSystemWorkspaceOnIDCollision(t *testin
 		},
 		PickWeight: func(int64) int64 { return 0 },
 	}
-	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{}); err != nil {
+	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet"}); err != nil {
 		t.Fatalf("first AdoptPet() error = %v", err)
 	}
-	if len(workspaces.created) != 1 || workspaces.created[0].Parameters == nil {
-		t.Fatalf("created workspaces = %#v, want one Pet Workspace with parameters", workspaces.created)
+	if len(workspaces.created) != 1 || workspaces.created[0].Parameters != nil || workspaces.created[0].WorkflowName != "pet-care" {
+		t.Fatalf("created workspaces = %#v, want one parameter-free Pet Workspace", workspaces.created)
 	}
-	parameters, err := workspaces.created[0].Parameters.AsPetWorkspaceParameters()
-	if err != nil {
-		t.Fatalf("decode Pet Workspace parameters: %v", err)
-	}
-	if parameters.Voice.VoiceId != "pet-voice" {
-		t.Fatalf("Pet Workspace voice alias = %q, want pet-voice from RuntimeProfile adoption pool", parameters.Voice.VoiceId)
-	}
-	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{}); err == nil {
+	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet"}); err == nil {
 		t.Fatal("second AdoptPet() should fail")
 	}
 	if len(workspaces.deleted) != 0 {
@@ -297,7 +306,7 @@ func TestRuntimeAdoptWithCallerIDIsIdempotent(t *testing.T) {
 	}
 	petID := "device-pet-01"
 	displayName := "Miso"
-	first, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID, DisplayName: &displayName})
+	first, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID, DisplayName: displayName})
 	if err != nil {
 		t.Fatalf("AdoptPet(first) error = %v", err)
 	}
@@ -308,7 +317,7 @@ func TestRuntimeAdoptWithCallerIDIsIdempotent(t *testing.T) {
 		t.Fatalf("set current Points balance: %v", err)
 	}
 	changedName := "Changed"
-	retry, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID, DisplayName: &changedName})
+	retry, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID, DisplayName: changedName})
 	if err != nil {
 		t.Fatalf("AdoptPet(retry) error = %v", err)
 	}
@@ -320,6 +329,15 @@ func TestRuntimeAdoptWithCallerIDIsIdempotent(t *testing.T) {
 	}
 	if retry.Pet.DisplayName != displayName || pickCount != 1 || len(workspaces.created) != 1 {
 		t.Fatalf("retry mutated adoption: name=%q picks=%d workspaces=%d", retry.Pet.DisplayName, pickCount, len(workspaces.created))
+	}
+	changedProfile := profile
+	changedProfile.Spec.Workflows.System.Pet = "other-pet-workflow"
+	if _, err := runtime.AdoptPet(
+		WithRuntimeProfile(context.Background(), changedProfile),
+		"peer-a",
+		apitypes.PetAdoptRequest{Id: &petID, DisplayName: displayName},
+	); !errors.Is(err, ErrPetIDConflict) {
+		t.Fatalf("AdoptPet(retry with changed Workflow) error = %v, want conflict", err)
 	}
 	var pets, transactions int
 	if err := runtime.DB.QueryRow(`SELECT count(*) FROM gameplay_pets WHERE owner_public_key = ? AND id = ?`, "peer-a", petID).Scan(&pets); err != nil {
@@ -350,11 +368,11 @@ func TestRuntimeAdoptCallerIDScopesIdentityToPeer(t *testing.T) {
 		PickWeight: func(int64) int64 { return 0 },
 	}
 	petID := "shared-pet-01"
-	first, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+	first, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 	if err != nil {
 		t.Fatalf("AdoptPet(peer-a) error = %v", err)
 	}
-	second, err := runtime.AdoptPet(ctx, "peer-b", apitypes.PetAdoptRequest{Id: &petID})
+	second, err := runtime.AdoptPet(ctx, "peer-b", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 	if err != nil {
 		t.Fatalf("AdoptPet(peer-b) error = %v", err)
 	}
@@ -369,7 +387,7 @@ func TestRuntimeAdoptCallerIDScopesIdentityToPeer(t *testing.T) {
 		t.Fatalf("GetPet(peer-a own textual ID) = %#v, want peer-a Pet", got)
 	}
 	secondPetID := "shared-pet-02"
-	third, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &secondPetID})
+	third, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &secondPetID})
 	if err != nil {
 		t.Fatalf("AdoptPet(peer-a second ID) error = %v", err)
 	}
@@ -404,7 +422,7 @@ func TestRuntimeAdoptCallerIDDoesNotReserveUnaffordableID(t *testing.T) {
 		},
 	}
 	petID := "device-pet-cleanup"
-	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID}); err == nil {
+	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID}); err == nil {
 		t.Fatal("AdoptPet(insufficient Points) error = nil")
 	}
 	if len(workspaces.created) != 0 || len(workspaces.deleted) != 0 {
@@ -424,7 +442,7 @@ func TestRuntimeAdoptCallerIDDoesNotReserveUnaffordableID(t *testing.T) {
 	fundedBalance := int64(50)
 	profile.Name = "funded"
 	profile.Spec.Gameplay.Points.InitialBalance = &fundedBalance
-	response, err := runtime.AdoptPet(WithRuntimeProfile(context.Background(), profile), "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+	response, err := runtime.AdoptPet(WithRuntimeProfile(context.Background(), profile), "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 	if err != nil {
 		t.Fatalf("AdoptPet(funded profile) error = %v", err)
 	}
@@ -433,6 +451,48 @@ func TestRuntimeAdoptCallerIDDoesNotReserveUnaffordableID(t *testing.T) {
 	}
 	if len(workspaces.created) != 1 {
 		t.Fatalf("created workspaces after funded adoption = %d, want 1", len(workspaces.created))
+	}
+}
+
+func TestRuntimeAdoptCallerIDDeletesNewWorkspaceAfterDatabaseFailure(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 7, 22, 9, 47, 0, 0, time.UTC)
+	catalog := testCatalog(t, now)
+	profile := seedGameplayCatalog(t, ctx, catalog)
+	ctx = WithRuntimeProfile(ctx, profile)
+	workspaces := &recordingWorkspaceService{}
+	runtime := &Runtime{
+		DB:         testDB(t),
+		Catalog:    catalog,
+		Workflows:  petWorkflowService{},
+		Workspaces: workspaces,
+		Now:        func() time.Time { return now },
+		NewID:      sequentialIDs("adopt-txn"),
+		PickWeight: func(int64) int64 { return 0 },
+	}
+	if err := runtime.Migration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.DB.ExecContext(ctx, `CREATE TRIGGER fail_pet_insert BEFORE INSERT ON gameplay_pets BEGIN SELECT RAISE(ABORT, 'injected pet failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	petID := "device-pet-database-failure"
+	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID}); err == nil || !strings.Contains(err.Error(), "injected pet failure") {
+		t.Fatalf("AdoptPet() error = %v, want injected database failure", err)
+	}
+	workspaceName := petWorkspaceName("peer-a", petID)
+	if len(workspaces.created) != 1 || len(workspaces.deleted) != 1 || workspaces.deleted[0] != workspaceName {
+		t.Fatalf("Workspace compensation: created=%#v deleted=%#v, want one create and delete of %q", workspaces.created, workspaces.deleted, workspaceName)
+	}
+	var pets, transactions int
+	if err := runtime.DB.QueryRow(`SELECT
+		(SELECT count(*) FROM gameplay_pets WHERE owner_public_key = ? AND id = ?),
+		(SELECT count(*) FROM gameplay_points_transactions WHERE owner_public_key = ? AND source_type = 'pet' AND source_id = ? AND reason = 'pet.adopt')`,
+		"peer-a", petID, "peer-a", petID).Scan(&pets, &transactions); err != nil {
+		t.Fatal(err)
+	}
+	if pets != 0 || transactions != 0 {
+		t.Fatalf("rows after failed adoption: Pets=%d transactions=%d, want zero", pets, transactions)
 	}
 }
 
@@ -456,7 +516,7 @@ func TestRuntimeAdoptCallerIDPreservesExistingReservationWhenUnfunded(t *testing
 	reservation := petAdoptionReservation{
 		OwnerPublicKey: "peer-a", PetID: petID, RuntimeProfileName: profile.Name,
 		PetDefID: "petdef-basic", DisplayName: "Spark", WorkspaceName: petWorkspaceName("peer-a", petID),
-		WorkflowName: defaultPetWorkflowName, VoiceAlias: "voice-basic", AdoptionCost: 15, CreatedAt: now,
+		WorkflowName: profile.Spec.Workflows.System.Pet, AdoptionCost: 15, CreatedAt: now,
 	}
 	tx, err := runtime.DB.BeginTxx(ctx, nil)
 	if err != nil {
@@ -468,10 +528,10 @@ func TestRuntimeAdoptCallerIDPreservesExistingReservationWhenUnfunded(t *testing
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit reservation: %v", err)
 	}
-	if _, err := runtime.createPetWorkspace(ctx, reservation.WorkspaceName, reservation.WorkflowName, reservation.VoiceAlias); err != nil {
+	if _, err := runtime.createPetWorkspace(ctx, reservation.OwnerPublicKey, reservation.WorkspaceName, reservation.WorkflowName); err != nil {
 		t.Fatalf("create reserved Workspace: %v", err)
 	}
-	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID}); !errors.Is(err, errInsufficientPoints) {
+	if _, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID}); !errors.Is(err, errInsufficientPoints) {
 		t.Fatalf("AdoptPet(existing unfunded reservation) error = %v, want insufficient Points", err)
 	}
 	var reservations, pets, transactions int
@@ -517,7 +577,7 @@ func TestRuntimeAdoptCallerIDUsesAuthoritativeReservationCost(t *testing.T) {
 			if err := insertPetAdoptionReservation(ctx, tx, petAdoptionReservation{
 				OwnerPublicKey: "peer-a", PetID: petID, RuntimeProfileName: profile.Name,
 				PetDefID: "petdef-basic", DisplayName: "Spark", WorkspaceName: petWorkspaceName("peer-a", petID),
-				WorkflowName: defaultPetWorkflowName, VoiceAlias: "voice-basic", AdoptionCost: 15, CreatedAt: now,
+				WorkflowName: profile.Spec.Workflows.System.Pet, AdoptionCost: 15, CreatedAt: now,
 			}); err != nil {
 				t.Fatalf("insert concurrent reservation: %v", err)
 			}
@@ -527,7 +587,7 @@ func TestRuntimeAdoptCallerIDUsesAuthoritativeReservationCost(t *testing.T) {
 			return total - 1
 		},
 	}
-	response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+	response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 	if err != nil {
 		t.Fatalf("AdoptPet() error = %v", err)
 	}
@@ -559,7 +619,7 @@ func TestRuntimeAdoptCallerIDRejectsInvalidProfileAndRetainedReuse(t *testing.T)
 		PickWeight: func(int64) int64 { return 0 },
 	}
 	invalidID := "short"
-	if _, err := runtime.AdoptPet(WithRuntimeProfile(ctx, profile), "peer-a", apitypes.PetAdoptRequest{Id: &invalidID}); err == nil {
+	if _, err := runtime.AdoptPet(WithRuntimeProfile(ctx, profile), "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &invalidID}); err == nil {
 		t.Fatal("AdoptPet(invalid ID) error = nil")
 	}
 	if len(workspaces.created) != 0 {
@@ -567,13 +627,13 @@ func TestRuntimeAdoptCallerIDRejectsInvalidProfileAndRetainedReuse(t *testing.T)
 	}
 	petID := "device-pet-02"
 	profileCtx := WithRuntimeProfile(ctx, profile)
-	adopted, err := runtime.AdoptPet(profileCtx, "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+	adopted, err := runtime.AdoptPet(profileCtx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 	if err != nil {
 		t.Fatalf("AdoptPet() error = %v", err)
 	}
 	otherProfile := profile
 	otherProfile.Name = "other"
-	if _, err := runtime.AdoptPet(WithRuntimeProfile(ctx, otherProfile), "peer-a", apitypes.PetAdoptRequest{Id: &petID}); !errors.Is(err, ErrPetIDConflict) {
+	if _, err := runtime.AdoptPet(WithRuntimeProfile(ctx, otherProfile), "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID}); !errors.Is(err, ErrPetIDConflict) {
 		t.Fatalf("AdoptPet(cross-profile) error = %v, want conflict", err)
 	}
 	if _, err := runtime.DeletePet(profileCtx, "peer-a", petID); err != nil {
@@ -629,7 +689,7 @@ func TestRuntimeAdoptCallerIDRejectsInvalidProfileAndRetainedReuse(t *testing.T)
 	if _, err := source.HasLocator(ctx, pendingdeletion.Locator{Kind: pendingdeletion.KindPet, ResourceID: petID}); err == nil {
 		t.Fatal("PendingDeletionSource.HasLocator(ownerless) error = nil")
 	}
-	if _, err := runtime.AdoptPet(profileCtx, "peer-a", apitypes.PetAdoptRequest{Id: &petID}); err != nil {
+	if _, err := runtime.AdoptPet(profileCtx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID}); err != nil {
 		t.Fatalf("AdoptPet(marked ID) error = %v", err)
 	}
 	if _, err := runtime.DeletePet(profileCtx, "peer-a", petID); err != nil {
@@ -995,7 +1055,7 @@ func TestRuntimeAdoptCallerIDSerializesConcurrentRetries(t *testing.T) {
 	for range workers {
 		wg.Go(func() {
 			<-start
-			response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+			response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 			responses <- response
 			errs <- err
 		})
@@ -1024,11 +1084,8 @@ func TestRuntimeAdoptCallerIDConvergesAcrossRuntimeInstances(t *testing.T) {
 	now := time.Date(2026, 7, 22, 10, 45, 0, 0, time.UTC)
 	catalog := testCatalog(t, now)
 	profile := seedGameplayCatalog(t, ctx, catalog)
-	voices := *profile.Spec.Resources.Voices
-	voices["pet-voice-alt"] = gameplayTestBinding("voice-alt")
 	pool := *profile.Spec.Gameplay.Adoption.Pool
 	alternate := pool[0]
-	alternate.Voice = "pet-voice-alt"
 	pool = append(pool, alternate)
 	profile.Spec.Gameplay.Adoption.Pool = &pool
 	ctx = WithRuntimeProfile(ctx, profile)
@@ -1062,7 +1119,7 @@ func TestRuntimeAdoptCallerIDConvergesAcrossRuntimeInstances(t *testing.T) {
 		runtime := runtimes[i%len(runtimes)]
 		wg.Go(func() {
 			<-start
-			response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{Id: &petID})
+			response, err := runtime.AdoptPet(ctx, "peer-a", apitypes.PetAdoptRequest{DisplayName: "Pet", Id: &petID})
 			responses <- response
 			errs <- err
 		})
@@ -1090,16 +1147,8 @@ func TestRuntimeAdoptCallerIDConvergesAcrossRuntimeInstances(t *testing.T) {
 	if len(workspaces.created) != 1 || len(workspaces.deleted) != 0 {
 		t.Fatalf("workspace mutations: created=%d deleted=%d, want 1 and 0", len(workspaces.created), len(workspaces.deleted))
 	}
-	parameters, err := workspaces.created[0].Parameters.AsPetWorkspaceParameters()
-	if err != nil {
-		t.Fatalf("decode winning Pet Workspace parameters: %v", err)
-	}
-	var reservedVoice string
-	if err := db.QueryRow(`SELECT voice_alias FROM gameplay_pet_adoption_reservations WHERE owner_public_key = ? AND pet_id = ?`, "peer-a", petID).Scan(&reservedVoice); err != nil {
-		t.Fatalf("load adoption reservation voice: %v", err)
-	}
-	if parameters.Voice.VoiceId != reservedVoice {
-		t.Fatalf("winning Pet Workspace voice = %q, want reserved voice %q", parameters.Voice.VoiceId, reservedVoice)
+	if workspaces.created[0].Parameters != nil || workspaces.created[0].WorkflowName != profile.Spec.Workflows.System.Pet {
+		t.Fatalf("winning Pet Workspace = %#v", workspaces.created[0])
 	}
 }
 
@@ -1313,18 +1362,19 @@ type recordingWorkspaceService struct {
 	deleteErr error
 }
 
-func (s *recordingWorkspaceService) CreateSystemWorkspace(_ context.Context, body adminhttp.WorkspaceUpsert) (apitypes.Workspace, bool, error) {
+func (s *recordingWorkspaceService) CreateSystemWorkspace(ctx context.Context, body adminhttp.WorkspaceUpsert) (apitypes.Workspace, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	owner, _ := ownership.FromContext(ctx)
 	for _, existing := range s.created {
 		if existing.Name == body.Name {
 			system := true
-			return apitypes.Workspace{Name: existing.Name, WorkflowName: existing.WorkflowName, Parameters: existing.Parameters, System: &system}, false, nil
+			return apitypes.Workspace{Name: existing.Name, WorkflowName: existing.WorkflowName, Parameters: existing.Parameters, OwnerPublicKey: &owner, System: &system}, false, nil
 		}
 	}
 	s.created = append(s.created, body)
 	system := true
-	return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, System: &system}, true, nil
+	return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, OwnerPublicKey: &owner, System: &system}, true, nil
 }
 
 func (s *recordingWorkspaceService) DeleteSystemWorkspace(_ context.Context, name string) (apitypes.Workspace, error) {

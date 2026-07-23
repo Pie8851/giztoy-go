@@ -11,6 +11,7 @@ import (
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/apitypes"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/api/rpcapi"
 	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/internal/socialutil"
+	"github.com/GizClaw/gizclaw-go/pkgs/gizclaw/services/system/ownership"
 	"github.com/GizClaw/gizclaw-go/pkgs/giznet"
 	"github.com/GizClaw/gizclaw-go/pkgs/store/kv"
 )
@@ -128,6 +129,127 @@ func TestInviteTokenLifecycleAndAddFriend(t *testing.T) {
 		if socialutil.StringValue(friends.Items[0].WorkspaceName) != workspaceName {
 			t.Fatalf("ListFriends(%s) workspace_name = %#v, want %q", tc.owner, friends.Items[0].WorkspaceName, workspaceName)
 		}
+	}
+}
+
+func TestAddFriendWorkspaceBelongsToInviteTokenCreator(t *testing.T) {
+	ctx := context.Background()
+	workspaces := &recordingWorkspaceService{}
+	s := newTestServer()
+	s.Workspaces = workspaces
+	s.RuntimeProfileForOwner = func(_ context.Context, owner string) (apitypes.RuntimeProfile, error) {
+		if owner != "peer-b" {
+			t.Fatalf("RuntimeProfileForOwner owner = %q, want peer-b", owner)
+		}
+		return apitypes.RuntimeProfile{Spec: apitypes.RuntimeProfileSpec{
+			Workflows: apitypes.RuntimeProfileWorkflows{
+				System: apitypes.RuntimeProfileSystemWorkflows{FriendChatroom: "owner-direct-chat"},
+			},
+		}}, nil
+	}
+	token, err := s.CreateFriendInviteToken(ctx, "peer-b", rpcapi.FriendInviteTokenCreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddFriend(ctx, "peer-a", rpcapi.FriendAddRequest{InviteToken: token.InviteToken}); err != nil {
+		t.Fatal(err)
+	}
+	if len(workspaces.created) != 1 || workspaces.created[0].WorkflowName != "owner-direct-chat" {
+		t.Fatalf("created Workspaces = %#v", workspaces.created)
+	}
+	if len(workspaces.owners) != 1 || workspaces.owners[0] != "peer-b" {
+		t.Fatalf("Workspace owners = %#v, want peer-b", workspaces.owners)
+	}
+	reciprocalToken, err := s.CreateFriendInviteToken(ctx, "peer-a", rpcapi.FriendInviteTokenCreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reciprocal, err := s.AddFriend(ctx, "peer-b", rpcapi.FriendAddRequest{InviteToken: reciprocalToken.InviteToken})
+	if err != nil {
+		t.Fatalf("AddFriend existing relation through reciprocal invite: %v", err)
+	}
+	if socialutil.StringValue(reciprocal.PeerPublicKey) != "peer-a" {
+		t.Fatalf("reciprocal friend = %#v, want peer-a", reciprocal)
+	}
+	if len(workspaces.created) != 1 || len(workspaces.owners) != 1 {
+		t.Fatalf("reciprocal invite recreated Workspace: created=%#v owners=%#v", workspaces.created, workspaces.owners)
+	}
+}
+
+func TestAdminCreateExistingFriendPreservesWorkspaceBinding(t *testing.T) {
+	ctx := context.Background()
+	workspaces := &recordingWorkspaceService{}
+	s := newTestServer()
+	s.Workspaces = workspaces
+	s.RuntimeProfileForOwner = func(_ context.Context, owner string) (apitypes.RuntimeProfile, error) {
+		return apitypes.RuntimeProfile{Spec: apitypes.RuntimeProfileSpec{
+			Workflows: apitypes.RuntimeProfileWorkflows{
+				System: apitypes.RuntimeProfileSystemWorkflows{FriendChatroom: owner + "-direct-chat"},
+			},
+		}}, nil
+	}
+	first, err := s.AdminCreateFriend(ctx, "peer-a", "peer-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RuntimeProfileForOwner = func(context.Context, string) (apitypes.RuntimeProfile, error) {
+		return apitypes.RuntimeProfile{}, errors.New("existing relation must not resolve a new system Workflow")
+	}
+	existing, err := s.AdminCreateFriend(ctx, "peer-b", "peer-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if socialutil.StringValue(existing.WorkspaceName) != socialutil.StringValue(first.WorkspaceName) {
+		t.Fatalf("existing Workspace = %q, want %q", socialutil.StringValue(existing.WorkspaceName), socialutil.StringValue(first.WorkspaceName))
+	}
+	if len(workspaces.created) != 1 || len(workspaces.owners) != 1 {
+		t.Fatalf("existing Admin create recreated Workspace: created=%#v owners=%#v", workspaces.created, workspaces.owners)
+	}
+}
+
+func TestConcurrentAdminCreateFriendSerializesWorkspaceLifecycle(t *testing.T) {
+	ctx := context.Background()
+	workspaces := &recordingWorkspaceService{}
+	s := newTestServer()
+	s.Workspaces = workspaces
+	resolverCalls := make(chan string, 2)
+	releaseResolver := make(chan struct{})
+	s.RuntimeProfileForOwner = func(_ context.Context, owner string) (apitypes.RuntimeProfile, error) {
+		resolverCalls <- owner
+		<-releaseResolver
+		return apitypes.RuntimeProfile{Spec: apitypes.RuntimeProfileSpec{
+			Workflows: apitypes.RuntimeProfileWorkflows{
+				System: apitypes.RuntimeProfileSystemWorkflows{FriendChatroom: "direct-chat"},
+			},
+		}}, nil
+	}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := s.AdminCreateFriend(ctx, "peer-a", "peer-b")
+		firstDone <- err
+	}()
+	if owner := <-resolverCalls; owner != "peer-a" {
+		t.Fatalf("first resolver owner = %q, want peer-a", owner)
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := s.AdminCreateFriend(ctx, "peer-b", "peer-a")
+		secondDone <- err
+	}()
+	select {
+	case owner := <-resolverCalls:
+		t.Fatalf("concurrent create resolved another Workspace binding for %q", owner)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseResolver)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+	if len(workspaces.created) != 1 || len(workspaces.owners) != 1 {
+		t.Fatalf("concurrent Admin create Workspaces: created=%#v owners=%#v", workspaces.created, workspaces.owners)
 	}
 }
 
@@ -301,18 +423,21 @@ func (s failingGetStore) List(context.Context, kv.Key) iter.Seq2[kv.Entry, error
 type recordingWorkspaceService struct {
 	created []adminhttp.WorkspaceUpsert
 	deleted []string
+	owners  []string
 }
 
-func (s *recordingWorkspaceService) CreateSystemWorkspace(_ context.Context, body adminhttp.WorkspaceUpsert) (apitypes.Workspace, bool, error) {
+func (s *recordingWorkspaceService) CreateSystemWorkspace(ctx context.Context, body adminhttp.WorkspaceUpsert) (apitypes.Workspace, bool, error) {
+	owner, _ := ownership.FromContext(ctx)
+	s.owners = append(s.owners, owner)
 	for _, existing := range s.created {
 		if existing.Name == body.Name {
 			system := true
-			return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, System: &system}, false, nil
+			return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, OwnerPublicKey: &owner, System: &system}, false, nil
 		}
 	}
 	s.created = append(s.created, body)
 	system := true
-	return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, System: &system}, true, nil
+	return apitypes.Workspace{Name: body.Name, WorkflowName: body.WorkflowName, Parameters: body.Parameters, OwnerPublicKey: &owner, System: &system}, true, nil
 }
 
 func (s *recordingWorkspaceService) DeleteSystemWorkspace(_ context.Context, name string) (apitypes.Workspace, error) {

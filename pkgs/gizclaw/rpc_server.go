@@ -200,17 +200,29 @@ func (s *rpcServer) handleRegister(ctx context.Context, req *rpcapi.RPCRequest) 
 		}
 		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "registration failed"}.RPCResponse(), nil
 	}
-	if registration.FirmwareID != nil {
-		if s.peer == nil {
-			return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer service not configured"}.RPCResponse(), nil
-		}
-		if _, err := s.peer.BindFirmware(ctx, s.callerPublicKey, *registration.FirmwareID); err != nil {
-			slog.WarnContext(ctx, "device firmware binding failed", "peer_public_key", s.callerPublicKey.String(), "source", s.registrationSource, "error", err)
-			return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "registration failed"}.RPCResponse(), nil
-		}
+	if registration.FirmwareID != nil && s.peer == nil {
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "peer service not configured"}.RPCResponse(), nil
 	}
-	if s.onRegistration != nil {
-		s.onRegistration(registration)
+	var firmwareBindingErr error
+	err = s.registrations.BindOwnerProfileAndCommit(ctx, s.callerPublicKey.String(), registration.RuntimeProfile.Name, func() error {
+		if registration.FirmwareID != nil {
+			_, firmwareBindingErr = s.peer.BindFirmware(ctx, s.callerPublicKey, *registration.FirmwareID)
+			if firmwareBindingErr != nil {
+				return firmwareBindingErr
+			}
+		}
+		if s.onRegistration != nil {
+			s.onRegistration(registration)
+		}
+		return nil
+	})
+	if err != nil {
+		message := "device RuntimeProfile owner binding failed"
+		if firmwareBindingErr != nil {
+			message = "device firmware binding failed"
+		}
+		slog.WarnContext(ctx, message, "peer_public_key", s.callerPublicKey.String(), "source", s.registrationSource, "error", err)
+		return rpcapi.Error{RequestID: req.Id, Code: rpcapi.RPCErrorCodeInternalError, Message: "registration failed"}.RPCResponse(), nil
 	}
 	slog.InfoContext(ctx, "device registration accepted", "peer_public_key", s.callerPublicKey.String(), "source", s.registrationSource, "registration_token", registration.TokenName, "runtime_profile", registration.RuntimeProfile.Name)
 	response := rpcapi.ServerRegisterResponse{RuntimeProfileName: registration.RuntimeProfile.Name, FirmwareID: registration.FirmwareID}

@@ -119,6 +119,13 @@ func TestServiceResolverUsesWorkspaceOwnerRuntimeProfile(t *testing.T) {
 	ws := systemWorkspace("shared", "chat", nil)
 	ws.OwnerPublicKey = &owner
 	ws.Labels = &labels
+	profile := apitypes.RuntimeProfile{
+		Name:     "owner-profile",
+		Revision: "revision-1",
+		Spec: apitypes.RuntimeProfileSpec{Workflows: apitypes.RuntimeProfileWorkflows{
+			Collections: apitypes.RuntimeProfileWorkflowCollections{"assistants": {"chat": {ResourceId: "owner-workflow"}}},
+		}},
+	}
 	resolver := ServiceResolver{
 		Workspaces: fakeWorkspaceService{items: map[string]apitypes.Workspace{"shared": ws}},
 		Workflows: fakeWorkflowService{items: map[string]apitypes.Workflow{
@@ -129,9 +136,7 @@ func TestServiceResolverUsesWorkspaceOwnerRuntimeProfile(t *testing.T) {
 			if gotOwner != owner {
 				t.Fatalf("owner = %q, want %q", gotOwner, owner)
 			}
-			return apitypes.RuntimeProfile{Spec: apitypes.RuntimeProfileSpec{Workflows: apitypes.RuntimeProfileWorkflows{
-				Collections: apitypes.RuntimeProfileWorkflowCollections{"assistants": {"chat": {ResourceId: "owner-workflow"}}},
-			}}}, nil
+			return profile, nil
 		},
 	}
 	callerCtx := WithResourceAccess(context.Background(), "caller", nil, map[string]string{"chat": "caller-workflow"})
@@ -142,15 +147,24 @@ func TestServiceResolverUsesWorkspaceOwnerRuntimeProfile(t *testing.T) {
 	if spec.Workflow.Name != "owner-workflow" {
 		t.Fatalf("workflow = %q, want owner-workflow", spec.Workflow.Name)
 	}
+	ownerCtx, err := resolver.ownerRuntimeContext(callerCtx, ws)
+	if err != nil {
+		t.Fatalf("ownerRuntimeContext() error = %v", err)
+	}
+	if got := resourceAccessFingerprint(ownerCtx); got == resourceAccessFingerprint(callerCtx) {
+		t.Fatal("owner runtime context retained the caller RuntimeProfile fingerprint")
+	}
+	if spec.runtimeAccessFingerprint != resourceAccessFingerprint(ownerCtx) {
+		t.Fatal("resolved spec did not retain the owner RuntimeProfile fingerprint")
+	}
 }
 
 func TestServiceResolverRejectsWorkspaceAgentTypeWorkflowDriverMismatch(t *testing.T) {
 	var params apitypes.WorkspaceParameters
-	if err := params.FromPetWorkspaceParameters(apitypes.PetWorkspaceParameters{
-		AgentType: apitypes.PetWorkspaceParametersAgentTypePet,
-		Voice:     apitypes.PetVoiceParameters{VoiceId: "voice"},
+	if err := params.FromChatRoomWorkspaceParameters(apitypes.ChatRoomWorkspaceParameters{
+		AgentType: apitypes.ChatRoomWorkspaceParametersAgentTypeChatroom,
 	}); err != nil {
-		t.Fatalf("FromPetWorkspaceParameters() error = %v", err)
+		t.Fatalf("FromChatRoomWorkspaceParameters() error = %v", err)
 	}
 	resolver := ServiceResolver{
 		Workspaces: fakeWorkspaceService{items: map[string]apitypes.Workspace{
@@ -192,6 +206,42 @@ func TestResolveToolAliasesUsesRuntimeProfileBindings(t *testing.T) {
 	want := []string{"system.search", "system.clock", "missing"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("resolveToolAliases() = %#v, want %#v", got, want)
+	}
+}
+
+func TestResolveToolkitAppliesNestedPetWorkflowPolicy(t *testing.T) {
+	outerIDs := []string{"search", "clock"}
+	nestedIDs := []string{"search"}
+	workflow := apitypes.Workflow{Spec: apitypes.WorkflowSpec{
+		Driver: apitypes.WorkflowDriverPet,
+		Toolkit: &apitypes.ToolkitPolicy{
+			ToolIds: &outerIDs,
+		},
+		Pet: &apitypes.PetWorkflowSpec{
+			Driver: apitypes.ReusableWorkflowDriverFlowcraft,
+			Toolkit: &apitypes.ToolkitPolicy{
+				ToolIds: &nestedIDs,
+			},
+			Flowcraft: &apitypes.FlowcraftWorkflowSpec{},
+		},
+	}}
+	resolver := ServiceResolver{
+		ToolBuilder:   &toolkit.Builder{},
+		ToolExecutors: toolkit.NewExecutorRegistry(),
+	}
+	ctx := WithResourceAccess(context.Background(), "owner", map[string]string{
+		"search": "system.search",
+		"clock":  "system.clock",
+	}, nil)
+	resolved, err := resolver.resolveToolkit(ctx, apitypes.Workspace{}, workflow)
+	if err != nil {
+		t.Fatalf("resolveToolkit() error = %v", err)
+	}
+	if resolved == nil || !resolved.BuildRequest.RestrictToolIDs {
+		t.Fatalf("resolved toolkit = %#v", resolved)
+	}
+	if got, want := resolved.BuildRequest.AllowedToolIDs, []string{"system.search"}; !slices.Equal(got, want) {
+		t.Fatalf("AllowedToolIDs = %#v, want %#v", got, want)
 	}
 }
 

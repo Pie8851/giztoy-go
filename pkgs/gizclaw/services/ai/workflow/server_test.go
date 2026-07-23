@@ -132,12 +132,10 @@ func TestServerRejectsUnknownWorkflowDriver(t *testing.T) {
 
 	srv := newTestServer(t)
 	ctx := context.Background()
-	doc := mustDocument(t, `{
-		"name": "bad-workflow",
-		"spec": {
-			"driver": "bad-driver"
-		}
-	}`)
+	doc := apitypes.Workflow{
+		Name: "bad-workflow",
+		Spec: apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriver("bad-driver")},
+	}
 
 	resp, err := srv.CreateWorkflow(ctx, adminhttp.CreateWorkflowRequestObject{Body: &doc})
 	if err != nil {
@@ -152,13 +150,26 @@ func TestValidateDriverSpecRequiresPetConfig(t *testing.T) {
 	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet}); err == nil || !strings.Contains(err.Error(), "spec.pet") {
 		t.Fatalf("validateDriverSpec() error = %v", err)
 	}
-	petSpec := apitypes.PetWorkflowSpec{}
+	petSpec := apitypes.PetWorkflowSpec{
+		Driver:   apitypes.ReusableWorkflowDriverChatroom,
+		Chatroom: &apitypes.ChatRoomWorkflowSpec{},
+	}
 	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &petSpec}); err != nil {
 		t.Fatalf("validateDriverSpec(valid pet) error = %v", err)
 	}
-	petSpec["memory"] = map[string]any{"enabled": false}
-	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &petSpec}); err == nil || !strings.Contains(err.Error(), "does not accept") {
-		t.Fatalf("validateDriverSpec(raw config) error = %v", err)
+	petSpec.Chatroom = nil
+	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &petSpec}); err == nil || !strings.Contains(err.Error(), "spec.chatroom is required") {
+		t.Fatalf("validateDriverSpec(missing nested payload) error = %v", err)
+	}
+	petSpec.Chatroom = &apitypes.ChatRoomWorkflowSpec{}
+	petSpec.Flowcraft = &apitypes.FlowcraftWorkflowSpec{}
+	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &petSpec}); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("validateDriverSpec(mismatched nested config) error = %v", err)
+	}
+	petSpec.Flowcraft = nil
+	petSpec.Driver = apitypes.ReusableWorkflowDriver("pet")
+	if err := validateDriverSpec(apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &petSpec}); err == nil || !strings.Contains(err.Error(), "not a reusable") {
+		t.Fatalf("validateDriverSpec(recursive pet) error = %v", err)
 	}
 }
 
@@ -262,12 +273,10 @@ func TestServerRejectsInvalidChatRoomWorkflowSpec(t *testing.T) {
 	srv := newTestServer(t)
 	ctx := context.Background()
 	cases := map[string]apitypes.Workflow{
-		"missing chatroom": mustDocument(t, `{
-			"name": "missing-chatroom",
-			"spec": {
-				"driver": "chatroom"
-			}
-		}`),
+		"missing chatroom": {
+			Name: "missing-chatroom",
+			Spec: apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverChatroom},
+		},
 	}
 	for name, doc := range cases {
 		resp, err := srv.CreateWorkflow(ctx, adminhttp.CreateWorkflowRequestObject{Body: &doc})
@@ -308,6 +317,50 @@ func TestServerRejectsInvalidToolkitPolicy(t *testing.T) {
 	}
 	if _, ok := putResp.(adminhttp.PutWorkflow400JSONResponse); !ok {
 		t.Fatalf("PutWorkflow() response = %#v", putResp)
+	}
+}
+
+func TestServerNormalizesNestedPetToolkitPolicy(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t)
+	ctx := context.Background()
+	toolIDs := []string{" tool-b ", "tool-a", "tool-a"}
+	doc := apitypes.Workflow{
+		Name: "pet-care",
+		Spec: apitypes.WorkflowSpec{
+			Driver: apitypes.WorkflowDriverPet,
+			Pet: &apitypes.PetWorkflowSpec{
+				Driver:   apitypes.ReusableWorkflowDriverChatroom,
+				Chatroom: &apitypes.ChatRoomWorkflowSpec{},
+				Toolkit:  &apitypes.ToolkitPolicy{ToolIds: &toolIDs},
+			},
+		},
+	}
+
+	createResp, err := srv.CreateWorkflow(ctx, adminhttp.CreateWorkflowRequestObject{Body: &doc})
+	if err != nil {
+		t.Fatalf("CreateWorkflow() error = %v", err)
+	}
+	created, ok := createResp.(adminhttp.CreateWorkflow200JSONResponse)
+	if !ok {
+		t.Fatalf("CreateWorkflow() response = %#v", createResp)
+	}
+	if created.Spec.Pet == nil || created.Spec.Pet.Toolkit == nil || created.Spec.Pet.Toolkit.ToolIds == nil {
+		t.Fatalf("CreateWorkflow() nested toolkit = %#v", created.Spec.Pet)
+	}
+	if got := *created.Spec.Pet.Toolkit.ToolIds; len(got) != 2 || got[0] != "tool-a" || got[1] != "tool-b" {
+		t.Fatalf("CreateWorkflow() nested tool IDs = %#v", got)
+	}
+
+	invalidIDs := []string{" "}
+	doc.Spec.Pet.Toolkit = &apitypes.ToolkitPolicy{ToolIds: &invalidIDs}
+	invalidResp, err := srv.PutWorkflow(ctx, adminhttp.PutWorkflowRequestObject{Name: doc.Name, Body: &doc})
+	if err != nil {
+		t.Fatalf("PutWorkflow() error = %v", err)
+	}
+	if _, ok := invalidResp.(adminhttp.PutWorkflow400JSONResponse); !ok {
+		t.Fatalf("PutWorkflow() response = %#v", invalidResp)
 	}
 }
 
@@ -522,12 +575,16 @@ func TestServerRejectsMissingWorkflowRequiredFields(t *testing.T) {
 
 	srv := newTestServer(t)
 	ctx := context.Background()
-	for name, raw := range map[string]string{
-		"name":   `{"metadata":{},"spec":{"driver":"flowcraft"}}`,
-		"driver": `{"name": "bad","spec":{}}`,
-		"spec":   `{"name": "bad"}`,
+	for name, doc := range map[string]apitypes.Workflow{
+		"name": {
+			Spec: apitypes.WorkflowSpec{
+				Driver:   apitypes.WorkflowDriverChatroom,
+				Chatroom: &apitypes.ChatRoomWorkflowSpec{},
+			},
+		},
+		"driver": {Name: "bad"},
+		"spec":   {Name: "bad"},
 	} {
-		doc := mustDocument(t, raw)
 		resp, err := srv.CreateWorkflow(ctx, adminhttp.CreateWorkflowRequestObject{Body: &doc})
 		if err != nil {
 			t.Fatalf("CreateWorkflow(%s) error = %v", name, err)
@@ -543,10 +600,10 @@ func TestServerRejectsUnsupportedWorkflowDriver(t *testing.T) {
 
 	srv := newTestServer(t)
 	ctx := context.Background()
-	doc := mustDocument(t, `{
-		"name": "bad-version",
-		"spec": {"driver": "example-invalid"}
-	}`)
+	doc := apitypes.Workflow{
+		Name: "bad-version",
+		Spec: apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriver("example-invalid")},
+	}
 	resp, err := srv.CreateWorkflow(ctx, adminhttp.CreateWorkflowRequestObject{Body: &doc})
 	if err != nil {
 		t.Fatalf("CreateWorkflow(bad driver) error = %v", err)

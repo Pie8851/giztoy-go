@@ -445,28 +445,31 @@ func (s *Server) init() error {
 	firmwareServer := &firmware.Server{Store: firmwareStore, Assets: s.FirmwareAssets}
 	runtimeProfileServer := &runtimeprofile.Server{Store: runtimeProfileStore}
 	publicLoginServer.RegistrationResolver = runtimeProfileServer.ResolveRegistration
+	publicLoginServer.OwnerProfileBinder = runtimeProfileServer.BindOwnerProfileAndCommit
 	voiceServer := &voice.Server{Store: voiceStore}
 	toolServer := &toolkit.Server{Store: toolStore}
 	contactServer := &contact.Server{
 		Store: contactStore,
 	}
 	friendServer := &friend.Server{
-		InviteTokens: friendInviteTokenStore,
-		Friends:      friendStore,
-		Workspaces:   workspaceServer,
-		Profiles:     peersServer,
+		InviteTokens:           friendInviteTokenStore,
+		Friends:                friendStore,
+		Workspaces:             workspaceServer,
+		Profiles:               peersServer,
+		RuntimeProfileForOwner: manager.runtimeProfileForOwner,
 	}
 	friendGroupServer := &friendgroup.Server{
-		Groups:               friendGroupStore,
-		InviteTokens:         friendGroupInviteTokenStore,
-		Members:              friendGroupMemberStore,
-		Belongs:              friendGroupBelongStore,
-		Messages:             friendGroupMessageStore,
-		MessageAssets:        s.FriendGroupMessageAssets,
-		Workspaces:           workspaceServer,
-		MessageDefaultTTL:    s.FriendGroupMessageDefaultTTL,
-		MessageMaxTTL:        s.FriendGroupMessageMaxTTL,
-		MessageMaxAudioBytes: s.FriendGroupMessageMaxBytes,
+		Groups:                 friendGroupStore,
+		InviteTokens:           friendGroupInviteTokenStore,
+		Members:                friendGroupMemberStore,
+		Belongs:                friendGroupBelongStore,
+		Messages:               friendGroupMessageStore,
+		MessageAssets:          s.FriendGroupMessageAssets,
+		Workspaces:             workspaceServer,
+		RuntimeProfileForOwner: manager.runtimeProfileForOwner,
+		MessageDefaultTTL:      s.FriendGroupMessageDefaultTTL,
+		MessageMaxTTL:          s.FriendGroupMessageMaxTTL,
+		MessageMaxAudioBytes:   s.FriendGroupMessageMaxBytes,
 	}
 	providerTenantsServer := &providertenants.Server{
 		ModelStore:          modelStore,
