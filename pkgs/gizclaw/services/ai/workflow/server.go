@@ -238,6 +238,17 @@ func validateDriverSpec(spec apitypes.WorkflowSpec) error {
 			return errors.New("spec.pet does not accept Flowcraft graph or memory configuration")
 		}
 		return nil
+	case apitypes.WorkflowDriverDoubaoRealtime:
+		if spec.DoubaoRealtime == nil {
+			return errors.New("spec.doubao_realtime is required")
+		}
+		if strings.TrimSpace(spec.DoubaoRealtime.Model) == "" {
+			return errors.New("spec.doubao_realtime.model is required")
+		}
+		if spec.DoubaoRealtime.Tools != nil && len(*spec.DoubaoRealtime.Tools) != 0 {
+			return errors.New("spec.doubao_realtime.tools are unsupported until ToolCall is implemented")
+		}
+		return nil
 	default:
 		return nil
 	}

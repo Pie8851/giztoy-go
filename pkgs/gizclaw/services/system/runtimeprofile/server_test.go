@@ -381,6 +381,54 @@ func TestValidateVoiceProducingWorkflowsRequireRuntimeVoiceAliases(t *testing.T)
 	if err := validateWorkflowRuntimeAliases("workflows.collections.assistants.demo", realtime, models, &voices); err != nil {
 		t.Fatalf("validateWorkflowRuntimeAliases(Doubao alias) error = %v", err)
 	}
+	tools := []apitypes.DoubaoRealtimeFunctionTool{{
+		Type: apitypes.DoubaoRealtimeFunctionToolTypeFunction,
+		Name: "get_weather",
+	}}
+	realtime.DoubaoRealtime.Tools = &tools
+	if err := validateWorkflowRuntimeAliases("workflows.collections.assistants.demo", realtime, models, &voices); err == nil || !strings.Contains(err.Error(), "tools are unsupported") {
+		t.Fatalf("validateWorkflowRuntimeAliases(Doubao tools) error = %v", err)
+	}
+}
+
+func TestValidatePetRuntimeAliases(t *testing.T) {
+	t.Parallel()
+	pet := apitypes.PetWorkflowSpec{}
+	workflow := apitypes.WorkflowSpec{Driver: apitypes.WorkflowDriverPet, Pet: &pet}
+	models := map[string]apitypes.ModelResource{
+		"pet-chat":    {Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindLlm}},
+		"pet-extract": {Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindLlm}},
+	}
+	if err := validateWorkflowRuntimeAliases("workflows.collections.pets.demo", workflow, models, nil); err == nil || !strings.Contains(err.Error(), "pet-asr") {
+		t.Fatalf("validateWorkflowRuntimeAliases(missing pet ASR) error = %v", err)
+	}
+	models["pet-asr"] = apitypes.ModelResource{Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindLlm}}
+	if err := validateWorkflowRuntimeAliases("workflows.collections.pets.demo", workflow, models, nil); err == nil || !strings.Contains(err.Error(), "want \"asr\"") {
+		t.Fatalf("validateWorkflowRuntimeAliases(wrong pet ASR kind) error = %v", err)
+	}
+	models["pet-asr"] = apitypes.ModelResource{Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindAsr}}
+	if err := validateWorkflowRuntimeAliases("workflows.collections.pets.demo", workflow, models, nil); err != nil {
+		t.Fatalf("validateWorkflowRuntimeAliases(valid pet aliases) error = %v", err)
+	}
+}
+
+func TestPetGameplayRequiresRuntimeAliases(t *testing.T) {
+	t.Parallel()
+	pet := validPetGameplaySpecForTest()
+	models := map[string]apitypes.ModelResource{
+		"pet-chat":    {Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindLlm}},
+		"pet-extract": {Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindLlm}},
+	}
+	if err := requirePetRuntimeAliases("gameplay.pet", models); err == nil || !strings.Contains(err.Error(), "pet-asr") {
+		t.Fatalf("requirePetRuntimeAliases(missing pet ASR) error = %v", err)
+	}
+	models["pet-asr"] = apitypes.ModelResource{Spec: apitypes.ModelSpec{Kind: apitypes.ModelKindAsr}}
+	if err := requirePetRuntimeAliases("gameplay.pet", models); err != nil {
+		t.Fatalf("requirePetRuntimeAliases(valid aliases) error = %v", err)
+	}
+	if err := validatePetRewardModels(pet, models); err != nil {
+		t.Fatalf("validatePetRewardModels() error = %v", err)
+	}
 }
 
 func TestRuntimeProfileRejectsAliasesSharedAcrossResourceKinds(t *testing.T) {

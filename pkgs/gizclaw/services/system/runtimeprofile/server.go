@@ -601,6 +601,9 @@ func (s *Server) validateResources(ctx context.Context, spec apitypes.RuntimePro
 		}
 	}
 	if spec.Gameplay != nil && spec.Gameplay.Pet != nil {
+		if err := requirePetRuntimeAliases("gameplay.pet", models); err != nil {
+			return err
+		}
 		if err := validatePetRewardModels(*spec.Gameplay.Pet, models); err != nil {
 			return err
 		}
@@ -613,6 +616,28 @@ func validatePetRewardModels(pet apitypes.RuntimeProfilePetGameplaySpec, models 
 		model := models[game.Reward.Model]
 		if model.Spec.Kind != apitypes.ModelKindLlm {
 			return fmt.Errorf("gameplay.pet.games.%s.reward.model alias %q has kind %q, want %q", alias, game.Reward.Model, model.Spec.Kind, apitypes.ModelKindLlm)
+		}
+	}
+	return nil
+}
+
+func requirePetRuntimeAliases(path string, models map[string]apitypes.ModelResource) error {
+	for _, model := range []struct {
+		field string
+		alias string
+		kind  apitypes.ModelKind
+	}{
+		{field: "pet-chat", alias: "pet-chat", kind: apitypes.ModelKindLlm},
+		{field: "pet-extract", alias: "pet-extract", kind: apitypes.ModelKindLlm},
+		{field: "pet-asr", alias: "pet-asr", kind: apitypes.ModelKindAsr},
+	} {
+		alias := strings.TrimSpace(model.alias)
+		resource, ok := models[alias]
+		if !ok {
+			return fmt.Errorf("%s.%s model alias %q is not declared in resources.models", path, model.field, alias)
+		}
+		if resource.Spec.Kind != model.kind {
+			return fmt.Errorf("%s.%s model alias %q has kind %q, want %q", path, model.field, alias, resource.Spec.Kind, model.kind)
 		}
 	}
 	return nil
@@ -663,9 +688,17 @@ func validateWorkflowRuntimeAliases(path string, workflow apitypes.WorkflowSpec,
 		if workflow.Chatroom != nil && workflow.Chatroom.Transcript != nil && workflow.Chatroom.Transcript.AsrModel != nil {
 			return requireModel("transcript.asr_model", *workflow.Chatroom.Transcript.AsrModel, apitypes.ModelKindAsr)
 		}
+	case apitypes.WorkflowDriverPet:
+		if workflow.Pet == nil {
+			return fmt.Errorf("%s has no pet spec", path)
+		}
+		return requirePetRuntimeAliases(path, models)
 	case apitypes.WorkflowDriverDoubaoRealtime:
 		if workflow.DoubaoRealtime == nil {
 			return fmt.Errorf("%s has no doubao_realtime spec", path)
+		}
+		if workflow.DoubaoRealtime.Tools != nil && len(*workflow.DoubaoRealtime.Tools) != 0 {
+			return fmt.Errorf("%s.tools are unsupported until ToolCall is implemented", path)
 		}
 		if err := requireModel("model", workflow.DoubaoRealtime.Model, apitypes.ModelKindRealtime); err != nil {
 			return err
