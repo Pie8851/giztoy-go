@@ -476,9 +476,6 @@
       "RegistrationToken": {
         "$ref": "./shared/registration_token.json#/components/schemas/RegistrationToken"
       },
-      "RegistrationTokenCreateResult": {
-        "$ref": "./shared/registration_token.json#/components/schemas/RegistrationTokenCreateResult"
-      },
       "GameRewardSpec": {
         "$ref": "./shared/gameplay.json#/components/schemas/GameRewardSpec"
       },
